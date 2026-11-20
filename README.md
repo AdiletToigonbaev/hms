@@ -34,7 +34,8 @@ docker compose -f deploy/docker-compose.yml up -d --build
 
 Миграции применяются одноразовым сервисом `migrate` перед стартом API; он же создаёт роли, права и первого владельца. Порты открыты только на `127.0.0.1`.
 
-**Первый вход (разработка):** `owner@hms.local` / `owner-dev-password` — система сразу попросит задать свой пароль. Письма (подтверждение email, сброс пароля) — в Mailpit: http://localhost:8025. В production владелец и ключ JWT задаются переменными окружения (`deploy/env.example`).
+**Первый вход (разработка):** `owner@hms.local` / `owner-dev-password` — система сразу попросит задать свой пароль.
+⚠ Если на этом стеке уже запускались E2E-тесты (`npm run test:e2e`), они сами проходят первый вход и оставляют пароль владельца **`owner-new-password-1`**. Сбросить стек к исходному состоянию: `docker compose -f deploy/docker-compose.yml down -v` и снова `up`. Письма (подтверждение email, сброс пароля) — в Mailpit: http://localhost:8025. В production владелец и ключ JWT задаются переменными окружения (`deploy/env.example`).
 Параметры БД можно переопределить в `deploy/.env` (образец — `deploy/env.example`). Пароль по умолчанию `hms_dev_only` предназначен **только для локальной разработки**.
 
 Остановка: `docker compose -f deploy/docker-compose.yml down` (с удалением данных: `down -v`).

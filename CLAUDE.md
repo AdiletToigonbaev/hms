@@ -90,6 +90,7 @@ docker compose -f deploy/docker-compose.yml up -d db mailpit   # только и
 ```
 Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up`, `/health/ready` = Healthy и `npm run test:e2e`.
 Dev-владелец (только локально): `owner@hms.local` / `owner-dev-password` → при первом входе смена пароля. Письма — http://localhost:8025.
+E2E меняют пароль dev-владельца на `owner-new-password-1` (первый вход на чистой БД) — предупреждать пользователя, если E2E запускались на его стеке.
 
 ## Соглашения
 - Код и идентификаторы — на английском; UI-строки — через i18n (ru по умолчанию); комментарии и документы допустимы на русском.
