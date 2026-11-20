@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- HTTP-контракт API без БД: формат ошибок, correlation id, liveness. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hms.Api\Hms.Api.csproj" />
+  </ItemGroup>
+</Project>

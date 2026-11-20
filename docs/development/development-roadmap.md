@@ -36,10 +36,10 @@ Identity, Hotel, Rooms, Pricing, Bookings, Guests, FrontDesk, Housekeeping, Fina
 | VPS Ubuntu, домен, DNS | деплой | спринт 11 |
 | Контент: название, логотип, фото номеров, описания, правила, тарифы | наполнение | спринт 8 |
 | Юридические решения (вопросы 1–2) | ПД, фискализация | спринты 4, 6, 11 |
-| NuGet: EF Core + Npgsql, Identity, FluentValidation, Serilog, xUnit, FluentAssertions, Testcontainers, NetArchTest, ClosedXML, QuestPDF | разработка | — |
-| npm: Next.js, React, TypeScript, Tailwind CSS, shadcn/ui, Lucide, next-intl, TanStack Query, react-hook-form, zod | разработка | — |
+| NuGet: EF Core + Npgsql, EFCore.NamingConventions, Identity, FluentValidation, Serilog, xUnit v3, AwesomeAssertions, Testcontainers, NetArchTest, ClosedXML, QuestPDF | разработка | — |
+| npm: Next.js 16, React 19, TypeScript, Tailwind CSS 4, shadcn/ui, Lucide, next-intl, TanStack Query, react-hook-form, zod, Vitest, Testing Library | разработка | — |
 
-Лицензии проверяются в Sprint 0 (QuestPDF — Community-лицензия бесплатна для компаний с годовым доходом ниже порога; уточнить у заказчика).
+Лицензии: FluentAssertions 8 требует платную лицензию для коммерческого использования — вместо него AwesomeAssertions (Apache 2.0, совместимый API). QuestPDF — Community-лицензия бесплатна для компаний с годовым доходом ниже порога; подтвердить у заказчика до Sprint 9 (иначе — альтернатива).
 
 ## 5. Основные риски
 Отсутствие/задержка документации банков; модерация шаблонов WhatsApp; требования закона по ПД и фискализации; единый VPS как точка отказа (мера: бэкапы вне сервера).

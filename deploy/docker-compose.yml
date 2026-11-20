@@ -1,0 +1,65 @@
+# Окружение РАЗРАБОТКИ. Production-конфигурация (Nginx, HTTPS, бэкапы) — Sprint 11.
+# Запуск из корня репозитория:  docker compose -f deploy/docker-compose.yml up -d --build
+# Только инфраструктура для локального dotnet run / npm run dev:
+#   docker compose -f deploy/docker-compose.yml up -d db mailpit
+name: hms
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hms}
+      POSTGRES_USER: ${POSTGRES_USER:-hms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hms_dev_only}
+      TZ: UTC
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    # Перехватчик писем для разработки: SMTP 1025, веб-интерфейс http://localhost:8025
+    image: axllent/mailpit:v1.34
+    ports:
+      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:1025:1025"
+
+  migrate:
+    # Одноразовое применение миграций (так же — при релизе в production)
+    build: ../backend
+    command: ["migrate"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER:-hms};Password=${POSTGRES_PASSWORD:-hms_dev_only};GSS Encryption Mode=Disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ../backend
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER:-hms};Password=${POSTGRES_PASSWORD:-hms_dev_only};GSS Encryption Mode=Disable
+    ports:
+      - "127.0.0.1:5080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build: ../frontend
+    environment:
+      API_INTERNAL_URL: http://api:8080
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  db-data:

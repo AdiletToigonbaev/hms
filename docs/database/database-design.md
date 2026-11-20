@@ -1,5 +1,7 @@
 # Проектирование базы данных (PostgreSQL)
 
+**Именование:** в документах таблицы и поля названы в PascalCase (логические имена, совпадают с C#-сущностями). Физические имена в PostgreSQL — snake_case (`booking_rooms.stay_range`), их формирует EFCore.NamingConventions; сырой SQL пишется в snake_case.
+
 Все бизнес-таблицы содержат `Id (uuid)`, `HotelId`, `CreatedAt`, `UpdatedAt`; где нужно — `CreatedBy`, `RowVersion` (xmin), `IsDeleted` (soft delete). Деньги `numeric(14,2)`, валюта `KGS`. Диаграмма: `er-diagram.md`.
 
 ## 1. Изменения относительно списка из ТЗ (с обоснованием)

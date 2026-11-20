@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Тесты с реальным PostgreSQL в Docker (Testcontainers). Требуют запущенный Docker. -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Hms.Api\Hms.Api.csproj" />
+  </ItemGroup>
+</Project>
