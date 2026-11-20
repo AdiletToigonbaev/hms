@@ -14,7 +14,7 @@ export default async function ConfirmEmailPage() {
     <div className="grid gap-4">
       <Card>
         <CardHeader>
-          <CardTitle>
+          <CardTitle className="font-heading text-2xl">
             <h1>{t("confirmTitle")}</h1>
           </CardTitle>
         </CardHeader>
@@ -26,7 +26,7 @@ export default async function ConfirmEmailPage() {
       </Card>
       <Card>
         <CardHeader>
-          <CardTitle>
+          <CardTitle className="font-heading text-2xl">
             <h2>{t("resendTitle")}</h2>
           </CardTitle>
         </CardHeader>

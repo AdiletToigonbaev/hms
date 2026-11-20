@@ -1,11 +1,18 @@
 import { getTranslations } from "next-intl/server";
+import { PageHeader } from "@/components/layout/page-header";
+import { QuickLinks } from "@/components/layout/quick-links";
 
-export default async function Page() {
-  const [t, common] = await Promise.all([getTranslations("Areas"), getTranslations("Common")]);
+export default async function AdminHomePage() {
+  const t = await getTranslations("Areas");
   return (
-    <section className="grid gap-3">
-      <h1 className="text-2xl font-semibold tracking-tight">{t("adminTitle")}</h1>
-      <p className="text-muted-foreground">{common("inDevelopment")}</p>
-    </section>
+    <div className="grid gap-8">
+      <PageHeader title={t("adminTitle")} description={t("adminText")} />
+      <QuickLinks
+        links={[
+          { href: "/admin/rooms", title: t("qlRooms"), description: t("qlRoomsText"), icon: "rooms" },
+          { href: "/admin/room-types", title: t("qlTypes"), description: t("qlTypesText"), icon: "roomTypes" },
+        ]}
+      />
+    </div>
   );
 }

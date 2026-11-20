@@ -13,7 +13,7 @@ export default async function LoginPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="font-heading text-2xl">
           <h1>{t("loginTitle")}</h1>
         </CardTitle>
         <CardDescription>{t("loginDescription")}</CardDescription>

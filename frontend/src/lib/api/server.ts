@@ -22,7 +22,8 @@ interface ApiOptions {
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<ApiResult<T>> {
   const incoming = await headers();
   const requestHeaders: Record<string, string> = { Accept: "application/json" };
-  if (options.body !== undefined) requestHeaders["Content-Type"] = "application/json";
+  const isForm = options.body instanceof FormData;
+  if (options.body !== undefined && !isForm) requestHeaders["Content-Type"] = "application/json";
 
   const forwardedFor = incoming.get("x-forwarded-for") ?? incoming.get("x-real-ip");
   if (forwardedFor) requestHeaders["X-Forwarded-For"] = forwardedFor;
@@ -41,9 +42,10 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
     response = await fetch(`${apiInternalUrl()}/api/v1${path}`, {
       method: options.method ?? "GET",
       headers: requestHeaders,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      // FormData (загрузка файлов) отправляется как multipart — заголовок с boundary ставит fetch.
+      body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
       cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(isForm ? 60_000 : 10_000),
     });
   } catch {
     return { ok: false, status: 503, problem: { status: 503, code: "api.unavailable" } };

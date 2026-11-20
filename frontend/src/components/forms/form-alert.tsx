@@ -18,10 +18,17 @@ export function FormAlert({ state, success }: { state: FormState; success?: stri
   }
   if (!state.error) return null;
   const key = errorKey(state.error) as Parameters<typeof t>[0];
+  // Перевод кода, если есть; для отказа пароля — точная причина из API; иначе — текст API или общий.
+  const text =
+    state.error === "auth.password_rejected" && state.message
+      ? state.message
+      : t.has(key)
+        ? t(key)
+        : (state.message ?? t("unknown"));
   return (
     <Alert variant="destructive" role="alert">
       <CircleAlert aria-hidden />
-      <AlertDescription>{state.message ?? (t.has(key) ? t(key) : t("unknown"))}</AlertDescription>
+      <AlertDescription>{text}</AlertDescription>
     </Alert>
   );
 }

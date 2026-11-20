@@ -139,3 +139,14 @@ Guests, Rooms (архив), Expenses (void), Users (деактивация), Hou
 - **Avg Stay** = среднее число ночей по CheckedOut.
 
 Налоги (НДС, налог с продаж) в расчётах не учитываются до решения вопроса о налоговом режиме.
+
+## 9. Реализовано в Sprint 2 (схемы `hotel`, `rooms`, `platform`)
+- **hotel.hotels** (Id, Name, Address, Phone E.164, Email, Description, TimeZone = Asia/Bishkek, Currency = KGS, xmin-версия). Гостиница одна; модули получают `HotelId` через `IHotelContext` (кэш, сбрасывается при изменении).
+- **hotel.hotel_settings** (HotelId PK/FK, время заезда/выезда/No-Show, предоплата 0–100 %, удержания, флаги, `cancellation_policy` jsonb, правила, xmin-версия). Check: процент и удержания в допустимых пределах.
+- **hotel.integration_settings** (HotelId, Provider MBank|Optima|WhatsApp|Email, IsEnabled, Mode, `public_config` jsonb без секретов, LastCheck*). Unique (HotelId, Provider).
+- **rooms.amenities** (HotelId, Code unique в гостинице, Name, Icon, SortOrder) — 12 удобств по умолчанию добавляет сидер.
+- **rooms.room_types** (HotelId, Name, Description, Capacity 1–20, BedsCount, BedType, BasePrice numeric(14,2) > 0, SortOrder, IsArchived, xmin) и **room_type_amenities** (M:N; удаление используемого удобства запрещено).
+- **rooms.rooms** (HotelId, RoomTypeId, Number unique в гостинице, Floor, Capacity/BedsCount/BedType/PriceOverride — null = как у категории, Status Available|Occupied|Cleaning|Maintenance|OutOfService, IsArchived, xmin).
+- **rooms.room_status_history** (RoomId, From/To, Source Manual|CheckIn|CheckOut|Housekeeping, Reason, ChangedBy, BookingId, ChangedAt) — номер с историей не удаляется, только архивируется.
+- **rooms.room_photos** (RoomTypeId или RoomId — ровно одно, check; FileId → platform.stored_files; SortOrder).
+- **platform.stored_files** (Path unique, ContentType, Size, Sha256, OriginalName, Visibility Public|Private, UploadedBy). Файл на диске — `{год}/{месяц}/{id}.{ext}` в каталоге `Storage:RootPath` (Docker volume `api-files`).

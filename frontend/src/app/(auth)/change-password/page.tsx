@@ -13,7 +13,7 @@ export default async function ChangePasswordPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="font-heading text-2xl">
           <h1>{t("changeTitle")}</h1>
         </CardTitle>
         <CardDescription>{t("changeRequired")}</CardDescription>

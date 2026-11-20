@@ -1,11 +1,21 @@
 import { getTranslations } from "next-intl/server";
+import { PageHeader } from "@/components/layout/page-header";
+import { QuickLinks } from "@/components/layout/quick-links";
 
 export default async function OwnerHomePage() {
   const t = await getTranslations("Areas");
   return (
-    <section className="grid gap-3">
-      <h1 className="text-2xl font-semibold tracking-tight">{t("ownerTitle")}</h1>
-      <p className="text-muted-foreground">{t("ownerText")}</p>
-    </section>
+    <div className="grid gap-8">
+      <PageHeader title={t("ownerTitle")} description={t("ownerText")} />
+      <QuickLinks
+        links={[
+          { href: "/admin/rooms", title: t("qlRooms"), description: t("qlRoomsText"), icon: "rooms" },
+          { href: "/admin/room-types", title: t("qlTypes"), description: t("qlTypesText"), icon: "roomTypes" },
+          { href: "/owner/staff", title: t("qlStaff"), description: t("qlStaffText"), icon: "staff" },
+          { href: "/owner/settings", title: t("qlSettings"), description: t("qlSettingsText"), icon: "settings" },
+          { href: "/owner/integrations", title: t("qlIntegrations"), description: t("qlIntegrationsText"), icon: "integrations" },
+        ]}
+      />
+    </div>
   );
 }

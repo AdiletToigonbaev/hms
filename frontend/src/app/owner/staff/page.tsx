@@ -2,6 +2,7 @@ import { Plus } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,13 +39,15 @@ export default async function StaffListPage({ searchParams }: PageProps<"/owner/
 
   return (
     <section className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <Link href="/owner/staff/new" className={buttonVariants()}>
+      <PageHeader
+        title={t("title")}
+        actions={
+          <Link href="/owner/staff/new" className={buttonVariants()}>
           <Plus aria-hidden />
           {t("add")}
         </Link>
-      </div>
+        }
+      />
 
       <form method="get" className="flex flex-wrap gap-2" role="search">
         <Input name="search" defaultValue={search} placeholder={t("search")} aria-label={t("search")} className="max-w-xs" />

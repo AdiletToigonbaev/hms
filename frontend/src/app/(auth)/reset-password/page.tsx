@@ -13,7 +13,7 @@ export default async function ResetPasswordPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="font-heading text-2xl">
           <h1>{t("resetTitle")}</h1>
         </CardTitle>
       </CardHeader>

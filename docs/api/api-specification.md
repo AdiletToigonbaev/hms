@@ -207,8 +207,8 @@
 | GET | /maintenance-requests/{id} | A; H — свои | ✔ |
 | PUT | /maintenance-requests/{id} | A (`maintenance.manage`; статус, номер → Maintenance) | ✔ |
 | GET | /housekeeping/my/maintenance-requests | H | ✔ |
-| POST | /files | A, H (белый список MIME, лимит размера) | ✔ |
-| GET | /files/{id} | по правам на сущность-владельца | ✔ |
+| POST | /files | A, H — общая загрузка; в Sprint 2 не нужна (фото загружаются через `/room-types/{id}/photos`, `/rooms/{id}/photos`), появится с вложениями (Sprint 6–7) | ◐ |
+| GET | /files/{id} | P — только публичные файлы (фото номеров); заголовки `nosniff`, `Content-Security-Policy: sandbox`, долгий кэш. Приватные файлы — через эндпоинты модулей-владельцев | ✔ |
 
 ## 12. Finance
 | Метод | Путь | Доступ | Ст. |
@@ -293,3 +293,12 @@
 
 ## Итог по объёму
 Количество endpoints по разделам считается по таблицам выше (строка = endpoint); актуальная цифра — в конце раздела при каждом изменении: **всего 208, из них ✔ 194, ◐ 5, ⏳ 9**.
+
+## Реализовано в Sprint 2 — уточнения
+- **Фото** (`POST /room-types/{id}/photos`, `POST /rooms/{id}/photos`): `multipart/form-data`, поле `file`; тип определяется по содержимому (JPEG, PNG, WebP), до 10 МБ, не более 20 на категорию или номер; ответ — `PhotoDto` с `url` `/api/v1/files/{fileId}`. Ошибки: `file.unsupported_type`, `file.too_large`, `photo.too_many`.
+- **Номера**: `GET /rooms?roomTypeId=&status=&floor=&includeArchived=&search=`; `GET /rooms/board` — неархивные номера по этажам. В `RoomDto` — собственные значения (null — как у категории), итоговые `Effective*`, `manualStatusTargets` (куда можно перевести вручную). `DELETE /rooms/{id}` — только без истории статусов, иначе `409 room.has_history`.
+- **Статусы**: `POST /rooms/{id}/status` `{ status, reason }`, причина обязательна; вручную недоступны переходы в/из `Occupied` (`409 room.invalid_status_transition`) — их делают заселение и выселение.
+- **Категории**: `GET /room-types?includeArchived=true`; архивирование — только без действующих номеров (`409 room_type.has_active_rooms`); `PUT /room-types/{id}/photos/order` `{ photoIds }`.
+- **Каталог** `GET /public/room-types`: только категории, где есть номер в продаже (не в архиве и не «вне продажи»); `priceFrom` — минимальная цена по номерам категории.
+- **Оптимистичная блокировка**: `PUT /hotel`, `/hotel/settings`, `/room-types/{id}`, `/rooms/{id}` принимают `version` из последнего ответа; устаревшая версия → `409 concurrency.conflict`.
+- **Интеграции**: включить провайдера без реализованного адаптера нельзя (`422 integration.not_available`), без ключей в окружении — `422 integration.secrets_missing`; ключи вида `secret`/`token`/`key` в `publicConfig` запрещены (`400 integration.key_not_allowed`). `POST /settings/integrations/Email/test` ставит тестовое письмо текущему пользователю.

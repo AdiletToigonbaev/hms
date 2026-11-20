@@ -12,7 +12,7 @@ export default async function RegisterPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="font-heading text-2xl">
           <h1>{t("registerTitle")}</h1>
         </CardTitle>
         <CardDescription>{t("registerDescription")}</CardDescription>

@@ -23,8 +23,9 @@ describe("toFormState", () => {
     });
   });
 
-  it("неизвестный код — общий текст; причина отказа пароля — из API", () => {
-    expect(toFormState({ status: 500, code: "weird.code", title: "Boom" }).error).toBe("unknown");
+  it("код передаётся как есть; текст API сохраняется как запасной вариант", () => {
+    expect(toFormState({ status: 500, code: "weird.code", title: "Сбой" })).toMatchObject({ error: "weird.code", message: "Сбой" });
+    expect(toFormState({ status: 502 }).error).toBe("unknown");
     expect(toFormState({ status: 400, code: "auth.password_rejected", title: "Пароль слишком простой." }).message).toBe(
       "Пароль слишком простой.",
     );
@@ -43,6 +44,14 @@ describe("toFormState", () => {
       "staff.permission_not_configurable",
       "rate_limited",
       "api.unavailable",
+      "room.number_taken",
+      "room.has_history",
+      "room.invalid_status_transition",
+      "room_type.has_active_rooms",
+      "file.unsupported_type",
+      "concurrency.conflict",
+      "integration.not_available",
+      "integration.key_not_allowed",
     ];
     for (const code of codes) {
       expect(ru.Errors, code).toHaveProperty(errorKey(code));

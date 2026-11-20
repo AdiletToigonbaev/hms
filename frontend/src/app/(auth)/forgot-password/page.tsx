@@ -12,7 +12,7 @@ export default async function ForgotPasswordPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="font-heading text-2xl">
           <h1>{t("forgotTitle")}</h1>
         </CardTitle>
         <CardDescription>{t("forgotDescription")}</CardDescription>
