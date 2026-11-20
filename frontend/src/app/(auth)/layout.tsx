@@ -13,12 +13,10 @@ async function HotelWelcome() {
   const hotel = await getHotelInfo();
   return (
     <div className="grid gap-4">
-      <p className="font-heading text-4xl leading-tight xl:text-5xl">{hotel.name}</p>
-      <p className="max-w-sm text-lg text-white/85">
+      <span className="h-1 w-12 rounded-full bg-primary" />
+      <p className="font-heading text-4xl leading-tight text-foreground xl:text-5xl">{hotel.name}</p>
+      <p className="max-w-sm text-lg text-muted-foreground">
         {hotel.description ?? "Уютные номера, внимательный сервис и тёплый приём — добро пожаловать."}
-      </p>
-      <p className="text-sm text-white/70">
-        Заезд с {hotel.checkInTime} · выезд до {hotel.checkOutTime}
       </p>
     </div>
   );
@@ -28,13 +26,11 @@ export default function AuthLayout({ children }: LayoutProps<"/">) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       {/* Тёплая панель приветствия — только на больших экранах */}
-      <aside
-        className="relative hidden overflow-hidden bg-[linear-gradient(145deg,#8f3f1f_0%,#b5562f_45%,#d08a64_100%)] p-12 text-white lg:flex lg:flex-col lg:justify-between"
-        aria-hidden
-      >
-        <div className="absolute -top-24 -right-24 size-96 rounded-full bg-white/10 blur-2xl" />
-        <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-[#6b7a4b]/30 blur-3xl" />
-        <span className="relative grid size-14 place-items-center rounded-2xl bg-white/15 font-heading text-2xl backdrop-blur">
+      <aside className="relative hidden overflow-hidden bg-secondary p-12 lg:flex lg:flex-col lg:justify-between" aria-hidden>
+        {/* Мягкие тёплые пятна на песочном фоне */}
+        <div className="absolute -top-24 -right-24 size-96 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -bottom-32 -left-16 size-96 rounded-full bg-olive/10 blur-3xl" />
+        <span className="relative grid size-14 place-items-center rounded-2xl bg-primary font-heading text-2xl text-primary-foreground shadow-sm">
           ✦
         </span>
         <div className="relative">

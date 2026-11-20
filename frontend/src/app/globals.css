@@ -55,7 +55,7 @@
 :root {
   --radius: 0.75rem;
 
-  --background: #fbf8f3; /* тёплый молочный */
+  --background: #ffffff; /* белый фон страниц (решение заказчика: светлый песочный стиль) */
   --foreground: #2b2420; /* тёмно-коричневый */
   --card: #ffffff;
   --card-foreground: #2b2420;
@@ -75,11 +75,11 @@
   --ring: #d08a64;
   --olive: #6b7a4b;
 
-  --sidebar: #f6efe5;
+  --sidebar: #f6f1ea; /* светло-песочное меню */
   --sidebar-foreground: #3d332c;
   --sidebar-primary: #b5562f;
   --sidebar-primary-foreground: #fffaf5;
-  --sidebar-accent: #ecdfcf;
+  --sidebar-accent: #ebe1d3;
   --sidebar-accent-foreground: #2b2420;
   --sidebar-border: #e6dccf;
   --sidebar-ring: #d08a64;
