@@ -166,10 +166,10 @@
 | GET | /guests/{id}/bookings | A (`guest.view`) | ✔ |
 | GET | /guests/{id}/payments | A (`guest.view` + `payment.view`) | ✔ |
 | GET | /guests/{id}/stays | A (`guest.view`) | ✔ |
-| GET | /guests/{id}/documents | A (`guest.documents.view`; маскированные номера) | ✔ |
-| GET | /guests/{id}/documents/{docId} | A (`guest.documents.view`; расшифровка, запись в аудит) | ✔ |
-| POST | /guests/{id}/documents | A (`guest.documents.manage`) | ✔ |
-| DELETE | /guests/{id}/documents/{docId} | A (`guest.documents.manage`) | ✔ |
+| GET | /guests/{id}/documents | A (`guest.documents.view`; маскированные номера) | ✖ |
+| GET | /guests/{id}/documents/{docId} | A (`guest.documents.view`; расшифровка, запись в аудит) | ✖ |
+| POST | /guests/{id}/documents | A (`guest.documents.manage`) | ✖ |
+| DELETE | /guests/{id}/documents/{docId} | A (`guest.documents.manage`) | ✖ |
 | GET | /guests/{id}/consents | A (`guest.view`) | ✔ |
 | PUT | /guests/{id}/consents | A (`guest.manage`; источник обязателен) | ✔ |
 | POST | /guests/{id}/merge | O | ◐ |
@@ -292,7 +292,7 @@
 `validation.failed` (400), `auth.invalid_credentials` (401), `auth.locked_out` (403), `auth.email_not_confirmed` (403), `auth.password_change_required` (403), `auth.refresh_token_invalid` (401), `auth.refresh_token_rotated` (401), `auth.invalid_token` (400), `auth.email_taken` (409), `auth.phone_taken` (409), `auth.wrong_password` (400), `auth.password_rejected` (400), `staff.not_found` (404), `staff.cannot_modify_owner` (403), `staff.permission_not_configurable` (422), `rate_limited` (429), `auth.forbidden` (403), `not_found` (404), `concurrency.conflict` (409), `idempotency.key_reused` (422), `booking.room_unavailable` (409), `booking.invalid_transition` (409), `booking.cancel_not_allowed` (422), `booking.capacity_exceeded` (422), `room.invalid_status_transition` (409), `room.has_history` (409), `payment.duplicate` (409), `payment.amount_mismatch` (422), `payment.already_reversed` (409), `refund.exceeds_paid` (422), `refund.limit_exceeded` (403), `housekeeping.invalid_transition` (409), `whatsapp.no_consent` (422), `whatsapp.outside_window` (422).
 
 ## Итог по объёму
-Количество endpoints по разделам считается по таблицам выше (строка = endpoint); актуальная цифра — в конце раздела при каждом изменении: **всего 208, из них ✔ 194, ◐ 5, ⏳ 9**.
+Количество endpoints по разделам считается по таблицам выше (строка = endpoint); актуальная цифра — в конце раздела при каждом изменении: **всего 208, из них ✔ 190, ◐ 5, ⏳ 9, ✖ 4** (✖ — исключено решением заказчика: документы гостей не хранятся).
 
 ## Реализовано в Sprint 2 — уточнения
 - **Фото** (`POST /room-types/{id}/photos`, `POST /rooms/{id}/photos`): `multipart/form-data`, поле `file`; тип определяется по содержимому (JPEG, PNG, WebP), до 10 МБ, не более 20 на категорию или номер; ответ — `PhotoDto` с `url` `/api/v1/files/{fileId}`. Ошибки: `file.unsupported_type`, `file.too_large`, `photo.too_many`.

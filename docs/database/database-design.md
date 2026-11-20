@@ -54,7 +54,7 @@
 
 ### Guests
 - **Guests**(UserId null, FullName, Phone, WhatsAppPhone, Email, BirthDate null, RegisteredAt, AdminNotes, VisitsCount, IsDeleted).
-- **GuestDocuments**(GuestId, DocType, NumberEncrypted, IssuedBy, ValidTo, LegalBasis) — ограниченный доступ.
+- ~~GuestDocuments~~ — **не создаётся** (решение заказчика 2026-11-20: паспортные данные не храним; ТЗ требует их только «при наличии законного основания»). При появлении основания — отдельная миграция с шифрованием номера и ограниченным доступом.
 - **GuestConsents**(GuestId, Type: PersonalData|WhatsApp, GrantedAt, RevokedAt, Source).
 
 ### Bookings
@@ -66,7 +66,7 @@
 - Check: `CheckOut > CheckIn`, `Adults ≥ 1`.
 
 ### Finance
-- **Payments**(BookingId null, GuestId, Type Prepayment|Stay|Service|Other|Reversal, Method Cash|BankTransfer|CardPos|MBank|Optima, Channel Manual|Online, Amount, Status, Provider null, ExternalId null, ReversalOfPaymentId null, RefundedAmount (денорм. из Refunds), FiscalReceiptNo null, PaidAt, RegisteredBy null (ручной), Comment, RowVersion). Unique (Provider, ExternalId) where not null. Неизменяемы все поля, кроме Status/RefundedAmount/RowVersion; каждое изменение статуса пишет строку в PaymentTransactions. Ручной платёж создаётся сразу в `Paid`. Unique (ReversalOfPaymentId) where not null — сторно не более одного.
+- **Payments**(BookingId null, GuestId, Type Prepayment|Stay|Service|Other|Reversal, Method Cash|BankTransfer|CardPos|MBank|Optima, Channel Manual|Online, Amount, Status, Provider null, ExternalId null, ReversalOfPaymentId null, RefundedAmount (денорм. из Refunds), PaidAt, RegisteredBy null (ручной), Comment, RowVersion). Unique (Provider, ExternalId) where not null. Неизменяемы все поля, кроме Status/RefundedAmount/RowVersion; каждое изменение статуса пишет строку в PaymentTransactions. Ручной платёж создаётся сразу в `Paid`. Unique (ReversalOfPaymentId) where not null — сторно не более одного.
 - **PaymentTransactions**(PaymentId, Provider null, Kind Charge|Refund|Reversal|StatusChange, Amount, Status, ProviderTxnId null, RawRequest/Response jsonb без карточных данных, OccurredAt). Append-only. Unique (Provider, ProviderTxnId, Kind) where ProviderTxnId not null.
 - **Refunds**(PaymentId, BookingId, Amount, Reason, Status Requested|Approved|Rejected|Paid, Method, RequestedBy, RequestedByGuest bool, ApprovedBy, DecidedAt, PaidAt). **Источник истины по возвратам**; статус `Payments` (RefundPending/Refunded/PartiallyRefunded) выводится из Refunds в той же транзакции. Check: Σ не отклонённых возвратов ≤ Payment.Amount (проверка в приложении под `FOR UPDATE`).
 - **Expenses**(CategoryId, Amount, Date, Supplier, Description, FileId null, CreatedBy, IsVoided).
