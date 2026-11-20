@@ -1,110 +1,88 @@
-# CLAUDE.md — HMS (Hotel Management System)
+# CLAUDE.md — Hotel Management System (HMS)
 
-Система управления гостиницей на 10–30 номеров (Кыргызстан): бронирование, заселение/выселение, уборка, финансы, аналитика, публичный портал, WhatsApp.
-Текущий этап: **документация утверждается (этап 1)**. Код ещё не написан. Sprint 0 начинается только после явного подтверждения заказчика («подтверждаю»).
+Проект: система управления гостиницей (1 отель, 10–30 номеров, Кыргызстан). Валюта KGS, часовой пояс Asia/Bishkek, интерфейс на русском (KY/EN позже). Исходное ТЗ: `docs/requirements/original-spec.md`. Проектная документация: `docs/`.
 
-## Источники истины
-| Документ | Назначение |
-|---|---|
-| `docs/requirements/original-spec.md` | Исходное ТЗ — главный источник. **Сейчас файл пустой — TODO: добавить текст ТЗ** |
-| `docs/requirements/business-requirements.md` | Цели, параметры, решения заказчика |
-| `docs/requirements/functional-requirements.md` | Требования по модулям с приоритетами P0/P1/P2 |
-| `docs/architecture/system-architecture.md` | Модули, слои, ключевые решения |
-| `docs/architecture/security-architecture.md` | Аутентификация, матрица прав, ПД |
-| `docs/database/database-design.md`, `er-diagram.md` | Схема БД, ограничения, формулы KPI |
-| `docs/api/api-specification.md` | REST API v1 |
-| `docs/integrations/*.md` | Эквайринг MBANK/Optima, WhatsApp |
-| `docs/development/development-roadmap.md` | Спринты, зависимости, открытые вопросы |
+## Статус
+Этап 1 (анализ и документы) завершён. Программирование **НЕ** начато. Sprint 0 (каркас, предшествует Sprint 1 из ТЗ §20) — только после слова «подтверждаю» от владельца проекта.
 
-Если ТЗ и документы расходятся, приоритет у ТЗ. Если расходятся документы между собой, надо остановиться и спросить заказчика, а не выбирать молча. Любое изменённое решение сразу вносится в соответствующий документ.
+## Приоритет источников
+ТЗ (`original-spec.md`) → решения заказчика (ниже и в `business-requirements.md`) → документы `docs/`. Если документы противоречат друг другу или ТЗ, нужно остановиться и спросить, а не выбирать молча. Принятое решение сразу заносится в соответствующий документ.
 
 ## Стек
-- **Backend:** .NET 10, ASP.NET Core, модульный монолит; EF Core + Npgsql; ASP.NET Core Identity; JWT access (15 мин) + refresh-токен в httpOnly cookie с ротацией; FluentValidation; Serilog (JSON, correlation id); ProblemDetails (RFC 9457); OpenAPI.
-- **БД:** PostgreSQL (расширение `btree_gist`), по схеме на модуль.
-- **Frontend:** Next.js (App Router, TypeScript), SSR для публичных страниц; TanStack Query, react-hook-form + zod, next-intl (ru по умолчанию; ky, en позже), shadcn/ui; типы API генерируются из OpenAPI; BFF-маршруты для cookie.
-- **Тесты:** xUnit, FluentAssertions, Testcontainers (PostgreSQL); frontend: TODO (Vitest + Playwright — предложение, утвердить в Sprint 0).
-- **Экспорт:** ClosedXML (xlsx), QuestPDF (pdf).
-- **Инфраструктура:** Docker Compose (nginx, web, api, db, backup), Let's Encrypt, один VPS Ubuntu; CI на GitHub Actions.
+- **Frontend:** Next.js (App Router), React, TypeScript, Tailwind CSS, shadcn/ui, Lucide, next-intl, TanStack Query, react-hook-form + zod.
+- **Backend:** C#, ASP.NET Core Web API, .NET 10 LTS, EF Core (Npgsql), FluentValidation, ASP.NET Core Identity, Serilog.
+- **БД:** PostgreSQL (расширение `btree_gist`).
+- **Инфраструктура:** Docker, Docker Compose, Nginx, Ubuntu VPS, Git/GitHub.
+- **Архитектура:** модульный монолит, Clean Architecture, REST, DI, DTO, единая обработка ошибок (ProblemDetails), структурные логи, фоновые задачи, аудит.
+- **Тесты:** xUnit, FluentAssertions, Testcontainers (PostgreSQL). Инструменты для frontend утверждаются в Sprint 0.
 
-## Структура репозитория (план)
+## Правила работы (раздел 19 ТЗ — обязательны)
+- Не создавать всё приложение за один раз; работать поэтапно.
+- Делить проект на логические модули.
+- Перед разработкой анализировать требования; сначала проектировать архитектуру.
+- Не менять рабочий код без необходимости.
+- Не удалять файлы без согласования.
+- Не использовать вымышленные API интеграций; не использовать фиктивные платежи.
+- Не выдавать незавершённую бизнес-логику за готовую.
+- После каждого этапа запускать сборку и тесты; ошибки исправлять до перехода дальше.
+- Объяснять важные технические решения; вести документацию; держать этот файл актуальным.
+- Не раскрывать секреты и персональные данные; секреты не хранить в коде.
+- Использовать Git; не выполнять разрушительные операции без разрешения.
+
+**Отчёт после каждого этапа:** что реализовано; созданные файлы; изменённые файлы; технологии; выполненные тесты; результат сборки; оставшиеся проблемы; следующий этап.
+
+## Ключевые решения заказчика
+- Онлайн-эквайринг (MBANK, Optima) подключается обязательно, но **ПОСЛЕ** готовности веб-приложения. Сейчас — только архитектура (`IPaymentProvider`), домен платежей и ручные способы оплаты. Без имитации успешной оплаты, без выдуманных API. Онлайн-оплата включается флагом `OnlinePaymentEnabled` (по умолчанию false).
+- WhatsApp Business: номер и доступы заказчик предоставит позже. Только официальный API (WhatsApp Business Platform / Cloud API). Сейчас — адаптер, шаблоны, outbox, история.
+- Структуру БД можно менять по необходимости, с обоснованием в `docs/database/database-design.md`.
+
+## Инварианты (нарушать нельзя)
+- Интервал проживания `[CheckIn, CheckOut)`; пересечения запрещены exclusion constraint в БД + проверка в приложении.
+- Расчёт цен и доступности — только на backend.
+- Деньги — `numeric(14,2)`/`decimal`, без float; платёжные записи неизменяемы (исправления — сторно).
+- Платежи и webhook идемпотентны; карточные данные не хранятся.
+- Права проверяются на backend (RBAC + Permissions + проверка владения объектом).
+- Все важные действия попадают в AuditLogs; ПД не пишутся в логи.
+- Уборщик не видит финансы и ПД гостей; Completed не освобождает номер без настройки владельца.
+- Fake-провайдер оплаты допустим только в тестовых проектах и не попадает в production-сборку.
+
+## Структура проекта (план)
 ```
-/
-├─ CLAUDE.md, README.md
-├─ docs/                       документация (этап 1)
-├─ backend/
-│  ├─ Hms.sln
-│  ├─ src/
-│  │  ├─ Hms.Api/              host, composition root, middleware, auth, OpenAPI
-│  │  ├─ Hms.SharedKernel/     Result, Money, DateRange, базовые классы, события
-│  │  ├─ Hms.Platform/         идемпотентность, jobs, storage, аудит-перехватчик
-│  │  └─ Modules/<Module>/{Domain,Application,Infrastructure,Contracts}
-│  │       Identity, Hotel, Rooms, Pricing, Bookings, Guests, FrontDesk,
-│  │       Housekeeping, Finance, PaymentGateways, Messaging, Reporting, Audit
-│  └─ tests/ Hms.UnitTests, Hms.IntegrationTests (Testcontainers), Hms.ApiTests
-├─ frontend/src/{app,components,features,lib,i18n,hooks}
-│     app: (public)/ (guest)/ (staff)/admin (owner)/owner (housekeeper)/hk
-├─ deploy/ {docker-compose.yml, nginx/, env.example, backup/}
-└─ .github/workflows/          CI: build, test, lint
+/                  CLAUDE.md, README.md, .gitignore
+docs/              requirements, architecture, database, api, integrations, development
+backend/           Hms.sln
+  src/             Hms.Api, Hms.SharedKernel, Hms.Platform,
+                   Modules/{Identity,Hotel,Rooms,Pricing,Bookings,Guests,FrontDesk,
+                            Housekeeping,Finance,PaymentGateways,Messaging,Reporting,Audit}
+                   (каждый модуль: Domain, Application, Infrastructure, Contracts)
+  tests/           Hms.UnitTests, Hms.IntegrationTests (Testcontainers), Hms.ApiTests
+frontend/          Next.js: src/{app,components,features,lib,i18n,hooks}
+deploy/            docker-compose.yml, nginx/, env.example, backup/
+.github/workflows/ CI: build, test, lint
 ```
 
-## Команды (план, уточняются в Sprint 0)
+## Команды (ПЛАН — уточнить в Sprint 0)
 ```bash
-# Окружение для разработки
-docker compose -f deploy/docker-compose.yml up -d        # весь стек
-docker compose -f deploy/docker-compose.yml up -d db     # только PostgreSQL
+# backend
+dotnet build backend/Hms.sln
+dotnet test backend/Hms.sln                      # интеграционные тесты требуют Docker
+dotnet format backend/Hms.sln --verify-no-changes
+dotnet ef migrations add <Name> --project <Module.Infrastructure> --startup-project backend/src/Hms.Api
+dotnet ef database update --project <Module.Infrastructure> --startup-project backend/src/Hms.Api
 
-# Backend
-dotnet restore backend/Hms.sln
-dotnet build backend/Hms.sln -c Release
-dotnet test backend/Hms.sln                               # unit + integration (нужен Docker)
-dotnet test backend/tests/Hms.UnitTests                   # только unit
-dotnet format backend/Hms.sln --verify-no-changes         # линт/формат
-dotnet run --project backend/src/Hms.Api
-
-# Миграции EF Core (модель контекстов уточняется, см. вопросы)
-dotnet ef migrations add <Name> -p backend/src/Modules/<Module>/Infrastructure -s backend/src/Hms.Api
-dotnet ef database update -s backend/src/Hms.Api          # в production только отдельной командой при релизе
-
-# Frontend (менеджер пакетов утвердить в Sprint 0; ниже npm)
+# frontend
 cd frontend && npm ci
-npm run dev | npm run build | npm run lint | npm run typecheck | npm test
-npm run gen:api                                           # типы из OpenAPI
+npm run dev | npm run build | npm run lint | npm test
+
+# окружение
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-## Правила разработки
-### Из раздела 19 ТЗ
-> **TODO:** текст ТЗ отсутствует (`original-spec.md` пустой). После добавления ТЗ перенести сюда правила §19 дословно или близко к тексту, включая формат отчёта по спринту.
+## Соглашения
+- Код и идентификаторы — на английском; UI-строки — через i18n (ru по умолчанию); комментарии и документы допустимы на русском.
+- Ошибки API — ProblemDetails с кодом домена; DTO отдельно от сущностей.
+- Миграции в production применяются вручную при релизе.
+- Каждая фича — с тестами (в т.ч. гонки, повторные webhook, IDOR, права).
 
-### Процесс
-- Работа вертикальными срезами по спринтам из `development-roadmap.md`. Следующий спринт начинается только после подтверждения заказчика.
-- Фича без тестов не считается готовой. В конце спринта должны проходить сборка, тесты и миграции; документация и этот файл обновлены; сдан отчёт по формату §19 ТЗ.
-- Сначала схема и согласование (ER-диаграмму утверждает заказчик), потом код.
-- Не выдумывать то, чего нет в официальной документации: API банков, параметры WhatsApp Cloud API, юридические нормы. Неизвестное фиксируется как открытый вопрос.
-
-### Домен и данные
-- Цена и доступность считаются только на backend. Цена брони фиксируется снимком (`PriceSnapshot`).
-- Защита от двойного бронирования: `EXCLUDE USING gist (RoomId WITH =, StayRange WITH &&) WHERE (IsBlocking)` + транзакция; при нарушении — 409.
-- Проживание задаётся интервалом `[CheckIn, CheckOut)`, тип `date` в зоне Asia/Bishkek. События хранятся в `timestamptz` (UTC). Текущее время берётся только через `IHotelClock`.
-- Деньги: `numeric(14,2)` и тип `Money`, валюта KGS; `double`/`float` для денег запрещены. Суммы всегда > 0, направление задаёт тип операции.
-- Платежи, транзакции, история и аудит не изменяются и не удаляются; исправления только сторно/корректировкой. Для остальных сущностей soft delete или архив.
-- `HotelId` во всех бизнес-таблицах + глобальный query filter.
-- Модули обращаются друг к другу только через `*.Contracts` и доменные события, без доступа к чужим таблицам.
-- Конкурентность: `RowVersion` (xmin) на Bookings, Payments, Rooms. `Idempotency-Key` обязателен на POST для броней, платежей, check-in/out.
-- Внешние отправки (WhatsApp) и доменные события идут через outbox в той же транзакции.
-
-### Безопасность
-- Права проверяются на backend через permission-policies и объектные проверки (IDOR). Скрытие в UI защитой не считается.
-- Уборщик не видит финансы и ПД гостей.
-- Данные банковских карт система не принимает, не хранит и не логирует. ПД в логах маскируются; номера документов шифруются на уровне приложения.
-- Секреты хранятся только в переменных окружения или Docker secrets; `.env` не коммитится.
-
-### Интеграции
-- **Заглушки-имитаторы успешной оплаты запрещены (требование ТЗ).** Fake-провайдер допустим только в тестовых проектах и не попадает в production-сборку.
-- Бронь становится `Confirmed` по онлайн-оплате только после проверенного webhook или проверенного запроса статуса у банка, а не по редиректу браузера.
-- WhatsApp подключается только через официальный WhatsApp Business Platform / Cloud API. Сообщения отправляются только при наличии согласия; вне 24-часового окна — только утверждёнными шаблонами.
-- Онлайн-оплата включается флагом `OnlinePaymentEnabled` (по умолчанию false).
-
-### Код и UI
-- Все строки UI берутся из i18n-ресурсов, хардкод текста не допускается.
-- Ошибки возвращаются как `application/problem+json` с доменным кодом (`booking.room_unavailable` и т.п.).
-- Интерфейс адаптивный; интерфейс уборщика делается mobile-first.
+## Открытые вопросы
+См. `docs/development/development-roadmap.md` §6. Блокирующие: 1–7.
