@@ -29,6 +29,10 @@ public class Result
     public static Result<T> Success<T>(T value) => Result<T>.Success(value);
 
     public static Result<T> Failure<T>(Error error) => Result<T>.Failure(error);
+
+#pragma warning disable CA2225 // Альтернатива оператору — метод Failure
+    public static implicit operator Result(Error error) => Failure(error);
+#pragma warning restore CA2225
 }
 
 /// <summary>Результат операции со значением.</summary>
@@ -55,7 +59,9 @@ public sealed class Result<T> : Result
         return new Result<T>(default, error);
     }
 
-#pragma warning disable CA2225 // Альтернатива оператору — метод Failure
+#pragma warning disable CA2225 // Альтернативы операторам — методы Success/Failure
     public static implicit operator Result<T>(Error error) => Failure(error);
+
+    public static implicit operator Result<T>(T value) => Success(value);
 #pragma warning restore CA2225
 }

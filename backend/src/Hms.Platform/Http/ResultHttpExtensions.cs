@@ -1,9 +1,10 @@
 using Hms.SharedKernel;
+using Microsoft.AspNetCore.Http;
 
-namespace Hms.Api.Infrastructure;
+namespace Hms.Platform.Http;
 
-/// <summary>Преобразование доменных ошибок в HTTP-ответы ProblemDetails с кодом домена.</summary>
-internal static class ResultHttpExtensions
+/// <summary>Преобразование доменных ошибок в HTTP-ответы ProblemDetails (RFC 9457) с кодом домена.</summary>
+public static class ResultHttpExtensions
 {
     public static int ToStatusCode(this ErrorType type) => type switch
     {
@@ -22,8 +23,19 @@ internal static class ResultHttpExtensions
         return Results.Problem(
             statusCode: error.Type.ToStatusCode(),
             title: error.Message,
-            extensions: new Dictionary<string, object?> { [ProblemDetailsSetup.CodeKey] = error.Code });
+            extensions: new Dictionary<string, object?> { [ProblemFields.Code] = error.Code });
     }
+
+    /// <summary>400 с ошибками по полям: <c>{ "errors": { "email": ["..."] } }</c>.</summary>
+    public static IResult ValidationProblem(IDictionary<string, string[]> errors, string code = "validation.failed") =>
+        Results.Problem(
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Проверьте введённые данные.",
+            extensions: new Dictionary<string, object?>
+            {
+                [ProblemFields.Code] = code,
+                [ProblemFields.Errors] = errors,
+            });
 
     public static IResult ToHttpResult(this Result result, Func<IResult>? onSuccess = null)
     {

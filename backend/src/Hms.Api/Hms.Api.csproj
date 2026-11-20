@@ -16,6 +16,8 @@
     <ProjectReference Include="..\Hms.SharedKernel\Hms.SharedKernel.csproj" />
     <ProjectReference Include="..\Hms.Platform\Hms.Platform.csproj" />
     <ProjectReference Include="..\Hms.Persistence\Hms.Persistence.csproj" />
+    <ProjectReference Include="..\Modules\Audit\Hms.Modules.Audit.Infrastructure\Hms.Modules.Audit.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Identity\Hms.Modules.Identity.Infrastructure\Hms.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hms.IntegrationTests" />

@@ -2,7 +2,20 @@
 # Запуск из корня репозитория:  docker compose -f deploy/docker-compose.yml up -d --build
 # Только инфраструктура для локального dotnet run / npm run dev:
 #   docker compose -f deploy/docker-compose.yml up -d db mailpit
+# Значения по умолчанию ниже — только для локальной разработки; переопределяются в deploy/.env.
 name: hms
+
+x-api-env: &api-env
+  ASPNETCORE_ENVIRONMENT: Development
+  ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER:-hms};Password=${POSTGRES_PASSWORD:-hms_dev_only};GSS Encryption Mode=Disable
+  Jwt__SigningKey: ${JWT_SIGNING_KEY:-dev-only-signing-key-do-not-use-in-production-0123456789}
+  Identity__PublicWebUrl: ${PUBLIC_WEB_URL:-http://localhost:3000}
+  Email__Host: mailpit
+  Email__Port: "1025"
+  Email__Security: None
+  Bootstrap__Owner__FullName: ${OWNER_FULL_NAME:-Владелец (разработка)}
+  Bootstrap__Owner__Email: ${OWNER_EMAIL:-owner@hms.local}
+  Bootstrap__Owner__Password: ${OWNER_PASSWORD:-owner-dev-password}
 
 services:
   db:
@@ -30,12 +43,10 @@ services:
       - "127.0.0.1:1025:1025"
 
   migrate:
-    # Одноразовое применение миграций (так же — при релизе в production)
+    # Одноразово: миграции + сидеры (роли, права, первый владелец). Так же — при релизе в production.
     build: ../backend
     command: ["migrate"]
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER:-hms};Password=${POSTGRES_PASSWORD:-hms_dev_only};GSS Encryption Mode=Disable
+    environment: *api-env
     depends_on:
       db:
         condition: service_healthy
@@ -44,8 +55,11 @@ services:
   api:
     build: ../backend
     environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER:-hms};Password=${POSTGRES_PASSWORD:-hms_dev_only};GSS Encryption Mode=Disable
+      <<: *api-env
+      # API доступен только из docker-сети и localhost; X-Forwarded-For приходит от web (BFF).
+      ForwardedHeaders__TrustAllProxies: "true"
+      # Попыток входа/регистрации в минуту с одного IP (в CI для E2E повышается).
+      RateLimiting__AuthStrictPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
     ports:
       - "127.0.0.1:5080:8080"
     depends_on:

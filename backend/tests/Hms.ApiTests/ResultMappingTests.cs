@@ -1,4 +1,4 @@
-using Hms.Api.Infrastructure;
+using Hms.Platform.Http;
 using Hms.SharedKernel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;

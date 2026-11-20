@@ -16,6 +16,8 @@
 | `HousekeepingChecklist` переименована в `HousekeepingChecklistItems` | элементы по задаче |
 | Добавлена `WebhookEvents` | сырое хранение и идемпотентность вебхуков банков и WhatsApp |
 | Добавлена `IdempotencyKeys` | идемпотентность операций API |
+| Служебные таблицы ASP.NET Identity (`user_claims`, `user_logins`, `user_tokens`, `role_claims`) | обязательны для хранилища Identity; `user_tokens` — для 2FA (P1) |
+| Добавлена `data_protection_keys` | ключи подписи одноразовых ссылок из писем должны переживать перезапуск и быть общими для экземпляров API |
 | Добавлена `OutboxMessages` | надёжная доставка WhatsApp/email и интеграционных событий в одной транзакции с бизнес-изменением (см. архитектуру §6) |
 | Добавлена `IntegrationSettings` | ТЗ §3.1 «настройка платёжных интеграций и WhatsApp»: включение, режим Sandbox/Production, несекретные параметры, статус проверки. Секреты в БД не хранятся |
 | Добавлены `ExpenseCategories`, `StoredFiles` | расходы по категориям; единое хранение вложений/фото |
@@ -27,10 +29,12 @@
 ## 2. Таблицы по модулям
 
 ### Identity
-- **Users** (Identity): Id, Email, PhoneNumber, PasswordHash, UserType (Staff|Guest), IsActive, FullName, LockoutEnd…
-- **Roles** (Owner, Administrator, Housekeeper, Guest), **UserRoles**.
-- **Permissions** (Code unique, Description). **RolePermissions**(RoleId, PermissionId). **UserPermissions**(UserId, PermissionId, IsGranted, LimitAmount null).
-- **RefreshTokens**(UserId, TokenHash, ExpiresAt, RevokedAt, ReplacedBy, UserAgent).
+- **users** (таблица ASP.NET Identity в схеме `identity`): Id, UserName (= Id, служебное), Email + NormalizedEmail (уникальный, если задан), PhoneNumber E.164 (уникальный, если задан), PasswordHash, SecurityStamp, ConcurrencyStamp, EmailConfirmed, Lockout*, AccessFailedCount, FullName, UserType (Staff|Guest), IsActive, MustChangePassword, CreatedAt, LastLoginAt, DeactivatedAt.
+- **roles** (Owner, Administrator, Housekeeper, Guest), **user_roles**.
+- **user_claims, user_logins, user_tokens, role_claims** — служебные таблицы хранилища ASP.NET Identity (обязательны для его UserStore/RoleStore; `user_tokens` понадобится для 2FA). Бизнес-данных не содержат.
+- **permissions** (Code PK, Group, Description, OwnerOnly) — синхронизируется с каталогом в коде при каждом `migrate`. **role_permissions** (RoleId, PermissionCode) — права роли по умолчанию, тоже синхронизируются. **user_permissions** (UserId, PermissionCode, IsGranted, LimitAmount numeric(14,2) null) — индивидуальные настройки владельца, сидер их не трогает.
+- **refresh_tokens** (Id, UserId, FamilyId — сессия, TokenHash SHA-256 unique, CreatedAt, ExpiresAt, RevokedAt, RevokeReason Rotated|Logout|ReuseDetected|PasswordChanged|UserDeactivated|AdminReset, ReplacedByTokenId, CreatedByIp, UserAgent).
+- Справочник `Hotels` и `HotelId` в таблицах Identity появятся в Sprint 2 вместе с модулем Hotel.
 
 ### Hotel
 - **Hotels**(Name, Address, Phone, TimeZone, Currency).
@@ -81,10 +85,11 @@
 
 ### Platform / Audit
 - **WebhookEvents**(Source MBank|Optima|WhatsApp, EventId/DedupKey, Payload jsonb, SignatureValid, ReceivedAt, ProcessedAt, Error). Unique (Source, DedupKey).
-- **OutboxMessages**(Type, Payload jsonb, Attempts, NextAttemptAt, Status Pending|Processing|Done|Failed, LastError, DedupKey unique).
+- **outbox_messages** (Type, Payload jsonb, Status Pending|Done|Failed, Attempts, CreatedAt, NextAttemptAt, ProcessedAt, LastError, DedupKey unique). Выборка — `FOR UPDATE SKIP LOCKED` (безопасно для нескольких обработчиков); пауза между попытками 10 с × 2ⁿ, не более 1 ч, не более 10 попыток; payload писем (ссылки с токенами) очищается после отправки.
+- **data_protection_keys** — ключи ASP.NET Core Data Protection (подпись токенов подтверждения email и сброса пароля); в БД, чтобы ссылки из писем работали после перезапуска и на любом экземпляре API.
 - **IdempotencyKeys**(Key, Scope, RequestHash, ResponseStatus, ResponseBody, ExpiresAt). Unique (Scope, Key). Отдельной колонки идемпотентности в Payments нет.
 - **StoredFiles**(Path, ContentType, Size, Sha256, UploadedBy).
-- **AuditLogs**(At, UserId, Action, EntityType, EntityId, Before/After jsonb, Ip, UserAgent, CorrelationId).
+- **audit.audit_logs** (Id, At, UserId, Action, EntityType, EntityId, Before/After jsonb, Ip, UserAgent, CorrelationId). Только вставка: триггеры БД отклоняют UPDATE, DELETE и TRUNCATE для любого пользователя БД. Пароли и токены не записываются; логин при неудачном входе маскируется.
 
 ## 3. Индексы (основные)
 - BookingRooms: GiST (RoomId, StayRange) — constraint; B-tree (BookingId).

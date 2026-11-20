@@ -52,16 +52,43 @@ jobs:
       - run: npm test
       - run: npm run build
 
-  docker:
-    name: Docker images build
+  e2e:
+    name: Docker stack + E2E (Playwright)
     runs-on: ubuntu-latest
     needs: [backend, frontend]
+    env:
+      AUTH_RATE_LIMIT_PER_MINUTE: "1000"
     steps:
       - uses: actions/checkout@v7
-      - name: Build api image
-        run: docker build -t hms-api ./backend
-      - name: Build web image
-        run: docker build -t hms-web ./frontend
+      - name: Build and start stack (db, mailpit, migrate, api, web)
+        run: docker compose -f deploy/docker-compose.yml up -d --build --wait --wait-timeout 300 db mailpit api web
+      - name: API readiness
+        run: |
+          for i in $(seq 1 30); do curl -fsS http://localhost:5080/health/ready && exit 0; sleep 2; done
+          exit 1
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Playwright
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: E2E tests
+        working-directory: frontend
+        run: npm run test:e2e
+      - name: Stack logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.yml logs --no-color
+      - name: Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results
+          path: frontend/test-results
+          retention-days: 7
 
   secrets:
     name: Secret scan

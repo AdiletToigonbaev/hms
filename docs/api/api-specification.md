@@ -6,13 +6,21 @@
 **Статус:** ✔ MVP (P0), ◐ P1, ⏳ P2 (после доступов банков/WhatsApp).
 Каждая строка — один метод и путь. Детальные схемы запросов/ответов генерируются в OpenAPI (Swashbuckle/Microsoft.AspNetCore.OpenApi) в ходе разработки.
 
+## Аутентификация (реализовано в Sprint 1)
+- `POST /auth/login`, `/auth/refresh`, `/me/change-password` возвращают `TokenResponse`: `accessToken` (JWT HS256, 15 мин), `refreshToken` (14 дней), сроки и профиль `user`. API работает только по заголовку `Authorization: Bearer`; cookie не использует.
+- Токены получает сервер Next.js (BFF) и хранит в httpOnly-cookie на своём домене; браузер к API напрямую не обращается.
+- Refresh-токен одноразовый: при обновлении выдаётся новый. Повтор уже заменённого токена в течение 30 с (гонка вкладок) → `401 auth.refresh_token_rotated`; позже → вся сессия отзывается, `401 auth.refresh_token_invalid`.
+- Access-токен проверяется на каждом запросе по актуальному состоянию пользователя (активен, SecurityStamp, права — кэш 30 с): блокировка и смена пароля действуют сразу.
+- Пользователь с временным паролем получает `403 auth.password_change_required` везде, кроме `/auth/*`, `GET /me`, `POST /me/change-password`.
+- Лимиты частоты (на IP): вход, регистрация, подтверждение и восстановление — 10/мин; обновление и выход — 60/мин; превышение → `429 rate_limited` с `Retry-After`.
+
 ## 1. Auth / Account
 | Метод | Путь | Доступ | Ст. |
 |---|---|---|---|
 | POST | /auth/register | P | ✔ |
 | POST | /auth/login | P | ✔ |
 | POST | /auth/refresh | P (refresh-cookie) | ✔ |
-| POST | /auth/logout | любой авторизованный | ✔ |
+| POST | /auth/logout | P (refresh-токен в теле; отзывает всю сессию, идемпотентно) | ✔ |
 | POST | /auth/confirm-email | P | ✔ |
 | POST | /auth/resend-confirmation | P | ✔ |
 | POST | /auth/forgot-password | P | ✔ |
@@ -23,8 +31,8 @@
 | GET | /me | любой авторизованный | ✔ |
 | PUT | /me | любой авторизованный | ✔ |
 | POST | /me/change-password | любой авторизованный | ✔ |
-| GET | /me/consents | G | ✔ |
-| PUT | /me/consents | G | ✔ |
+| GET | /me/consents | G (Sprint 4, модуль Guests; до этого согласия фиксируются в аудите при регистрации) | ✔ |
+| PUT | /me/consents | G (Sprint 4) | ✔ |
 
 ## 2. Staff / Permissions
 | Метод | Путь | Доступ | Ст. |
@@ -39,7 +47,7 @@
 | GET | /staff/{id}/permissions | O | ✔ |
 | PUT | /staff/{id}/permissions | O | ✔ |
 | GET | /roles | O | ✔ |
-| GET | /roles/{id}/permissions | O | ✔ |
+| GET | /roles/{name}/permissions | O | ✔ |
 | GET | /permissions | O | ✔ |
 
 ## 3. Hotel / Settings / Integrations
@@ -281,7 +289,7 @@
 | GET | /health/ready | внутренний | ✔ |
 
 ## Коды ошибок домена (базовый набор)
-`validation.failed` (400), `auth.invalid_credentials` (401), `auth.locked_out` (423), `auth.forbidden` (403), `not_found` (404), `concurrency.conflict` (409), `idempotency.key_reused` (422), `booking.room_unavailable` (409), `booking.invalid_transition` (409), `booking.cancel_not_allowed` (422), `booking.capacity_exceeded` (422), `room.invalid_status_transition` (409), `room.has_history` (409), `payment.duplicate` (409), `payment.amount_mismatch` (422), `payment.already_reversed` (409), `refund.exceeds_paid` (422), `refund.limit_exceeded` (403), `housekeeping.invalid_transition` (409), `whatsapp.no_consent` (422), `whatsapp.outside_window` (422).
+`validation.failed` (400), `auth.invalid_credentials` (401), `auth.locked_out` (403), `auth.email_not_confirmed` (403), `auth.password_change_required` (403), `auth.refresh_token_invalid` (401), `auth.refresh_token_rotated` (401), `auth.invalid_token` (400), `auth.email_taken` (409), `auth.phone_taken` (409), `auth.wrong_password` (400), `auth.password_rejected` (400), `staff.not_found` (404), `staff.cannot_modify_owner` (403), `staff.permission_not_configurable` (422), `rate_limited` (429), `auth.forbidden` (403), `not_found` (404), `concurrency.conflict` (409), `idempotency.key_reused` (422), `booking.room_unavailable` (409), `booking.invalid_transition` (409), `booking.cancel_not_allowed` (422), `booking.capacity_exceeded` (422), `room.invalid_status_transition` (409), `room.has_history` (409), `payment.duplicate` (409), `payment.amount_mismatch` (422), `payment.already_reversed` (409), `refund.exceeds_paid` (422), `refund.limit_exceeded` (403), `housekeeping.invalid_transition` (409), `whatsapp.no_consent` (422), `whatsapp.outside_window` (422).
 
 ## Итог по объёму
 Количество endpoints по разделам считается по таблицам выше (строка = endpoint); актуальная цифра — в конце раздела при каждом изменении: **всего 208, из них ✔ 194, ◐ 5, ⏳ 9**.

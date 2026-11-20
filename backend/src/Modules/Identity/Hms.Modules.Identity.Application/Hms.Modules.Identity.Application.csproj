@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Identity.Domain\Hms.Modules.Identity.Domain.csproj" />
+  </ItemGroup>
+</Project>

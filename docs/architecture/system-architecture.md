@@ -44,7 +44,7 @@ flowchart LR
 ## 4. Слои (каждый модуль)
 `Domain` (сущности, инварианты, события) → `Application` (use cases, DTO, валидаторы FluentValidation, интерфейсы) → `Infrastructure` (EF Core, адаптеры, jobs) → `Api` (контроллеры/minimal endpoints). Зависимости направлены внутрь. Ссылки между модулями — только на `*.Contracts`.
 
-**Хранение:** один `HmsDbContext` (проект `Hms.Persistence`), одна строка подключения, одна цепочка миграций. Каждый модуль кладёт свои `IEntityTypeConfiguration` в своём `Infrastructure` и использует свою схему PostgreSQL (`identity`, `rooms`, `bookings`, `finance` …); контекст собирает их сканированием сборок. Так операции, затрагивающие несколько модулей (check-in/out, бронь + outbox), выполняются в одной транзакции без распределённых механизмов. Изоляция модулей обеспечивается не отдельными контекстами, а правилом «только через Contracts», которое проверяют архитектурные тесты (`Hms.ArchitectureTests`, NetArchTest).
+**Хранение:** один `HmsDbContext` (проект `Hms.Persistence`), одна строка подключения, одна цепочка миграций. Каждый модуль описывает свои таблицы реализацией `IModelConfigurator` (интерфейс в `Hms.Platform`, регистрируется в DI) в своём `Infrastructure` и использует свою схему PostgreSQL (`identity`, `rooms`, `bookings`, `finance` …); контекст собирает их сканированием сборок. Так операции, затрагивающие несколько модулей (check-in/out, бронь + outbox), выполняются в одной транзакции без распределённых механизмов. Изоляция модулей обеспечивается не отдельными контекстами, а правилом «только через Contracts», которое проверяют архитектурные тесты (`Hms.ArchitectureTests`, NetArchTest).
 
 ## 5. Структура репозитория
 ```
@@ -90,7 +90,7 @@ flowchart LR
 11. **Файлы:** фото номеров/чеков/уборки на volume за Nginx с проверкой типа/размера; интерфейс `IFileStorage` для замены на S3.
 12. **Мультиотельность:** `HotelId` во всех бизнес-таблицах, глобальный query filter; UI одного отеля.
 13. **Фронтенд:** Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui, Lucide Icons; SSR для публичных страниц, клиентские страницы для кабинетов; TanStack Query, react-hook-form + zod, i18n (next-intl) с ru по умолчанию; типы API генерируются из OpenAPI.
-14. **Аутентификация:** ASP.NET Core Identity; JWT access (15 мин) + refresh (httpOnly cookie, ротация). Next.js проксирует вызовы (BFF-маршруты) для CSRF-безопасных cookie.
+14. **Аутентификация и BFF:** ASP.NET Core Identity; API выдаёт JWT access (15 мин) + refresh (14 дней, ротация) и принимает только Bearer. Next.js — BFF: Server Actions вызывают API с сервера и хранят токены в httpOnly-cookie; `proxy.ts` до рендера обновляет истёкший access-токен и перенаправляет по ролям (удобство; права проверяет API); серверные компоненты читают данные через `lib/api/server.ts`. Модули обращаются к правам через `IUserAccessProvider` (Platform), реализованный модулем Identity.
 15. **Email:** `IEmailSender` (SMTP). В разработке — Mailpit в docker compose; в production — SMTP заказчика (настройка в окружении).
 16. **Статус номера `Reserved`:** не хранится, вычисляется при чтении (см. `database/database-design.md` §4).
 

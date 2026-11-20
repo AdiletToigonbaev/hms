@@ -6,7 +6,7 @@
 - Документация проекта: [`docs/`](docs/)
 - Правила разработки: [`CLAUDE.md`](CLAUDE.md)
 
-**Статус:** Sprint 0 — каркас приложения. Бизнес-функций пока нет.
+**Статус:** Sprint 1 — вход и регистрация, роли и права, управление сотрудниками (владелец), аудит, отправка email. Бронирования и остальное — следующие спринты.
 
 ## Стек
 | Часть | Технологии |
@@ -32,7 +32,9 @@ docker compose -f deploy/docker-compose.yml up -d --build
 | Mailpit (письма) | http://localhost:8025 |
 | PostgreSQL | localhost:5432, БД/пользователь `hms` |
 
-Миграции применяются одноразовым сервисом `migrate` перед стартом API. Порты открыты только на `127.0.0.1`.
+Миграции применяются одноразовым сервисом `migrate` перед стартом API; он же создаёт роли, права и первого владельца. Порты открыты только на `127.0.0.1`.
+
+**Первый вход (разработка):** `owner@hms.local` / `owner-dev-password` — система сразу попросит задать свой пароль. Письма (подтверждение email, сброс пароля) — в Mailpit: http://localhost:8025. В production владелец и ключ JWT задаются переменными окружения (`deploy/env.example`).
 Параметры БД можно переопределить в `deploy/.env` (образец — `deploy/env.example`). Пароль по умолчанию `hms_dev_only` предназначен **только для локальной разработки**.
 
 Остановка: `docker compose -f deploy/docker-compose.yml down` (с удалением данных: `down -v`).
@@ -45,7 +47,7 @@ docker compose -f deploy/docker-compose.yml up -d db mailpit
 # 2. Backend (http://localhost:5080)
 cd backend
 dotnet tool restore
-dotnet ef database update --project src/Hms.Persistence --startup-project src/Hms.Api
+dotnet run --project src/Hms.Api -- migrate   # миграции + роли/права + первый владелец
 dotnet run --project src/Hms.Api
 
 # 3. Frontend (http://localhost:3000), в другом терминале
@@ -67,6 +69,14 @@ dotnet test --project tests/Hms.UnitTests            # отдельный про
 cd frontend
 npm run lint && npm run typecheck && npm test && npm run build
 ```
+
+E2E (Playwright) — против запущенного стека:
+```bash
+cd frontend
+npx playwright install chromium   # один раз
+npm run test:e2e
+```
+Лимит попыток входа — 10 в минуту с одного IP. Для нескольких прогонов подряд поднимите его: `AUTH_RATE_LIMIT_PER_MINUTE=1000 docker compose -f deploy/docker-compose.yml up -d api`.
 
 ## Миграции БД
 ```bash

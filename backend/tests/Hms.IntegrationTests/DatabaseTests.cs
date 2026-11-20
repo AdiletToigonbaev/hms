@@ -6,7 +6,7 @@ using Npgsql;
 
 namespace Hms.IntegrationTests;
 
-public class DatabaseTests(PostgresFixture db) : IClassFixture<PostgresFixture>
+public class DatabaseTests(PostgresFixture db)
 {
     [Fact]
     public async Task Migrations_AreFullyApplied()

@@ -2,5 +2,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Hms.SharedKernel\Hms.SharedKernel.csproj" />
     <ProjectReference Include="..\..\src\Hms.Platform\Hms.Platform.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Hms.Modules.Identity.Infrastructure\Hms.Modules.Identity.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

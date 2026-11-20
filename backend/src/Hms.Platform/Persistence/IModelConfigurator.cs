@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-namespace Hms.Persistence;
+namespace Hms.Platform.Persistence;
 
 /// <summary>
 /// Вклад модуля в общую модель EF Core. Каждый модуль регистрирует свою реализацию в DI,

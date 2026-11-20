@@ -87,6 +87,26 @@ public partial class DependencyRulesTests
     }
 
     [Fact]
+    public void ModuleAssemblies_AreDiscovered_SoRulesAreNotVacuous()
+    {
+        var found = LoadModuleAssemblies().Select(m => $"{m.Module}.{m.Layer}").ToList();
+
+        found.Should().Contain(["Identity.Domain", "Identity.Application", "Identity.Infrastructure", "Identity.Contracts", "Audit.Contracts", "Audit.Infrastructure"]);
+    }
+
+    [Fact]
+    public void ModuleApplication_DoesNotDependOn_InfrastructureFrameworks()
+    {
+        foreach (var module in LoadModuleAssemblies().Where(m => m.Layer == "Application"))
+        {
+            var result = Types.InAssembly(module.Assembly)
+                .ShouldNot().HaveDependencyOnAny("Microsoft.EntityFrameworkCore", "Npgsql", "Microsoft.AspNetCore")
+                .GetResult();
+            result.IsSuccessful.Should().BeTrue($"{module.Assembly.GetName().Name}: {Describe(result)}");
+        }
+    }
+
+    [Fact]
     public void ModuleAssemblyNameParser_RecognisesConvention()
     {
         // Проверяет, что правила выше действительно увидят модульные сборки, когда они появятся.

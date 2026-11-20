@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Hms.Platform.Http;
 using Microsoft.AspNetCore.Diagnostics;
 
 namespace Hms.Api.Infrastructure;
@@ -6,10 +7,6 @@ namespace Hms.Api.Infrastructure;
 /// <summary>Единый формат ошибок API — RFC 9457 (application/problem+json).</summary>
 internal static class ProblemDetailsSetup
 {
-    public const string CodeKey = "code";
-    public const string TraceIdKey = "traceId";
-    public const string CorrelationIdKey = "correlationId";
-
     public static IServiceCollection AddHmsProblemDetails(this IServiceCollection services)
     {
         services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>
@@ -18,16 +15,16 @@ internal static class ProblemDetailsSetup
             var problem = context.ProblemDetails;
 
             problem.Instance ??= $"{http.Request.Method} {http.Request.Path}";
-            problem.Extensions[TraceIdKey] = Activity.Current?.Id ?? http.TraceIdentifier;
+            problem.Extensions[ProblemFields.TraceId] = Activity.Current?.Id ?? http.TraceIdentifier;
 
             if (CorrelationIdMiddleware.Get(http) is { } correlationId)
             {
-                problem.Extensions[CorrelationIdKey] = correlationId;
+                problem.Extensions[ProblemFields.CorrelationId] = correlationId;
             }
 
-            if (!problem.Extensions.ContainsKey(CodeKey))
+            if (!problem.Extensions.ContainsKey(ProblemFields.Code))
             {
-                problem.Extensions[CodeKey] = DefaultCode(problem.Status ?? http.Response.StatusCode);
+                problem.Extensions[ProblemFields.Code] = DefaultCode(problem.Status ?? http.Response.StatusCode);
             }
 
             // Не раскрываем детали исключений клиенту ни в одном окружении.

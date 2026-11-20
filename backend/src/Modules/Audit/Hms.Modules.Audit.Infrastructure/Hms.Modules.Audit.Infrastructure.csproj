@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Audit.Contracts\Hms.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Hms.Platform\Hms.Platform.csproj" />
+    <ProjectReference Include="..\..\Identity\Hms.Modules.Identity.Contracts\Hms.Modules.Identity.Contracts.csproj" />
+  </ItemGroup>
+</Project>

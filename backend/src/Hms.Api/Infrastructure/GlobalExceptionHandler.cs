@@ -1,3 +1,4 @@
+using Hms.Platform.Http;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,7 +32,7 @@ internal sealed partial class GlobalExceptionHandler : IExceptionHandler
                 {
                     Status = badRequest.StatusCode,
                     Title = "Некорректный запрос.",
-                    Extensions = { [ProblemDetailsSetup.CodeKey] = "request.invalid" },
+                    Extensions = { [ProblemFields.Code] = "request.invalid" },
                 },
             });
         }
@@ -47,7 +48,7 @@ internal sealed partial class GlobalExceptionHandler : IExceptionHandler
             {
                 Status = StatusCodes.Status500InternalServerError,
                 Title = "Внутренняя ошибка сервера.",
-                Extensions = { [ProblemDetailsSetup.CodeKey] = "internal_error" },
+                Extensions = { [ProblemFields.Code] = "internal_error" },
             },
         });
     }

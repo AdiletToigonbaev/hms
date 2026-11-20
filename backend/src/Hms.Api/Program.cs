@@ -1,6 +1,9 @@
 using Hms.Api.Infrastructure;
-using Hms.Persistence;
-using Microsoft.EntityFrameworkCore;
+using Hms.Modules.Audit.Infrastructure;
+using Hms.Modules.Identity.Infrastructure;
+using Hms.Platform.Persistence;
+using Hms.Platform.Time;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -10,6 +13,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    var isMigrateCommand = args.Contains("migrate", StringComparer.OrdinalIgnoreCase);
 
     builder.Services.AddSerilog((services, logger) => logger
         .ReadFrom.Configuration(builder.Configuration)
@@ -24,33 +28,45 @@ try
             "Не задана строка подключения ConnectionStrings:Hms (переменная окружения ConnectionStrings__Hms).");
     }
 
-    builder.Services.AddPlatform(builder.Configuration["Hotel:TimeZone"] ?? Hms.Platform.Time.HotelClock.DefaultTimeZoneId);
+    builder.Services.AddPlatform(builder.Configuration);
     builder.Services.AddPersistence(connectionString);
     builder.Services.AddHmsProblemDetails();
     builder.Services.AddHmsHealthChecks(connectionString);
+    builder.Services.AddHmsRateLimiting(builder.Configuration);
+    builder.Services.AddHmsForwardedHeaders(builder.Configuration);
     builder.Services.AddOpenApi("v1");
+
+    // Модули
+    builder.Services.AddAuditModule();
+    builder.Services.AddIdentityModule(builder.Configuration);
 
     var app = builder.Build();
 
     // Fail fast: часовой пояс отеля должен разрешаться (в образе нужен tzdata).
-    var clock = app.Services.GetRequiredService<Hms.Platform.Time.IHotelClock>();
+    var clock = app.Services.GetRequiredService<IHotelClock>();
     Log.Information("Часовой пояс отеля {TimeZone}, локальное время {HotelTime:yyyy-MM-dd HH:mm}", clock.TimeZone.Id, clock.LocalNow);
 
-    // Миграции применяются отдельной командой при релизе: `dotnet Hms.Api.dll migrate`.
-    if (args.Contains("migrate", StringComparer.OrdinalIgnoreCase))
+    // Миграции и сидеры применяются отдельной командой при релизе: `dotnet Hms.Api.dll migrate`.
+    if (isMigrateCommand)
     {
-        await using var scope = app.Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<HmsDbContext>().Database.MigrateAsync();
-        Log.Information("Миграции БД применены");
+        await DatabaseInitializer.MigrateAndSeedAsync(app.Services);
         return 0;
     }
 
+    // Fail fast: без ключа подписи JWT API не запускается.
+    app.Services.GetRequiredService<IOptions<JwtOptions>>().Value.SigningKeyBytes();
+
+    app.UseForwardedHeaders();
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseSerilogRequestLogging(options =>
         options.EnrichDiagnosticContext = (diagnostics, http) =>
             diagnostics.Set("CorrelationId", CorrelationIdMiddleware.Get(http)));
     app.UseExceptionHandler();
     app.UseStatusCodePages();
+    app.UseRateLimiter();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.UsePasswordChangeEnforcement();
 
     if (app.Environment.IsDevelopment())
     {
@@ -59,8 +75,9 @@ try
 
     app.MapHmsHealthChecks();
 
-    // Бизнес-эндпоинты модулей подключаются к этой группе начиная со Sprint 1.
-    app.MapGroup("/api/v1");
+    var api = app.MapGroup("/api/v1");
+    api.MapIdentityEndpoints();
+    api.MapAuditEndpoints();
 
     await app.RunAsync();
     return 0;

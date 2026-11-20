@@ -3,9 +3,10 @@
 Проект: система управления гостиницей (1 отель, 10–30 номеров, Кыргызстан). Валюта KGS, часовой пояс Asia/Bishkek, интерфейс на русском (KY/EN позже). Исходное ТЗ: `docs/requirements/original-spec.md`. Проектная документация: `docs/`.
 
 ## Статус
-- Этап 1 (документация) — завершён и подтверждён.
-- **Sprint 0 (каркас) — завершён**, ожидает подтверждения заказчика. Бизнес-функций нет.
-- Следующий: Sprint 1 (Identity) — только после подтверждения заказчика.
+- Этап 1 (документация), Sprint 0 (каркас) — завершены и подтверждены.
+- **Sprint 1 (Identity, аудит, outbox/email, вход и раздел «Сотрудники») — завершён**, ожидает подтверждения заказчика.
+- Следующий: Sprint 2 (Hotel + Settings, Rooms) — только после подтверждения заказчика.
+- Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
 ТЗ (`original-spec.md`) → решения заказчика (ниже и в `business-requirements.md`) → документы `docs/`. Если документы противоречат друг другу или ТЗ, нужно остановиться и спросить, а не выбирать молча. Принятое решение сразу заносится в соответствующий документ.
@@ -73,18 +74,22 @@ dotnet test --project tests/Hms.UnitTests         # один проект (си�
 dotnet tool restore                               # локальный dotnet-ef 10.x
 dotnet ef migrations add <Name> --project src/Hms.Persistence --startup-project src/Hms.Api
 dotnet ef database update --project src/Hms.Persistence --startup-project src/Hms.Api
+dotnet run --project src/Hms.Api -- migrate       # миграции + сидеры (роли, права, первый владелец) локально
 dotnet run --project src/Hms.Api                  # http://localhost:5080
-dotnet Hms.Api.dll migrate                        # применение миграций при релизе (в Docker — сервис migrate)
+dotnet Hms.Api.dll migrate                        # то же при релизе (в Docker — сервис migrate)
 
 # frontend (из каталога frontend/)
 npm ci
 npm run dev | npm run lint | npm run typecheck | npm test | npm run build
+npx playwright install chromium                   # один раз
+npm run test:e2e                                  # E2E против запущенного стека (docker compose up)
 
 # окружение (из корня)
 docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web
 docker compose -f deploy/docker-compose.yml up -d db mailpit   # только инфраструктура
 ```
-Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up` и `/health/ready` = Healthy.
+Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up`, `/health/ready` = Healthy и `npm run test:e2e`.
+Dev-владелец (только локально): `owner@hms.local` / `owner-dev-password` → при первом входе смена пароля. Письма — http://localhost:8025.
 
 ## Соглашения
 - Код и идентификаторы — на английском; UI-строки — через i18n (ru по умолчанию); комментарии и документы допустимы на русском.
@@ -98,6 +103,11 @@ docker compose -f deploy/docker-compose.yml up -d db mailpit   # только и
 - Текущее время — только `IHotelClock` (UTC для событий, `Today` — дата отеля). Деньги — `Money`, проживание — `DateRange`.
 - Frontend: деньги и даты — только через `src/lib/format.ts`; браузер ходит в API только через Next.js.
 - npm 11 блокирует install-скрипты пакетов; разрешение/запрет — осознанно, в `package.json` → `allowScripts`.
+- Backend-эндпоинты: группа модуля в `Map{Module}Endpoints`, права — `.RequirePermission(Permissions.X)` (коды в `Hms.Modules.Identity.Contracts`, описания и права ролей — `PermissionCatalog`), тело запроса — `.WithValidation<T>()` (FluentValidation, сообщения на русском).
+- Аудит значимых действий — `IAuditTrail.Record(...)` в той же единице работы, что и изменение; письма и внешние отправки — только через outbox (`IEmailOutbox`, `IOutbox`).
+- Frontend: изменения — только Server Actions (CSRF-защита Next.js); каждое действие само полагается на проверку прав в API. Чтение — серверные компоненты через `lib/api/server.ts`. Сессия — httpOnly-cookie (`lib/auth/cookies.ts`), обновление токенов — `src/proxy.ts`. Чтение cookies/`searchParams` — только внутри `<Suspense>` (Cache Components).
+- В matcher `proxy.ts` нельзя писать `\\.` — экранирование теряется при сборке (используйте `[.]`; есть регрессионный тест).
+- E2E: Next.js 16 держит предыдущие страницы в DOM скрытыми (`<Activity>`) — локаторы по точному имени (`exact: true`) и по ролям.
 
 ## Открытые вопросы
 См. `docs/development/development-roadmap.md` §6. Бизнес-правила (3–7) приняты как настраиваемые значения по умолчанию и ждут подтверждения заказчика; юридические вопросы 1–2 открыты и блокируют спринты 4, 6, 11. ER-диаграмма ждёт согласования.

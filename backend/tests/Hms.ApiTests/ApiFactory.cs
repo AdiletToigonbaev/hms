@@ -18,6 +18,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Hms", "Host=127.0.0.1;Port=1;Database=none;Username=none;Password=none;Timeout=1");
+        builder.UseSetting("Jwt:SigningKey", Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
+        builder.UseSetting("Outbox:Enabled", "false");
         builder.ConfigureServices(services => services.AddSingleton<IStartupFilter, ThrowingEndpointFilter>());
     }
 
