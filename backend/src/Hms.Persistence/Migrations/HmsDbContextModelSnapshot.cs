@@ -23,6 +23,8 @@ namespace Hms.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.HasSequence("booking_number_seq", "bookings");
+
             modelBuilder.Entity("Hms.Modules.Audit.Infrastructure.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -90,6 +92,313 @@ namespace Hms.Persistence.Migrations
                         .HasDatabaseName("ix_audit_logs_user_id_at");
 
                     b.ToTable("audit_logs", "audit");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.Booking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("AccommodationAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("accommodation_amount");
+
+                    b.Property<int>("Adults")
+                        .HasColumnType("integer")
+                        .HasColumnName("adults");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateOnly>("CheckIn")
+                        .HasColumnType("date")
+                        .HasColumnName("check_in");
+
+                    b.Property<DateOnly>("CheckOut")
+                        .HasColumnType("date")
+                        .HasColumnName("check_out");
+
+                    b.Property<int>("Children")
+                        .HasColumnType("integer")
+                        .HasColumnName("children");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("discount_amount");
+
+                    b.Property<Guid?>("DiscountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("discount_id");
+
+                    b.Property<string>("GuestEmail")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("guest_email");
+
+                    b.Property<Guid?>("GuestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_id");
+
+                    b.Property<string>("GuestName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("guest_name");
+
+                    b.Property<string>("GuestPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("guest_phone");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("number");
+
+                    b.Property<string>("PriceSnapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("price_snapshot");
+
+                    b.Property<string>("PromoCode")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("promo_code");
+
+                    b.Property<decimal>("ServicesAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("services_amount");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<decimal>("TotalAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("total_amount");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_bookings");
+
+                    b.HasIndex("GuestId")
+                        .HasDatabaseName("ix_bookings_guest_id");
+
+                    b.HasIndex("HotelId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_bookings_hotel_id_number");
+
+                    b.HasIndex("HotelId", "Status", "CheckIn")
+                        .HasDatabaseName("ix_bookings_hotel_id_status_check_in");
+
+                    b.ToTable("bookings", "bookings", t =>
+                        {
+                            t.HasCheckConstraint("ck_bookings_adults", "adults >= 1");
+
+                            t.HasCheckConstraint("ck_bookings_amounts", "total_amount >= 0 AND discount_amount >= 0 AND discount_amount <= accommodation_amount");
+
+                            t.HasCheckConstraint("ck_bookings_dates", "check_out > check_in");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingHistoryEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset>("ChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("changed_at");
+
+                    b.Property<Guid?>("ChangedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("changed_by");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("comment");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("event_type");
+
+                    b.Property<string>("NewValues")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("new_values");
+
+                    b.Property<string>("OldValues")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("old_values");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booking_history");
+
+                    b.HasIndex("BookingId", "ChangedAt")
+                        .HasDatabaseName("ix_booking_history_booking_id_changed_at");
+
+                    b.ToTable("booking_history", "bookings");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingRoom", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateOnly>("CheckIn")
+                        .HasColumnType("date")
+                        .HasColumnName("check_in");
+
+                    b.Property<DateOnly>("CheckOut")
+                        .HasColumnType("date")
+                        .HasColumnName("check_out");
+
+                    b.Property<bool>("IsBlocking")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_blocking");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_id");
+
+                    b.Property<Guid>("RoomTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_type_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booking_rooms");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_booking_rooms_booking_id");
+
+                    b.HasIndex("RoomId", "CheckIn")
+                        .HasDatabaseName("ix_booking_rooms_room_id_check_in");
+
+                    b.ToTable("booking_rooms", "bookings");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingServiceLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid?>("AddedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("PerNight")
+                        .HasColumnType("boolean")
+                        .HasColumnName("per_night");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_id");
+
+                    b.Property<decimal>("Total")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("total");
+
+                    b.Property<decimal>("UnitPrice")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("unit_price");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booking_services");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_booking_services_booking_id");
+
+                    b.ToTable("booking_services", "bookings", t =>
+                        {
+                            t.HasCheckConstraint("ck_booking_services_qty", "quantity > 0");
+                        });
                 });
 
             modelBuilder.Entity("Hms.Modules.Hotel.Domain.HotelInfo", b =>
@@ -593,6 +902,206 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("role_permissions", "identity");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Pricing.Domain.Discount", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<int>("MinNights")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_nights");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateOnly?>("ValidFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateOnly?>("ValidTo")
+                        .HasColumnType("date")
+                        .HasColumnName("valid_to");
+
+                    b.Property<decimal>("Value")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_discounts");
+
+                    b.HasIndex("HotelId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_discounts_hotel_id_code")
+                        .HasFilter("code IS NOT NULL");
+
+                    b.ToTable("discounts", "pricing", t =>
+                        {
+                            t.HasCheckConstraint("ck_discounts_value", "value > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Pricing.Domain.ExtraService", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsPerNight")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_per_night");
+
+                    b.Property<bool>("IsPublic")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_public");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("price");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_services");
+
+                    b.HasIndex("HotelId", "IsActive")
+                        .HasDatabaseName("ix_services_hotel_id_is_active");
+
+                    b.ToTable("services", "pricing", t =>
+                        {
+                            t.HasCheckConstraint("ck_services_price", "price > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Pricing.Domain.RoomRate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateOnly>("DateFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("date_from");
+
+                    b.Property<DateOnly>("DateTo")
+                        .HasColumnType("date")
+                        .HasColumnName("date_to");
+
+                    b.Property<int>("DaysOfWeek")
+                        .HasColumnType("integer")
+                        .HasColumnName("days_of_week");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("price");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<Guid>("RoomTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_type_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_room_rates");
+
+                    b.HasIndex("RoomTypeId", "DateFrom", "DateTo")
+                        .HasDatabaseName("ix_room_rates_room_type_id_date_from_date_to");
+
+                    b.ToTable("room_rates", "pricing", t =>
+                        {
+                            t.HasCheckConstraint("ck_room_rates_days", "days_of_week BETWEEN 1 AND 127");
+
+                            t.HasCheckConstraint("ck_room_rates_period", "date_to >= date_from");
+
+                            t.HasCheckConstraint("ck_room_rates_price", "price > 0");
+                        });
+                });
+
             modelBuilder.Entity("Hms.Modules.Rooms.Domain.Amenity", b =>
                 {
                     b.Property<Guid>("Id")
@@ -976,6 +1485,53 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("stored_files", "platform");
                 });
 
+            modelBuilder.Entity("Hms.Platform.Http.IdempotencyRecord", b =>
+                {
+                    b.Property<string>("Scope")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("scope");
+
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<bool>("IsProblem")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_problem");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("response_body");
+
+                    b.Property<int?>("ResponseStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("response_status");
+
+                    b.HasKey("Scope", "Key")
+                        .HasName("pk_idempotency_keys");
+
+                    b.HasIndex("ExpiresAt")
+                        .HasDatabaseName("ix_idempotency_keys_expires_at");
+
+                    b.ToTable("idempotency_keys", "platform");
+                });
+
             modelBuilder.Entity("Hms.Platform.Outbox.OutboxMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1197,6 +1753,36 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("user_tokens", "identity");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingHistoryEntry", b =>
+                {
+                    b.HasOne("Hms.Modules.Bookings.Domain.Booking", null)
+                        .WithMany("History")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booking_history_bookings_booking_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingRoom", b =>
+                {
+                    b.HasOne("Hms.Modules.Bookings.Domain.Booking", null)
+                        .WithMany("Rooms")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booking_rooms_bookings_booking_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingServiceLine", b =>
+                {
+                    b.HasOne("Hms.Modules.Bookings.Domain.Booking", null)
+                        .WithMany("Services")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booking_services_bookings_booking_id");
+                });
+
             modelBuilder.Entity("Hms.Modules.Hotel.Domain.HotelSettings", b =>
                 {
                     b.HasOne("Hms.Modules.Hotel.Domain.HotelInfo", null)
@@ -1403,6 +1989,15 @@ namespace Hms.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_user_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.Booking", b =>
+                {
+                    b.Navigation("History");
+
+                    b.Navigation("Rooms");
+
+                    b.Navigation("Services");
                 });
 
             modelBuilder.Entity("Hms.Modules.Rooms.Domain.RoomType", b =>

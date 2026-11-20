@@ -28,3 +28,34 @@ public enum RoomStatusSource
     /// <summary>Уборка проверена / завершена при авто-освобождении (Housekeeping, Sprint 7).</summary>
     Housekeeping,
 }
+
+/// <summary>Сведения о номере для других модулей (бронирования, уборка).</summary>
+public sealed record RoomInfo(
+    Guid Id,
+    string Number,
+    int? Floor,
+    Guid RoomTypeId,
+    string RoomTypeName,
+    int Capacity,
+    decimal BasePrice,
+    decimal? PriceOverride,
+    RoomStatus Status,
+    bool IsArchived,
+    bool RoomTypeArchived)
+{
+    /// <summary>Можно продавать: номер и категория не в архиве, номер не «вне продажи».</summary>
+    public bool IsSellable => !IsArchived && !RoomTypeArchived && Status != RoomStatus.OutOfService;
+}
+
+/// <summary>Чтение номерного фонда другими модулями — без доступа к таблицам Rooms.</summary>
+public interface IRoomDirectory
+{
+    Task<RoomInfo?> GetAsync(Guid roomId, CancellationToken ct);
+
+    /// <summary>Номера в продаже (опционально — одной категории).</summary>
+    Task<IReadOnlyList<RoomInfo>> ListSellableAsync(Guid? roomTypeId, CancellationToken ct);
+
+    Task<bool> RoomTypeExistsAsync(Guid roomTypeId, CancellationToken ct);
+
+    Task<IReadOnlyDictionary<Guid, RoomInfo>> GetManyAsync(IEnumerable<Guid> roomIds, CancellationToken ct);
+}

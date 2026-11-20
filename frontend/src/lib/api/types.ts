@@ -208,3 +208,138 @@ export interface RoomStatusHistoryItem {
   changedByName: string | null;
   changedAt: string;
 }
+
+// ---------- Цены (модуль Pricing) ----------
+
+export interface NightPrice {
+  date: string;
+  price: number;
+  source: string;
+}
+
+export interface ServiceCharge {
+  serviceId: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  perNight: boolean;
+  total: number;
+}
+
+/** Расчёт стоимости — только с backend; на клиенте суммы не вычисляются. */
+export interface PriceQuote {
+  nights: NightPrice[];
+  accommodationTotal: number;
+  discountId: string | null;
+  discountName: string | null;
+  discountAmount: number;
+  services: ServiceCharge[];
+  servicesTotal: number;
+  total: number;
+}
+
+export interface Rate {
+  id: string;
+  roomTypeId: string;
+  name: string;
+  dateFrom: string;
+  dateTo: string;
+  daysOfWeek: number;
+  price: number;
+  priority: number;
+  isActive: boolean;
+}
+
+export type DiscountType = "Percent" | "Amount";
+
+export interface Discount {
+  id: string;
+  name: string;
+  code: string | null;
+  type: DiscountType;
+  value: number;
+  validFrom: string | null;
+  validTo: string | null;
+  minNights: number;
+  isActive: boolean;
+}
+
+export interface ExtraService {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  isPerNight: boolean;
+  isPublic: boolean;
+  isActive: boolean;
+}
+
+// ---------- Бронирования ----------
+
+export type BookingStatus = "Pending" | "AwaitingPayment" | "Confirmed" | "CheckedIn" | "CheckedOut" | "Cancelled" | "NoShow" | "Expired";
+
+export interface AvailableRoom {
+  roomId: string;
+  number: string;
+  floor: number | null;
+  roomTypeId: string;
+  roomTypeName: string;
+  capacity: number;
+  quote: PriceQuote;
+}
+
+export interface BookingListItem {
+  id: string;
+  number: string;
+  status: BookingStatus;
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  guestName: string;
+  guestPhone: string | null;
+  roomNumber: string;
+  roomTypeName: string;
+  totalAmount: number;
+  createdAt: string;
+}
+
+export interface Booking {
+  id: string;
+  number: string;
+  status: BookingStatus;
+  source: "Admin" | "Web";
+  checkIn: string;
+  checkOut: string;
+  nights: number;
+  adults: number;
+  children: number;
+  guestName: string;
+  guestPhone: string | null;
+  guestEmail: string | null;
+  comment: string | null;
+  room: { roomId: string; number: string; roomTypeId: string; roomTypeName: string };
+  accommodationAmount: number;
+  discountAmount: number;
+  servicesAmount: number;
+  totalAmount: number;
+  promoCode: string | null;
+  price: PriceQuote | null;
+  services: { serviceId: string; name: string; quantity: number; unitPrice: number; perNight: boolean; total: number }[];
+  allowedActions: ("confirm" | "cancel")[];
+  confirmedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  version: number;
+}
+
+export interface BookingHistoryItem {
+  id: string;
+  eventType: "created" | "status_changed" | "details_changed" | string;
+  oldValues: Record<string, unknown> | null;
+  newValues: Record<string, unknown> | null;
+  changedBy: string | null;
+  changedByName: string | null;
+  changedAt: string;
+  comment: string | null;
+}

@@ -1,0 +1,161 @@
+import { CalendarRange, Plus } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { getTranslations } from "next-intl/server";
+import { BookingStatusBadge } from "@/components/booking-status-badge";
+import { NativeSelect } from "@/components/forms/native-select";
+import { PageHeader } from "@/components/layout/page-header";
+import { EmptyState, ErrorState } from "@/components/states/states";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { api } from "@/lib/api/server";
+import type { BookingListItem, Paged } from "@/lib/api/types";
+import { getCurrentUser } from "@/lib/auth/session";
+import { bookingStatusLabel, bookingStatuses, nightsLabel } from "@/lib/bookings/status";
+import { formatMoney, formatStayDate } from "@/lib/format";
+
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getTranslations("Bookings"))("title") };
+}
+
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+
+export default async function BookingsPage({ searchParams }: PageProps<"/admin/bookings">) {
+  const params = await searchParams;
+  const search = typeof params.search === "string" ? params.search.slice(0, 100) : "";
+  const status = typeof params.status === "string" && (bookingStatuses as string[]).includes(params.status) ? params.status : "";
+  const from = typeof params.from === "string" && isoDate.test(params.from) ? params.from : "";
+  const to = typeof params.to === "string" && isoDate.test(params.to) ? params.to : "";
+  const page = Math.max(1, Number(params.page) || 1);
+
+  const query = new URLSearchParams({ page: String(page), pageSize: "25" });
+  if (search) query.set("search", search);
+  if (status) query.set("status", status);
+  if (from) query.set("from", from);
+  if (to) query.set("to", to);
+  const filtered = Boolean(search || status || from || to);
+
+  const [t, errors, user, result] = await Promise.all([
+    getTranslations("Bookings"),
+    getTranslations("Errors"),
+    getCurrentUser(),
+    api<Paged<BookingListItem>>(`/bookings?${query}`),
+  ]);
+  const canCreate = user?.permissions.includes("booking.create") ?? false;
+
+  const pageLink = (p: number) => {
+    const next = new URLSearchParams(query);
+    next.set("page", String(p));
+    next.delete("pageSize");
+    return `/admin/bookings?${next}`;
+  };
+
+  return (
+    <div className="grid gap-6">
+      <PageHeader
+        title={t("title")}
+        description={t("description")}
+        actions={
+          canCreate && (
+            <Link href="/admin/bookings/new" className={buttonVariants()}>
+              <Plus aria-hidden />
+              {t("add")}
+            </Link>
+          )
+        }
+      />
+
+      <form method="get" className="flex flex-wrap items-end gap-2" role="search">
+        <Input name="search" defaultValue={search} placeholder={t("searchPlaceholder")} aria-label={t("search")} className="w-full sm:max-w-xs" />
+        <NativeSelect name="status" defaultValue={status} aria-label={t("colStatus")} className="w-auto">
+          <option value="">{t("allStatuses")}</option>
+          {bookingStatuses.map((s) => (
+            <option key={s} value={s}>
+              {bookingStatusLabel[s]}
+            </option>
+          ))}
+        </NativeSelect>
+        <Input type="date" name="from" defaultValue={from} aria-label={t("from")} title={t("from")} className="w-auto" />
+        <Input type="date" name="to" defaultValue={to} aria-label={t("to")} title={t("to")} className="w-auto" />
+        <Button type="submit" variant="outline">
+          {t("filter")}
+        </Button>
+      </form>
+
+      {!result.ok ? (
+        <ErrorState title={errors("unknown")} />
+      ) : result.data.items.length === 0 ? (
+        filtered ? (
+          <EmptyState icon={CalendarRange} title={t("notFound")} description={t("notFoundHint")} />
+        ) : (
+          <EmptyState
+            icon={CalendarRange}
+            title={t("empty")}
+            description={t("emptyHint")}
+            action={
+              canCreate && (
+                <Link href="/admin/bookings/new" className={buttonVariants()}>
+                  {t("add")}
+                </Link>
+              )
+            }
+          />
+        )
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-2xl border bg-card">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("colNumber")}</TableHead>
+                  <TableHead>{t("colGuest")}</TableHead>
+                  <TableHead>{t("colDates")}</TableHead>
+                  <TableHead>{t("colRoom")}</TableHead>
+                  <TableHead>{t("colStatus")}</TableHead>
+                  <TableHead className="text-right">{t("colTotal")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {result.data.items.map((b) => (
+                  <TableRow key={b.id}>
+                    <TableCell>
+                      <Link href={`/admin/bookings/${b.id}`} className="tabular font-medium underline-offset-4 hover:underline">
+                        {b.number}
+                      </Link>
+                    </TableCell>
+                    <TableCell>
+                      <div className="grid">
+                        <span>{b.guestName}</span>
+                        {b.guestPhone && <span className="tabular text-xs text-muted-foreground">{b.guestPhone}</span>}
+                      </div>
+                    </TableCell>
+                    <TableCell className="tabular whitespace-nowrap">
+                      {formatStayDate(b.checkIn)} — {formatStayDate(b.checkOut)}
+                      <span className="block text-xs text-muted-foreground">{nightsLabel(b.nights)}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="font-medium">{b.roomNumber}</span>
+                      <span className="block text-xs text-muted-foreground">{b.roomTypeName}</span>
+                    </TableCell>
+                    <TableCell>
+                      <BookingStatusBadge status={b.status} />
+                    </TableCell>
+                    <TableCell className="tabular text-right whitespace-nowrap">{formatMoney(b.totalAmount)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {result.data.totalPages > 1 && (
+            <nav className="flex items-center gap-3 text-sm" aria-label={t("title")}>
+              {page > 1 && <Link href={pageLink(page - 1)}>{t("prev")}</Link>}
+              <span>{t("pageOf", { page, pages: result.data.totalPages })}</span>
+              {page < result.data.totalPages && <Link href={pageLink(page + 1)}>{t("next")}</Link>}
+            </nav>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

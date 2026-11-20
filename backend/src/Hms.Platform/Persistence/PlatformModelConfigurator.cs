@@ -34,5 +34,16 @@ internal sealed class PlatformModelConfigurator : IModelConfigurator
             e.Property(x => x.Visibility).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(x => x.Path).IsUnique();
         });
+
+        modelBuilder.Entity<Http.IdempotencyRecord>(e =>
+        {
+            e.ToTable("idempotency_keys", Schema);
+            e.HasKey(x => new { x.Scope, x.Key });
+            e.Property(x => x.Scope).HasMaxLength(200);
+            e.Property(x => x.Key).HasMaxLength(100);
+            e.Property(x => x.RequestHash).HasMaxLength(64).IsRequired();
+            e.Property(x => x.ResponseBody).HasColumnType("jsonb");
+            e.HasIndex(x => x.ExpiresAt);
+        });
     }
 }

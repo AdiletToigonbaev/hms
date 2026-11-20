@@ -25,6 +25,7 @@ public static class RoomsModule
         services.AddScoped<IRoomTypeService, RoomTypeService>();
         services.AddScoped<IRoomService, RoomService>();
         services.AddScoped<IRoomCatalog, RoomCatalog>();
+        services.AddScoped<Hms.Modules.Rooms.Contracts.IRoomDirectory, RoomDirectory>();
         services.AddValidatorsFromAssemblyContaining<SaveRoomRequestValidator>(includeInternalTypes: true);
         return services;
     }

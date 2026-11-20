@@ -3,9 +3,11 @@
 import {
   BedDouble,
   Building2,
+  CalendarRange,
   ClipboardList,
   DoorOpen,
   LayoutDashboard,
+  Tags,
   PlugZap,
   Settings,
   Sparkles,
@@ -25,7 +27,9 @@ const icons = {
   settings: Settings,
   integrations: PlugZap,
   housekeeping: Sparkles,
-  bookings: ClipboardList,
+  bookings: CalendarRange,
+  pricing: Tags,
+  account: ClipboardList,
   hotel: Building2,
 } satisfies Record<string, LucideIcon>;
 

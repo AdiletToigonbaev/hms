@@ -9,6 +9,7 @@ export default async function AdminHomePage() {
       <PageHeader title={t("adminTitle")} description={t("adminText")} />
       <QuickLinks
         links={[
+          { href: "/admin/bookings", title: t("qlBookings"), description: t("qlBookingsText"), icon: "bookings" },
           { href: "/admin/rooms", title: t("qlRooms"), description: t("qlRoomsText"), icon: "rooms" },
           { href: "/admin/room-types", title: t("qlTypes"), description: t("qlTypesText"), icon: "roomTypes" },
         ]}

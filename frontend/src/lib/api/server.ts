@@ -13,6 +13,8 @@ interface ApiOptions {
   anonymous?: boolean;
   /** Явный токен (например, сразу после входа, когда cookie ещё не записана). */
   accessToken?: string;
+  /** Дополнительные заголовки (например, Idempotency-Key для создания брони). */
+  headers?: Record<string, string>;
 }
 
 /**
@@ -31,6 +33,8 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<Ap
   if (userAgent) requestHeaders["User-Agent"] = userAgent;
   const correlationId = incoming.get("x-correlation-id");
   if (correlationId) requestHeaders["X-Correlation-Id"] = correlationId;
+
+  Object.assign(requestHeaders, options.headers);
 
   if (!options.anonymous) {
     const token = options.accessToken ?? (await cookies()).get(ACCESS_COOKIE)?.value;

@@ -20,6 +20,8 @@
     <ProjectReference Include="..\Modules\Identity\Hms.Modules.Identity.Infrastructure\Hms.Modules.Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Hotel\Hms.Modules.Hotel.Infrastructure\Hms.Modules.Hotel.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Rooms\Hms.Modules.Rooms.Infrastructure\Hms.Modules.Rooms.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Pricing\Hms.Modules.Pricing.Infrastructure\Hms.Modules.Pricing.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Bookings\Hms.Modules.Bookings.Infrastructure\Hms.Modules.Bookings.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hms.IntegrationTests" />
