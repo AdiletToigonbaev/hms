@@ -54,8 +54,8 @@ internal sealed class RoomService(
 
         var rooms = await query.OrderBy(r => r.Floor).ThenBy(r => r.Number).ToListAsync(ct);
         var types = await TypesAsync(rooms.Select(r => r.RoomTypeId), ct);
-        var arrivals = await bookings.RoomsWithArrivalOnAsync(clock.Today, ct);
-        return rooms.Select(r => ToDto(r, types[r.RoomTypeId], [], arrivals.Contains(r.Id))).ToList();
+        var today = await TodayAsync(ct);
+        return rooms.Select(r => ToDto(r, types[r.RoomTypeId], [], today.GetValueOrDefault(r.Id))).ToList();
     }
 
     public async Task<Result<RoomDto>> GetAsync(Guid id, CancellationToken ct)
@@ -252,7 +252,9 @@ internal sealed class RoomService(
         return await store.DeletePhotoAsync(null, id, photoId, ct);
     }
 
-    private static void Apply(Room room, SaveRoomRequest r, DateTimeOffset now) => room.Update(
+    private static void Apply(Room room, SaveRoomRequest r, DateTimeOffset now)
+    {
+        room.Update(
         r.RoomTypeId,
         r.Number,
         r.Floor,
@@ -262,6 +264,8 @@ internal sealed class RoomService(
         r.PriceOverride is { } price ? Money.Kgs(price) : null,
         r.Description,
         now);
+        room.SetHourlyPriceOverride(r.HourlyPriceOverride is { } hourly ? Money.Kgs(hourly) : null);
+    }
 
     private async Task<Error?> ValidateTypeAsync(Guid typeId, Guid hotelId, CancellationToken ct)
     {
@@ -285,12 +289,19 @@ internal sealed class RoomService(
     private async Task<RoomDto> ToDtoAsync(Room room, CancellationToken ct)
     {
         var type = await db.Set<RoomType>().AsNoTracking().FirstAsync(t => t.Id == room.RoomTypeId, ct);
-        var arrivals = await bookings.RoomsWithArrivalOnAsync(clock.Today, ct);
-        return ToDto(room, type, await store.PhotosAsync(null, room.Id, ct), arrivals.Contains(room.Id));
+        var today = await TodayAsync(ct);
+        return ToDto(room, type, await store.PhotosAsync(null, room.Id, ct), today.GetValueOrDefault(room.Id));
     }
 
-    /// <param name="arrivalToday">Сегодня заезд по действующей брони — для свободного номера показывается «Бронь сегодня».</param>
-    private static RoomDto ToDto(Room r, RoomType t, IReadOnlyList<PhotoDto> photos, bool arrivalToday) => new(
+    /// <summary>Занятость номеров на сегодня по броням — для статуса «Бронь» и подсказки «в 15:00 / до 14:30».</summary>
+    private Task<IReadOnlyDictionary<Guid, RoomTodayState>> TodayAsync(CancellationToken ct) =>
+        bookings.TodayStatesAsync(clock.UtcNow, clock.ToUtc(clock.Today.AddDays(1), TimeOnly.MinValue), ct);
+
+    private string? Local(DateTimeOffset? utc) =>
+        utc is { } value ? clock.ToHotelTime(value).ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture) : null;
+
+    /// <param name="today">Брони номера на сегодня: свободный номер с бронью показывается как «Бронь» (в 15:00 / до 14:30).</param>
+    private RoomDto ToDto(Room r, RoomType t, IReadOnlyList<PhotoDto> photos, RoomTodayState? today) => new(
         r.Id,
         r.Number,
         r.Floor,
@@ -306,13 +317,17 @@ internal sealed class RoomService(
         r.PriceOverride ?? t.BasePrice,
         r.Description,
         r.Status.ToString(),
-        r.Status == RoomStatus.Available && arrivalToday ? "Reserved" : r.Status.ToString(),
+        r.Status == RoomStatus.Available && today is not null ? "Reserved" : r.Status.ToString(),
         r.IsArchived ? [] : RoomStatusMachine.ManualTargets(r.Status).Select(s => s.ToString()).ToList(),
         r.IsArchived,
         photos,
-        r.Version);
+        r.Version,
+        r.HourlyPriceOverride,
+        r.HourlyPriceOverride ?? t.HourlyPrice,
+        Local(today?.OccupiedUntil),
+        Local(today?.NextStartsAt));
 
-    private static object Snapshot(Room r) => new { r.Number, r.Floor, r.RoomTypeId, r.Capacity, r.BedsCount, BedType = r.BedType?.ToString(), r.PriceOverride };
+    private static object Snapshot(Room r) => new { r.Number, r.Floor, r.RoomTypeId, r.Capacity, r.BedsCount, BedType = r.BedType?.ToString(), r.PriceOverride, r.HourlyPriceOverride };
 }
 
 internal sealed class RoomCatalog(DbContext db, IHotelContext hotel, RoomsStore store) : IRoomCatalog
@@ -349,7 +364,7 @@ internal sealed class RoomCatalog(DbContext db, IHotelContext hotel, RoomsStore 
     {
         var prices = await db.Set<Room>().AsNoTracking()
             .Where(r => r.RoomTypeId == t.Id && !r.IsArchived && r.Status != RoomStatus.OutOfService)
-            .Select(r => r.PriceOverride ?? t.BasePrice)
+            .Select(r => new { Night = r.PriceOverride ?? t.BasePrice, Hour = r.HourlyPriceOverride ?? t.HourlyPrice })
             .ToListAsync(ct);
         if (prices.Count == 0)
         {
@@ -362,6 +377,7 @@ internal sealed class RoomCatalog(DbContext db, IHotelContext hotel, RoomsStore 
             .Select(a => new AmenityDto(a.Id, a.Code, a.Name, a.Icon, a.SortOrder))
             .ToListAsync(ct);
         return new PublicRoomTypeDto(
-            t.Id, t.Name, t.Description, t.Capacity, t.BedsCount, t.BedType.ToString(), prices.Min(), amenities, await store.PhotosAsync(t.Id, null, ct));
+            t.Id, t.Name, t.Description, t.Capacity, t.BedsCount, t.BedType.ToString(), prices.Min(p => p.Night), amenities, await store.PhotosAsync(t.Id, null, ct),
+            prices.Where(p => p.Hour != null).Select(p => p.Hour).Min());
     }
 }

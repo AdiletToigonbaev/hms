@@ -1,7 +1,13 @@
 "use client";
 
 import { Popover } from "@base-ui/react/popover";
-import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  X,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,17 +33,18 @@ import { cn } from "@/lib/utils";
 interface DateRangePickerProps {
   /** Имена полей формы (значения — YYYY-MM-DD в скрытых input). */
   startName: string;
-  endName: string;
+  /** Не нужен в режиме single. */
+  endName?: string;
   defaultStart?: IsoDate | null;
   defaultEnd?: IsoDate | null;
   /** Сегодня по часовому поясу гостиницы (подсветка и быстрые кнопки). */
   today: IsoDate;
   /** Раньше этой даты выбрать нельзя. */
   min?: IsoDate;
-  /** `stay` — проживание: выезд позже заезда, ночи; `period` — фильтр: можно один день и пустое значение. */
-  mode: "stay" | "period";
+  /** `stay` — проживание: выезд позже заезда, ночи; `period` — фильтр: можно один день и пустое значение; `single` — одна дата. */
+  mode: "stay" | "period" | "single";
   startLabel: string;
-  endLabel: string;
+  endLabel?: string;
   maxNights?: number;
   size?: "default" | "compact";
   className?: string;
@@ -56,14 +63,17 @@ export function DateRangePicker({
   min,
   mode,
   startLabel,
-  endLabel,
+  endLabel = "",
   maxNights,
   size = "default",
   className,
 }: DateRangePickerProps) {
   const t = useTranslations("DatePicker");
   const allowSameDay = mode === "period";
-  const [range, setRange] = useState<Range>({ start: defaultStart, end: defaultEnd });
+  const [range, setRange] = useState<Range>({
+    start: defaultStart,
+    end: defaultEnd,
+  });
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<IsoDate | null>(null);
   const [view, setView] = useState<IsoDate>(monthStart(defaultStart ?? today));
@@ -71,12 +81,19 @@ export function DateRangePicker({
   const gridRef = useRef<HTMLDivElement>(null);
 
   const minMonth = min ? monthStart(min) : null;
-  const nights = range.start && range.end ? daysBetween(range.start, range.end) : null;
+  const nights =
+    range.start && range.end ? daysBetween(range.start, range.end) : null;
 
   const disabled = (day: IsoDate) => {
     if (min && day < min) return true;
     // Пока выбирается выезд — не дальше максимума ночей.
-    if (maxNights && range.start && !range.end && day > shiftDays(range.start, maxNights)) return true;
+    if (
+      maxNights &&
+      range.start &&
+      !range.end &&
+      day > shiftDays(range.start, maxNights)
+    )
+      return true;
     return false;
   };
 
@@ -95,6 +112,12 @@ export function DateRangePicker({
 
   function choose(day: IsoDate) {
     if (disabled(day)) return;
+    if (mode === "single") {
+      setRange({ start: day, end: null });
+      setFocus(day);
+      setOpen(false);
+      return;
+    }
     const next = pickDay(range, day, allowSameDay);
     setRange(next);
     setFocus(day);
@@ -113,11 +136,20 @@ export function DateRangePicker({
     // Фокус ушёл за пределы видимых месяцев — листаем.
     if (day < view) setView(monthStart(day));
     else if (day >= monthStart(view, 2)) setView(monthStart(day, -1));
-    requestAnimationFrame(() => gridRef.current?.querySelector<HTMLButtonElement>(`[data-day="${day}"]`)?.focus());
+    requestAnimationFrame(() =>
+      gridRef.current
+        ?.querySelector<HTMLButtonElement>(`[data-day="${day}"]`)
+        ?.focus(),
+    );
   }
 
   function onGridKey(e: KeyboardEvent) {
-    const delta: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    const delta: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -7,
+      ArrowDown: 7,
+    };
     if (e.key in delta) {
       e.preventDefault();
       moveFocus(shiftDays(focus, delta[e.key]));
@@ -130,31 +162,61 @@ export function DateRangePicker({
   }
 
   const quick: { label: string; range: Range }[] =
-    mode === "stay"
-      ? (() => {
-          const base = range.start ?? (min && min > today ? min : today);
-          return [
-            { label: t("oneNight"), range: { start: base, end: shiftDays(base, 1) } },
-            { label: t("weekend"), range: nextWeekend(min && min > today ? min : today) },
-            { label: t("week"), range: { start: base, end: shiftDays(base, 7) } },
+    mode === "single"
+      ? [
+          { label: t("today"), range: { start: today, end: null } },
+          {
+            label: t("tomorrow"),
+            range: { start: shiftDays(today, 1), end: null },
+          },
+        ]
+      : mode === "stay"
+        ? (() => {
+            const base = range.start ?? (min && min > today ? min : today);
+            return [
+              {
+                label: t("oneNight"),
+                range: { start: base, end: shiftDays(base, 1) },
+              },
+              {
+                label: t("weekend"),
+                range: nextWeekend(min && min > today ? min : today),
+              },
+              {
+                label: t("week"),
+                range: { start: base, end: shiftDays(base, 7) },
+              },
+            ];
+          })()
+        : [
+            { label: t("today"), range: { start: today, end: today } },
+            {
+              label: t("next7"),
+              range: { start: today, end: shiftDays(today, 6) },
+            },
+            {
+              label: t("next30"),
+              range: { start: today, end: shiftDays(today, 29) },
+            },
           ];
-        })()
-      : [
-          { label: t("today"), range: { start: today, end: today } },
-          { label: t("next7"), range: { start: today, end: shiftDays(today, 6) } },
-          { label: t("next30"), range: { start: today, end: shiftDays(today, 29) } },
-        ];
 
-  const display = (day: IsoDate | null) => (day ? `${formatDayShort(day)}, ${formatWeekdayShort(day)}` : null);
+  const display = (day: IsoDate | null) =>
+    day ? `${formatDayShort(day)}, ${formatWeekdayShort(day)}` : null;
   const compact = size === "compact";
 
   return (
     <div className={cn("relative", className)}>
       <input type="hidden" name={startName} value={range.start ?? ""} />
-      <input type="hidden" name={endName} value={range.end ?? ""} />
+      {endName && (
+        <input type="hidden" name={endName} value={range.end ?? ""} />
+      )}
       <Popover.Root open={open} onOpenChange={handleOpenChange}>
         <Popover.Trigger
-          aria-label={`${startLabel} — ${endLabel}: ${range.start ? formatDayFull(range.start) : t("notSet")} — ${range.end ? formatDayFull(range.end) : t("notSet")}`}
+          aria-label={
+            mode === "single"
+              ? `${startLabel}: ${range.start ? formatDayFull(range.start) : t("notSet")}`
+              : `${startLabel} — ${endLabel}: ${range.start ? formatDayFull(range.start) : t("notSet")} — ${range.end ? formatDayFull(range.end) : t("notSet")}`
+          }
           className={cn(
             "group flex w-full items-center gap-2.5 rounded-xl border border-input bg-card px-3 text-left text-sm shadow-xs transition outline-none",
             "hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:border-ring data-[popup-open]:ring-3 data-[popup-open]:ring-ring/30",
@@ -163,7 +225,12 @@ export function DateRangePicker({
         >
           <CalendarDays className="size-4 shrink-0 text-primary" aria-hidden />
           {compact ? (
-            <span className={cn("truncate", !range.start && "text-muted-foreground")}>
+            <span
+              className={cn(
+                "truncate",
+                !range.start && "text-muted-foreground",
+              )}
+            >
               {range.start
                 ? range.end && range.end !== range.start
                   ? `${formatDayShort(range.start)} — ${formatDayShort(range.end)}`
@@ -173,14 +240,39 @@ export function DateRangePicker({
           ) : (
             <>
               <span className="grid min-w-0">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{startLabel}</span>
-                <span className={cn("truncate font-medium", !range.start && "font-normal text-muted-foreground")}>{display(range.start) ?? t("choose")}</span>
+                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                  {startLabel}
+                </span>
+                <span
+                  className={cn(
+                    "truncate font-medium",
+                    !range.start && "font-normal text-muted-foreground",
+                  )}
+                >
+                  {display(range.start) ?? t("choose")}
+                </span>
               </span>
-              <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="grid min-w-0">
-                <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">{endLabel}</span>
-                <span className={cn("truncate font-medium", !range.end && "font-normal text-muted-foreground")}>{display(range.end) ?? t("choose")}</span>
-              </span>
+              {mode !== "single" && (
+                <>
+                  <ArrowRight
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <span className="grid min-w-0">
+                    <span className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                      {endLabel}
+                    </span>
+                    <span
+                      className={cn(
+                        "truncate font-medium",
+                        !range.end && "font-normal text-muted-foreground",
+                      )}
+                    >
+                      {display(range.end) ?? t("choose")}
+                    </span>
+                  </span>
+                </>
+              )}
               {mode === "stay" && nights !== null && (
                 <span className="tabular ml-auto shrink-0 rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">
                   {nightsLabel(nights)}
@@ -208,7 +300,7 @@ export function DateRangePicker({
               )}
             >
               <Popover.Title className="sr-only">
-                {startLabel} — {endLabel}
+                {mode === "single" ? startLabel : `${startLabel} — ${endLabel}`}
               </Popover.Title>
 
               <div className="flex flex-wrap gap-1.5">
@@ -237,21 +329,50 @@ export function DateRangePicker({
                   >
                     <ChevronLeft aria-hidden />
                   </Button>
-                  <Button type="button" variant="ghost" size="icon" className="size-8 rounded-full" onClick={() => setView(monthStart(view, 1))} aria-label={t("nextMonth")}>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 rounded-full"
+                    onClick={() => setView(monthStart(view, 1))}
+                    aria-label={t("nextMonth")}
+                  >
                     <ChevronRight aria-hidden />
                   </Button>
                 </div>
                 <div className="grid gap-6 sm:grid-cols-2">
                   {[view, monthStart(view, 1)].map((month, index) => (
-                    <div key={month} className={cn("grid gap-2", index === 1 && "hidden sm:grid")}>
-                      <p className="h-8 text-center font-heading text-base leading-8" aria-live="polite">
+                    <div
+                      key={month}
+                      className={cn(
+                        "grid gap-2",
+                        index === 1 && "hidden sm:grid",
+                      )}
+                    >
+                      <p
+                        className="h-8 text-center font-heading text-base leading-8"
+                        aria-live="polite"
+                      >
                         {formatMonthTitle(month)}
                       </p>
-                      <table className="border-separate border-spacing-y-1" role="grid" aria-label={formatMonthTitle(month)}>
+                      <table
+                        className="border-separate border-spacing-y-1"
+                        role="grid"
+                        aria-label={formatMonthTitle(month)}
+                      >
                         <thead>
                           <tr>
                             {weekdayHeaders.map((w, i) => (
-                              <th key={w} scope="col" className={cn("size-10 text-xs font-medium", i >= 5 ? "text-primary/80" : "text-muted-foreground")}>
+                              <th
+                                key={w}
+                                scope="col"
+                                className={cn(
+                                  "size-10 text-xs font-medium",
+                                  i >= 5
+                                    ? "text-primary/80"
+                                    : "text-muted-foreground",
+                                )}
+                              >
                                 {w}
                               </th>
                             ))}
@@ -261,21 +382,32 @@ export function DateRangePicker({
                           {monthGrid(month).map((week, w) => (
                             <tr key={w}>
                               {week.map((day, i) => {
-                                if (!day) return <td key={i} className="size-10" />;
+                                if (!day)
+                                  return <td key={i} className="size-10" />;
                                 const role = dayRole(day, range, hover);
                                 const isDisabled = disabled(day);
-                                const selected = role === "start" || role === "end" || role === "single";
+                                const selected =
+                                  role === "start" ||
+                                  role === "end" ||
+                                  role === "single";
                                 return (
                                   <td
                                     key={day}
                                     className={cn(
                                       "p-0",
                                       role === "inside" && "bg-primary/10",
-                                      role === "start" && "rounded-l-full bg-primary/10",
-                                      role === "end" && "rounded-r-full bg-primary/10",
+                                      role === "start" &&
+                                        "rounded-l-full bg-primary/10",
+                                      role === "end" &&
+                                        "rounded-r-full bg-primary/10",
                                       // Полоса периода скругляется на краях недели и месяца.
-                                      role === "inside" && (i === 0 || day.endsWith("-01")) && "rounded-l-full",
-                                      role === "inside" && (i === 6 || shiftDays(day, 1).endsWith("-01")) && "rounded-r-full",
+                                      role === "inside" &&
+                                        (i === 0 || day.endsWith("-01")) &&
+                                        "rounded-l-full",
+                                      role === "inside" &&
+                                        (i === 6 ||
+                                          shiftDays(day, 1).endsWith("-01")) &&
+                                        "rounded-r-full",
                                     )}
                                   >
                                     <button
@@ -297,8 +429,11 @@ export function DateRangePicker({
                                           : role === "inside"
                                             ? "text-foreground hover:bg-primary/15"
                                             : "hover:bg-accent",
-                                        !selected && i >= 5 && "text-primary/90",
-                                        isDisabled && "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
+                                        !selected &&
+                                          i >= 5 &&
+                                          "text-primary/90",
+                                        isDisabled &&
+                                          "cursor-not-allowed text-muted-foreground/40 hover:bg-transparent",
                                         day === today &&
                                           "after:absolute after:bottom-1.5 after:size-1 after:rounded-full after:bg-current after:content-['']",
                                       )}
@@ -319,29 +454,60 @@ export function DateRangePicker({
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
                 <p className="text-sm" aria-live="polite">
-                  {range.start ? (
+                  {mode === "single" ? (
+                    <span
+                      className={
+                        range.start ? "font-medium" : "text-muted-foreground"
+                      }
+                    >
+                      {range.start ? formatDayFull(range.start) : t("pickDate")}
+                    </span>
+                  ) : range.start ? (
                     <>
-                      <span className="font-medium">{formatDayShort(range.start)}</span>
+                      <span className="font-medium">
+                        {formatDayShort(range.start)}
+                      </span>
                       {range.end && range.end !== range.start && (
                         <>
                           {" — "}
-                          <span className="font-medium">{formatDayShort(range.end)}</span>
+                          <span className="font-medium">
+                            {formatDayShort(range.end)}
+                          </span>
                         </>
                       )}
-                      {mode === "stay" && nights !== null && <span className="text-muted-foreground"> · {nightsLabel(nights)}</span>}
-                      {!range.end && <span className="text-muted-foreground"> · {mode === "stay" ? t("pickCheckOut") : t("pickEnd")}</span>}
+                      {mode === "stay" && nights !== null && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {nightsLabel(nights)}
+                        </span>
+                      )}
+                      {!range.end && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · {mode === "stay" ? t("pickCheckOut") : t("pickEnd")}
+                        </span>
+                      )}
                     </>
                   ) : (
-                    <span className="text-muted-foreground">{mode === "stay" ? t("pickCheckIn") : t("pickStart")}</span>
+                    <span className="text-muted-foreground">
+                      {mode === "stay" ? t("pickCheckIn") : t("pickStart")}
+                    </span>
                   )}
                 </p>
                 <div className="flex gap-2">
                   {mode === "period" && range.start && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setRange({ start: null, end: null })}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setRange({ start: null, end: null })}
+                    >
                       {t("clear")}
                     </Button>
                   )}
-                  <Popover.Close render={<Button type="button" size="sm" />}>{t("done")}</Popover.Close>
+                  <Popover.Close render={<Button type="button" size="sm" />}>
+                    {t("done")}
+                  </Popover.Close>
                 </div>
               </div>
             </Popover.Popup>

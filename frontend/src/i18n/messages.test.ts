@@ -23,3 +23,12 @@ describe("i18n", () => {
     }
   });
 });
+
+describe("подсказки настроек", () => {
+  it("у каждой настройки есть пояснение и пример", () => {
+    for (const [key, entry] of Object.entries(ru.SettingsHelp)) {
+      expect(entry.text.length, key).toBeGreaterThan(20);
+      expect(entry.example.length, key).toBeGreaterThan(10);
+    }
+  });
+});

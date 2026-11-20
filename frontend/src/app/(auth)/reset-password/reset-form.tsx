@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
-import { Field } from "@/components/forms/field";
+import { PasswordField } from "@/components/forms/password-field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import type { FormState } from "@/lib/api/problem";
@@ -34,9 +34,8 @@ export function ResetPasswordForm() {
       <input type="hidden" name="userId" value={userId} />
       <input type="hidden" name="token" value={token} />
       <FormAlert state={state} />
-      <Field
+      <PasswordField
         name="password"
-        type="password"
         label={t("newPassword")}
         autoComplete="new-password"
         hint={t("passwordHint")}

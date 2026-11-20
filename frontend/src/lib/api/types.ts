@@ -86,6 +86,8 @@ export interface PublicHotelInfo {
   checkOutTime: string;
   rules: string | null;
   freeCancelHoursBeforeCheckIn: number;
+  hourlyMinHours: number;
+  hourlyMaxHours: number;
 }
 
 export interface Hotel {
@@ -118,9 +120,23 @@ export interface HotelSettings {
   autoReleaseRoomAfterCleaning: boolean;
   requireEmailConfirmation: boolean;
   noShowCutoffTime: string;
+  hourlyMinHours: number;
+  hourlyMaxHours: number;
+  cleaningBufferMinutes: number;
   cancellationPolicy: CancellationPolicy;
   rules: string | null;
   version: number;
+  hourlyPolicy: HourlyPolicy;
+}
+
+/** Правила почасовых броней (настраивает владелец). */
+export interface HourlyPolicy {
+  freeCancelMinutesBeforeStart: number;
+  lateCancelPenaltyHours: number;
+  noShowAfterMinutes: number;
+  noShowPenaltyHours: number;
+  pendingHoldMinutes: number;
+  refundUnusedOnEarlyDeparture: boolean;
 }
 
 export type IntegrationAvailability = "awaiting_access" | "secrets_missing" | "ready" | "active";
@@ -167,6 +183,8 @@ export interface RoomType {
   bedsCount: number;
   bedType: BedType;
   basePrice: number;
+  /** Цена за час; null — категория по часам не продаётся. */
+  hourlyPrice: number | null;
   sortOrder: number;
   isArchived: boolean;
   activeRoomCount: number;
@@ -189,6 +207,12 @@ export interface Room {
   effectiveBedsCount: number;
   effectiveBedType: BedType;
   effectivePrice: number;
+  hourlyPriceOverride: number | null;
+  effectiveHourlyPrice: number | null;
+  /** Сейчас по брони — до этого времени гостиницы («yyyy-MM-ddTHH:mm»). */
+  occupiedUntil: string | null;
+  /** Ближайшая бронь сегодня. */
+  nextBookingAt: string | null;
   description: string | null;
   status: RoomStatus;
   displayStatus: RoomStatus | "Reserved";
@@ -236,6 +260,20 @@ export interface PriceQuote {
   services: ServiceCharge[];
   servicesTotal: number;
   total: number;
+  kind?: BookingKind;
+  /** Почасовая бронь: часы с одной ценой, время гостиницы «yyyy-MM-ddTHH:mm». */
+  hours?: HourPrice[] | null;
+}
+
+export type BookingKind = "Nightly" | "Hourly";
+
+export interface HourPrice {
+  from: string;
+  to: string;
+  hours: number;
+  unitPrice: number;
+  amount: number;
+  source: string;
 }
 
 export interface Rate {
@@ -248,6 +286,7 @@ export interface Rate {
   price: number;
   priority: number;
   isActive: boolean;
+  unit: "Night" | "Hour";
 }
 
 export type DiscountType = "Percent" | "Amount";
@@ -262,6 +301,7 @@ export interface Discount {
   validTo: string | null;
   minNights: number;
   isActive: boolean;
+  minHours: number;
 }
 
 export interface ExtraService {
@@ -301,6 +341,10 @@ export interface BookingListItem {
   roomTypeName: string;
   totalAmount: number;
   createdAt: string;
+  kind: BookingKind;
+  startsAt: string;
+  endsAt: string;
+  hours: number | null;
 }
 
 export interface Booking {
@@ -325,12 +369,39 @@ export interface Booking {
   promoCode: string | null;
   price: PriceQuote | null;
   services: { serviceId: string; name: string; quantity: number; unitPrice: number; perNight: boolean; total: number }[];
-  allowedActions: ("confirm" | "cancel")[];
+  allowedActions: ("confirm" | "cancel" | "extend")[];
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
   createdAt: string;
   version: number;
+  kind: BookingKind;
+  /** Время гостиницы «yyyy-MM-ddTHH:mm». */
+  startsAt: string;
+  endsAt: string;
+  hours: number | null;
+  extensionsAmount: number;
+  extensions: BookingExtension[];
+}
+
+export interface BookingExtension {
+  kind: "Hour" | "Night";
+  quantity: number;
+  previousEndsAt: string;
+  newEndsAt: string;
+  amount: number;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface ExtensionQuote {
+  kind: BookingKind;
+  units: number;
+  newEndsAt: string;
+  amount: number;
+  price: PriceQuote;
+  maxUnits: number | null;
+  nextBookingStartsAt: string | null;
 }
 
 export interface BookingHistoryItem {

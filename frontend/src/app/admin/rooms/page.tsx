@@ -11,7 +11,9 @@ import { api } from "@/lib/api/server";
 import type { Room, RoomStatus, RoomType } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { formatMoney } from "@/lib/format";
-import { groupByFloor, roomStatusLabel } from "@/lib/rooms/status";
+import { hotelTimeZone } from "@/i18n/config";
+import { hotelToday } from "@/lib/bookings/status";
+import { groupByFloor, roomBookingHint, roomStatusLabel } from "@/lib/rooms/status";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Rooms"))("title") };
@@ -35,6 +37,7 @@ export default async function RoomsBoardPage({ searchParams }: PageProps<"/admin
     api<RoomType[]>("/room-types"),
   ]);
   const canManage = user?.permissions.includes("room.manage") ?? false;
+  const today = hotelToday(hotelTimeZone);
 
   if (!rooms.ok || !types.ok) {
     return <ErrorState title={errors("unknown")} />;
@@ -115,7 +118,16 @@ export default async function RoomsBoardPage({ searchParams }: PageProps<"/admin
                       <RoomStatusBadge status={room.displayStatus} />
                     </div>
                     <span className="truncate text-sm text-muted-foreground">{room.roomTypeName}</span>
+                    {roomBookingHint(room, today) && (
+                      <span className="text-xs font-medium text-status-reserved">{roomBookingHint(room, today)}</span>
+                    )}
                     <span className="tabular text-sm">
+                      {room.effectiveHourlyPrice !== null && (
+                        <>
+                          {formatMoney(room.effectiveHourlyPrice)} <span className="text-muted-foreground">{t("perHour")}</span>
+                          <span className="text-muted-foreground"> · </span>
+                        </>
+                      )}
                       {formatMoney(room.effectivePrice)} <span className="text-muted-foreground">{t("perNight")}</span>
                     </span>
                   </Link>

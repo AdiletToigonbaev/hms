@@ -157,6 +157,15 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("discount_id");
 
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<decimal>("ExtensionsAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("extensions_amount");
+
                     b.Property<string>("GuestEmail")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)")
@@ -180,6 +189,18 @@ namespace Hms.Persistence.Migrations
                     b.Property<Guid>("HotelId")
                         .HasColumnType("uuid")
                         .HasColumnName("hotel_id");
+
+                    b.Property<int?>("Hours")
+                        .HasColumnType("integer")
+                        .HasColumnName("hours");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("Nightly")
+                        .HasColumnName("kind");
 
                     b.Property<string>("Number")
                         .IsRequired()
@@ -207,6 +228,10 @@ namespace Hms.Persistence.Migrations
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
                         .HasColumnName("source");
+
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -239,8 +264,8 @@ namespace Hms.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("ix_bookings_hotel_id_number");
 
-                    b.HasIndex("HotelId", "Status", "CheckIn")
-                        .HasDatabaseName("ix_bookings_hotel_id_status_check_in");
+                    b.HasIndex("HotelId", "Status", "StartsAt")
+                        .HasDatabaseName("ix_bookings_hotel_id_status_starts_at");
 
                     b.ToTable("bookings", "bookings", t =>
                         {
@@ -248,14 +273,73 @@ namespace Hms.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_bookings_amounts", "total_amount >= 0 AND discount_amount >= 0 AND discount_amount <= accommodation_amount");
 
-                            t.HasCheckConstraint("ck_bookings_dates", "check_out > check_in");
+                            t.HasCheckConstraint("ck_bookings_dates", "check_out >= check_in AND ends_at > starts_at");
+
+                            t.HasCheckConstraint("ck_bookings_hours", "hours IS NULL OR hours BETWEEN 1 AND 24");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingExtension", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTimeOffset>("NewEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("new_ends_at");
+
+                    b.Property<DateTimeOffset>("PreviousEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("previous_ends_at");
+
+                    b.Property<string>("PriceSnapshot")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("price_snapshot");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("unit");
+
+                    b.HasKey("Id")
+                        .HasName("pk_booking_extensions");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_booking_extensions_booking_id");
+
+                    b.ToTable("booking_extensions", "bookings", t =>
+                        {
+                            t.HasCheckConstraint("ck_booking_extensions_qty", "quantity > 0 AND amount >= 0 AND new_ends_at > previous_ends_at");
                         });
                 });
 
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingHistoryEntry", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -302,9 +386,12 @@ namespace Hms.Persistence.Migrations
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingRoom", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("BlockedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("blocked_until");
 
                     b.Property<Guid>("BookingId")
                         .HasColumnType("uuid")
@@ -318,6 +405,10 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("check_out");
 
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
                     b.Property<bool>("IsBlocking")
                         .HasColumnType("boolean")
                         .HasColumnName("is_blocking");
@@ -330,6 +421,10 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("room_type_id");
 
+                    b.Property<DateTimeOffset>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
                     b.HasKey("Id")
                         .HasName("pk_booking_rooms");
 
@@ -339,13 +434,15 @@ namespace Hms.Persistence.Migrations
                     b.HasIndex("RoomId", "CheckIn")
                         .HasDatabaseName("ix_booking_rooms_room_id_check_in");
 
+                    b.HasIndex("RoomId", "StartsAt")
+                        .HasDatabaseName("ix_booking_rooms_room_id_starts_at");
+
                     b.ToTable("booking_rooms", "bookings");
                 });
 
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingServiceLine", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -488,6 +585,18 @@ namespace Hms.Persistence.Migrations
                     b.Property<TimeOnly>("CheckOutTime")
                         .HasColumnType("time without time zone")
                         .HasColumnName("check_out_time");
+
+                    b.Property<int>("CleaningBufferMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("cleaning_buffer_minutes");
+
+                    b.Property<int>("HourlyMaxHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("hourly_max_hours");
+
+                    b.Property<int>("HourlyMinHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("hourly_min_hours");
 
                     b.Property<string>("Locale")
                         .IsRequired()
@@ -926,6 +1035,10 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<int>("MinHours")
+                        .HasColumnType("integer")
+                        .HasColumnName("min_hours");
+
                     b.Property<int>("MinNights")
                         .HasColumnType("integer")
                         .HasColumnName("min_nights");
@@ -969,6 +1082,8 @@ namespace Hms.Persistence.Migrations
 
                     b.ToTable("discounts", "pricing", t =>
                         {
+                            t.HasCheckConstraint("ck_discounts_min_hours", "min_hours BETWEEN 0 AND 24");
+
                             t.HasCheckConstraint("ck_discounts_value", "value > 0");
                         });
                 });
@@ -1082,6 +1197,14 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("room_type_id");
 
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("Night")
+                        .HasColumnName("unit");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1180,6 +1303,11 @@ namespace Hms.Persistence.Migrations
                     b.Property<Guid>("HotelId")
                         .HasColumnType("uuid")
                         .HasColumnName("hotel_id");
+
+                    b.Property<decimal?>("HourlyPriceOverride")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("hourly_price_override");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean")
@@ -1368,6 +1496,11 @@ namespace Hms.Persistence.Migrations
                     b.Property<Guid>("HotelId")
                         .HasColumnType("uuid")
                         .HasColumnName("hotel_id");
+
+                    b.Property<decimal?>("HourlyPrice")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("hourly_price");
 
                     b.Property<bool>("IsArchived")
                         .HasColumnType("boolean")
@@ -1753,6 +1886,16 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("user_tokens", "identity");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingExtension", b =>
+                {
+                    b.HasOne("Hms.Modules.Bookings.Domain.Booking", null)
+                        .WithMany("Extensions")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_booking_extensions_bookings_booking_id");
+                });
+
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingHistoryEntry", b =>
                 {
                     b.HasOne("Hms.Modules.Bookings.Domain.Booking", null)
@@ -1817,7 +1960,39 @@ namespace Hms.Persistence.Migrations
                                 .HasConstraintName("fk_hotel_settings_hotel_settings_hotel_id");
                         });
 
+                    b.OwnsOne("Hms.Modules.Hotel.Domain.HourlyPolicy", "HourlyPolicy", b1 =>
+                        {
+                            b1.Property<Guid>("HotelSettingsHotelId");
+
+                            b1.Property<int>("FreeCancelMinutesBeforeStart");
+
+                            b1.Property<int>("LateCancelPenaltyHours");
+
+                            b1.Property<int>("NoShowAfterMinutes");
+
+                            b1.Property<int>("NoShowPenaltyHours");
+
+                            b1.Property<int>("PendingHoldMinutes");
+
+                            b1.Property<bool>("RefundUnusedOnEarlyDeparture");
+
+                            b1.HasKey("HotelSettingsHotelId");
+
+                            b1.ToTable("hotel_settings", "hotel");
+
+                            b1
+                                .ToJson("hourly_policy")
+                                .HasColumnType("jsonb");
+
+                            b1.WithOwner()
+                                .HasForeignKey("HotelSettingsHotelId")
+                                .HasConstraintName("fk_hotel_settings_hotel_settings_hotel_id");
+                        });
+
                     b.Navigation("CancellationPolicy")
+                        .IsRequired();
+
+                    b.Navigation("HourlyPolicy")
                         .IsRequired();
                 });
 
@@ -1993,6 +2168,8 @@ namespace Hms.Persistence.Migrations
 
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.Booking", b =>
                 {
+                    b.Navigation("Extensions");
+
                     b.Navigation("History");
 
                     b.Navigation("Rooms");

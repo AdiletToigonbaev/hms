@@ -55,8 +55,17 @@ export function RoomTypeForm({ type }: { type?: RoomType }) {
           ))}
         </SelectField>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Field name="basePrice" inputMode="decimal" label={t("basePrice")} required defaultValue={v.basePrice ?? type?.basePrice} error={e.basePrice} className="tabular" />
+        <Field
+          name="hourlyPrice"
+          inputMode="decimal"
+          label={t("hourlyPrice")}
+          hint={t("hourlyPriceHint")}
+          defaultValue={v.hourlyPrice ?? type?.hourlyPrice ?? ""}
+          error={e.hourlyPrice}
+          className="tabular"
+        />
         <Field name="sortOrder" type="number" min={0} max={1000} label={t("sortOrder")} defaultValue={v.sortOrder ?? type?.sortOrder ?? 0} error={e.sortOrder} />
       </div>
       <div className="grid gap-1.5">
@@ -150,6 +159,14 @@ export function RoomForm({ room, types }: { room?: Room; types: RoomType[] }) {
         <p className="-mt-2 text-xs text-muted-foreground">{t("overridesHint")}</p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field name="priceOverride" inputMode="decimal" label={t("priceOverride")} defaultValue={v.priceOverride ?? room?.priceOverride ?? ""} error={e.priceOverride} className="tabular" />
+          <Field
+            name="hourlyPriceOverride"
+            inputMode="decimal"
+            label={t("hourlyPriceOverride")}
+            defaultValue={v.hourlyPriceOverride ?? room?.hourlyPriceOverride ?? ""}
+            error={e.hourlyPriceOverride}
+            className="tabular"
+          />
           <Field name="capacity" type="number" min={1} max={20} label={t("capacity")} defaultValue={v.capacity ?? room?.capacity ?? ""} error={e.capacity} />
           <Field name="bedsCount" type="number" min={1} max={20} label={t("bedsCount")} defaultValue={v.bedsCount ?? room?.bedsCount ?? ""} error={e.bedsCount} />
           <SelectField name="bedType" label={t("bedType")} defaultValue={v.bedType ?? room?.bedType ?? ""} key={v.bedType ?? room?.bedType ?? ""} error={e.bedType}>

@@ -29,6 +29,14 @@ export const optionalMoney = (message: string) =>
     .transform((v) => (v === "" ? undefined : v))
     .pipe(money(message).optional());
 
+/** Цена часа: поле может отсутствовать в форме; пусто — null (по часам не продаётся). */
+const optionalHourly = z
+  .string()
+  .optional()
+  .transform((v) => v ?? "")
+  .pipe(optionalMoney("Цена часа — больше нуля, не более двух знаков после запятой."))
+  .transform((v) => v ?? null);
+
 const optionalText = (max: number) =>
   z
     .string()
@@ -44,6 +52,7 @@ export const roomTypeSchema = z.object({
   bedsCount: z.coerce.number({ error: "Кроватей — от 1 до 20." }).int().min(1, "Кроватей — от 1 до 20.").max(20, "Кроватей — от 1 до 20."),
   bedType,
   basePrice: money("Цена — больше нуля, не более двух знаков после запятой."),
+  hourlyPrice: optionalHourly,
   sortOrder: z.coerce.number().int().min(0).max(1000).default(0),
 });
 
@@ -63,6 +72,7 @@ export const roomSchema = z.object({
     .transform((v) => (v === "" ? undefined : v))
     .pipe(bedType.optional()),
   priceOverride: optionalMoney("Цена — больше нуля, не более двух знаков после запятой."),
+  hourlyPriceOverride: optionalHourly,
   description: optionalText(2000),
 });
 

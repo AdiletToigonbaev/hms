@@ -95,6 +95,11 @@ public sealed class RoomType
     /// <summary>Базовая цена за ночь, KGS (numeric(14,2)).</summary>
     public decimal BasePrice { get; private set; }
 
+    /// <summary>Цена за час для почасовых броней; null — категория по часам не продаётся.</summary>
+    public decimal? HourlyPrice { get; private set; }
+
+    public void SetHourlyPrice(Money? price) => HourlyPrice = price?.Amount;
+
     public int SortOrder { get; private set; }
 
     public bool IsArchived { get; private set; }
@@ -202,6 +207,11 @@ public sealed class Room
 
     /// <summary>Цена за ночь этого номера вместо базовой цены категории (RATE-1).</summary>
     public decimal? PriceOverride { get; private set; }
+
+    /// <summary>Цена за час этого номера вместо цены часа категории.</summary>
+    public decimal? HourlyPriceOverride { get; private set; }
+
+    public void SetHourlyPriceOverride(Money? price) => HourlyPriceOverride = price?.Amount;
 
     public string? Description { get; private set; }
 

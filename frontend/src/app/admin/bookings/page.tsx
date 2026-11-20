@@ -14,8 +14,9 @@ import { api } from "@/lib/api/server";
 import type { BookingListItem, Paged } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { hotelTimeZone } from "@/i18n/config";
-import { bookingStatusLabel, bookingStatuses, hotelToday, nightsLabel } from "@/lib/bookings/status";
-import { formatMoney, formatStayDate } from "@/lib/format";
+import { addDays, bookingStatusLabel, bookingStatuses, hotelToday, nightsLabel } from "@/lib/bookings/status";
+import { cn } from "@/lib/utils";
+import { formatHotelTime, formatMoney, formatStayDate } from "@/lib/format";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Bookings"))("title") };
@@ -27,8 +28,12 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
   const params = await searchParams;
   const search = typeof params.search === "string" ? params.search.slice(0, 100) : "";
   const status = typeof params.status === "string" && (bookingStatuses as string[]).includes(params.status) ? params.status : "";
-  const from = typeof params.from === "string" && isoDate.test(params.from) ? params.from : "";
-  const to = typeof params.to === "string" && isoDate.test(params.to) ? params.to : "";
+  const today = hotelToday(hotelTimeZone);
+  // Без параметров — брони на сегодня: в почасовой гостинице это основной рабочий вид.
+  const defaultToday = Object.keys(params).length === 0;
+  const from = typeof params.from === "string" && isoDate.test(params.from) ? params.from : defaultToday ? today : "";
+  const to = typeof params.to === "string" && isoDate.test(params.to) ? params.to : defaultToday ? today : "";
+  const kind = params.kind === "Hourly" || params.kind === "Nightly" ? params.kind : "";
   const page = Math.max(1, Number(params.page) || 1);
 
   const query = new URLSearchParams({ page: String(page), pageSize: "25" });
@@ -36,7 +41,14 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
   if (status) query.set("status", status);
   if (from) query.set("from", from);
   if (to) query.set("to", to);
-  const filtered = Boolean(search || status || from || to);
+  if (kind) query.set("kind", kind);
+  const filtered = Boolean(search || status || from || to || kind);
+  const tomorrow = addDays(today, 1);
+  const presets = [
+    { label: "presetToday" as const, href: `/admin/bookings?from=${today}&to=${today}`, active: from === today && to === today },
+    { label: "presetTomorrow" as const, href: `/admin/bookings?from=${tomorrow}&to=${tomorrow}`, active: from === tomorrow && to === tomorrow },
+    { label: "presetAll" as const, href: "/admin/bookings?all=1", active: !from && !to },
+  ];
 
   const [t, errors, user, result] = await Promise.all([
     getTranslations("Bookings"),
@@ -68,7 +80,24 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
         }
       />
 
+      <nav aria-label={t("period")} className="flex flex-wrap gap-1.5">
+        {presets.map((p) => (
+          <Link
+            key={p.label}
+            href={p.href}
+            aria-current={p.active ? "page" : undefined}
+            className={cn(
+              "rounded-full border px-3 py-1 text-sm font-medium transition",
+              p.active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card hover:border-primary/40 hover:text-primary",
+            )}
+          >
+            {t(p.label)}
+          </Link>
+        ))}
+      </nav>
+
       <form method="get" className="flex flex-wrap items-end gap-2" role="search">
+        <input type="hidden" name="all" value="1" />
         <Input name="search" defaultValue={search} placeholder={t("searchPlaceholder")} aria-label={t("search")} className="w-full sm:max-w-xs" />
         <NativeSelect name="status" defaultValue={status} aria-label={t("colStatus")} className="w-auto">
           <option value="">{t("allStatuses")}</option>
@@ -78,6 +107,11 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
             </option>
           ))}
         </NativeSelect>
+        <NativeSelect name="kind" defaultValue={kind} aria-label={t("kind")} className="w-auto">
+          <option value="">{t("allKinds")}</option>
+          <option value="Hourly">{t("kindHourly")}</option>
+          <option value="Nightly">{t("kindNightly")}</option>
+        </NativeSelect>
         <DateRangePicker
           key={`${from}-${to}`}
           mode="period"
@@ -86,7 +120,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
           endName="to"
           defaultStart={from || null}
           defaultEnd={to || null}
-          today={hotelToday(hotelTimeZone)}
+          today={today}
           startLabel={t("from")}
           endLabel={t("to")}
           className="w-full sm:w-60"
@@ -144,8 +178,19 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
                       </div>
                     </TableCell>
                     <TableCell className="tabular whitespace-nowrap">
-                      {formatStayDate(b.checkIn)} — {formatStayDate(b.checkOut)}
-                      <span className="block text-xs text-muted-foreground">{nightsLabel(b.nights)}</span>
+                      {b.kind === "Hourly" ? (
+                        <>
+                          {formatStayDate(b.checkIn)}, {formatHotelTime(b.startsAt)}–{formatHotelTime(b.endsAt)}
+                          <span className="block text-xs text-muted-foreground">
+                            {t("hoursShort", { n: b.hours ?? 0 })}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          {formatStayDate(b.checkIn)} — {formatStayDate(b.checkOut)}
+                          <span className="block text-xs text-muted-foreground">{nightsLabel(b.nights)}</span>
+                        </>
+                      )}
                     </TableCell>
                     <TableCell>
                       <span className="font-medium">{b.roomNumber}</span>

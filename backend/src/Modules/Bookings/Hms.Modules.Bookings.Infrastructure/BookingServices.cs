@@ -16,23 +16,21 @@ using Microsoft.EntityFrameworkCore;
 namespace Hms.Modules.Bookings.Infrastructure;
 
 /// <summary>Подбор свободных номеров и расчёт стоимости (BOOK-2, BOOK-4). Только на backend.</summary>
-internal sealed class AvailabilityService(DbContext db, IRoomDirectory rooms, IPriceCalculator prices, IHotelClock clock) : IAvailabilityService
+internal sealed class AvailabilityService(IRoomDirectory rooms, Stays stays) : IAvailabilityService
 {
     public async Task<Result<IReadOnlyList<AvailableRoomDto>>> FindRoomsAsync(AvailabilityQuery q, CancellationToken ct)
     {
-        if (q.CheckIn < clock.Today)
+        var stay = await stays.ResolveAsync(q, ct);
+        if (stay.IsFailure)
         {
-            return BookingErrors.PastDates;
+            return stay.Error;
         }
 
-        var stay = new DateRange(q.CheckIn, q.CheckOut);
-        var guests = (q.Adults ?? 1) + (q.Children ?? 0);
-        var free = await FreeRoomsAsync(stay, guests, q.RoomTypeId, ct);
-
+        var free = await FreeRoomsAsync(stay.Value, (q.Adults ?? 1) + (q.Children ?? 0), q.RoomTypeId, ct);
         var result = new List<AvailableRoomDto>(free.Count);
         foreach (var room in free)
         {
-            var quote = await prices.QuoteAsync(new PriceRequest(room.RoomTypeId, room.BasePrice, room.PriceOverride, stay, null, []), ct);
+            var quote = await stays.PriceAsync(room, stay.Value, null, [], ct);
             if (quote.IsSuccess)
             {
                 result.Add(new AvailableRoomDto(room.Id, room.Number, room.Floor, room.RoomTypeId, room.RoomTypeName, room.Capacity, quote.Value));
@@ -50,10 +48,15 @@ internal sealed class AvailabilityService(DbContext db, IRoomDirectory rooms, IP
             return found.Error;
         }
 
+        var hourly = q.IsHourly();
+        var nights = hourly ? 0 : q.CheckOut!.Value.DayNumber - q.CheckIn!.Value.DayNumber;
+        var units = hourly ? q.Hours!.Value : nights;
+
         // Сайту — только категории, количество и цена «от»: номера комнат и занятость конкретных номеров не раскрываются.
         return found.Value
             .GroupBy(r => (r.RoomTypeId, r.RoomTypeName))
-            .Select(g => new PublicAvailabilityDto(g.Key.RoomTypeId, g.Key.RoomTypeName, g.Max(r => r.Capacity), g.Count(), q.CheckOut.DayNumber - q.CheckIn.DayNumber, g.Min(r => r.Quote.Total)))
+            .Select(g => new PublicAvailabilityDto(g.Key.RoomTypeId, g.Key.RoomTypeName, g.Max(r => r.Capacity), g.Count(), nights, g.Min(r => r.Quote.Total),
+                hourly ? StayKinds.Hourly : StayKinds.Nightly, units))
             .OrderBy(t => t.TotalFrom)
             .ToList();
     }
@@ -71,38 +74,39 @@ internal sealed class AvailabilityService(DbContext db, IRoomDirectory rooms, IP
             return BookingErrors.CapacityExceeded(room.Capacity);
         }
 
-        return await prices.QuoteAsync(
-            new PriceRequest(room.RoomTypeId, room.BasePrice, room.PriceOverride, new DateRange(r.CheckIn, r.CheckOut), r.PromoCode, r.Services ?? []), ct);
+        if (r.IsHourly() && !room.SellsHourly)
+        {
+            return BookingErrors.RoomNotHourly;
+        }
+
+        var stay = await stays.ResolveAsync(r, ct);
+        return stay.IsFailure ? stay.Error : await stays.PriceAsync(room, stay.Value, r.PromoCode, r.Services ?? [], ct);
     }
 
     public async Task<Result<PriceQuote>> QuotePublicAsync(PublicQuoteRequest r, CancellationToken ct)
     {
-        if (r.CheckIn < clock.Today)
+        var stay = await stays.ResolveAsync(r, ct);
+        if (stay.IsFailure)
         {
-            return BookingErrors.PastDates;
+            return stay.Error;
         }
 
-        var stay = new DateRange(r.CheckIn, r.CheckOut);
-        var free = await FreeRoomsAsync(stay, r.Adults + r.Children, r.RoomTypeId, ct);
-        var cheapest = free.OrderBy(x => x.PriceOverride ?? x.BasePrice).FirstOrDefault();
-        if (cheapest is null)
-        {
-            return BookingErrors.RoomTypeUnavailable;
-        }
-
-        return await prices.QuoteAsync(new PriceRequest(cheapest.RoomTypeId, cheapest.BasePrice, cheapest.PriceOverride, stay, r.PromoCode, r.Services ?? []), ct);
+        var free = await FreeRoomsAsync(stay.Value, r.Adults + r.Children, r.RoomTypeId, ct);
+        var cheapest = free
+            .OrderBy(x => r.IsHourly() ? x.HourlyPriceOverride ?? x.HourlyBasePrice : x.PriceOverride ?? x.BasePrice)
+            .FirstOrDefault();
+        return cheapest is null
+            ? BookingErrors.RoomTypeUnavailable
+            : await stays.PriceAsync(cheapest, stay.Value, r.PromoCode, r.Services ?? [], ct);
     }
 
-    /// <summary>Номера в продаже, вмещающие гостей и не занятые блокирующими бронями на даты [CheckIn, CheckOut).</summary>
-    internal async Task<List<RoomInfo>> FreeRoomsAsync(DateRange stay, int guests, Guid? roomTypeId, CancellationToken ct)
+    /// <summary>Номера в продаже (для часов — с ценой часа), вмещающие гостей и не занятые на это время с учётом уборки.</summary>
+    private async Task<List<RoomInfo>> FreeRoomsAsync(StayPeriod stay, int guests, Guid? roomTypeId, CancellationToken ct)
     {
-        var candidates = (await rooms.ListSellableAsync(roomTypeId, ct)).Where(r => r.Capacity >= guests).ToList();
-        var ids = candidates.Select(r => r.Id).ToList();
-        var busy = (await db.Set<BookingRoom>().AsNoTracking()
-                .Where(b => b.IsBlocking && ids.Contains(b.RoomId) && b.CheckIn < stay.End && b.CheckOut > stay.Start)
-                .Select(b => b.RoomId)
-                .ToListAsync(ct))
-            .ToHashSet();
+        var candidates = (await rooms.ListSellableAsync(roomTypeId, ct))
+            .Where(r => r.Capacity >= guests && (stay.Kind == BookingKind.Nightly || r.SellsHourly))
+            .ToList();
+        var busy = await stays.BusyRoomsAsync(candidates.Select(r => r.Id).ToList(), stay, null, ct);
         return candidates.Where(r => !busy.Contains(r.Id)).ToList();
     }
 }
@@ -111,7 +115,7 @@ internal sealed class BookingService(
     DbContext db,
     IHotelContext hotel,
     IRoomDirectory rooms,
-    IPriceCalculator prices,
+    Stays stays,
     IUserDirectory users,
     ICurrentUser currentUser,
     IAuditTrail audit,
@@ -128,15 +132,22 @@ internal sealed class BookingService(
             query = query.Where(b => b.Status == status);
         }
 
-        // Пересечение с периодом [From, To]: бронь, у которой проживание затрагивает хотя бы один день периода.
+        if (!string.IsNullOrWhiteSpace(q.Kind) && Enum.TryParse<BookingKind>(q.Kind, ignoreCase: true, out var kind))
+        {
+            query = query.Where(b => b.Kind == kind);
+        }
+
+        // Пересечение с периодом [From, To]: бронь, проживание которой затрагивает хотя бы один день периода.
         if (q.From is { } from)
         {
-            query = query.Where(b => b.CheckOut > from);
+            var fromUtc = clock.ToUtc(from, TimeOnly.MinValue);
+            query = query.Where(b => b.EndsAt > fromUtc);
         }
 
         if (q.To is { } to)
         {
-            query = query.Where(b => b.CheckIn <= to);
+            var toUtc = clock.ToUtc(to.AddDays(1), TimeOnly.MinValue);
+            query = query.Where(b => b.StartsAt < toUtc);
         }
 
         if (q.RoomId is { } roomId)
@@ -155,7 +166,7 @@ internal sealed class BookingService(
 
         var total = await query.CountAsync(ct);
         var items = await query
-            .OrderBy(b => b.CheckIn).ThenBy(b => b.Number)
+            .OrderBy(b => b.StartsAt).ThenBy(b => b.Number)
             .Skip(page.Skip).Take(page.PageSize)
             .Select(b => new { Booking = b, RoomId = b.Rooms.Select(r => r.RoomId).First() })
             .ToListAsync(ct);
@@ -166,8 +177,9 @@ internal sealed class BookingService(
             {
                 var b = i.Booking;
                 var room = roomInfo.GetValueOrDefault(i.RoomId);
-                return new BookingListItemDto(b.Id, b.Number, b.Status.ToString(), b.CheckIn, b.CheckOut, b.CheckOut.DayNumber - b.CheckIn.DayNumber,
-                    b.GuestName, b.GuestPhone, room?.Number ?? "—", room?.RoomTypeName ?? "—", b.TotalAmount, b.CreatedAt);
+                return new BookingListItemDto(b.Id, b.Number, b.Status.ToString(), b.CheckIn, b.CheckOut, b.Nights,
+                    b.GuestName, b.GuestPhone, room?.Number ?? "—", room?.RoomTypeName ?? "—", b.TotalAmount, b.CreatedAt,
+                    b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours);
             }).ToList(),
             page.Page,
             page.PageSize,
@@ -180,13 +192,10 @@ internal sealed class BookingService(
         return booking is null ? BookingErrors.NotFound : await ToDtoAsync(booking, ct);
     }
 
-    public async Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, CancellationToken ct)
-    {
-        if (r.CheckIn < clock.Today)
-        {
-            return BookingErrors.PastDates;
-        }
+    public Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, CancellationToken ct) => CreateAsync(r, retryOnDeadlock: true, ct);
 
+    private async Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, bool retryOnDeadlock, CancellationToken ct)
+    {
         var room = await rooms.GetAsync(r.RoomId, ct);
         if (room is null)
         {
@@ -198,20 +207,31 @@ internal sealed class BookingService(
             return BookingErrors.RoomNotSellable;
         }
 
+        if (r.IsHourly() && !room.SellsHourly)
+        {
+            return BookingErrors.RoomNotHourly;
+        }
+
         if (r.Adults + r.Children > room.Capacity)
         {
             return BookingErrors.CapacityExceeded(room.Capacity);
         }
 
-        var stay = new DateRange(r.CheckIn, r.CheckOut);
+        var resolved = await stays.ResolveAsync(r, ct);
+        if (resolved.IsFailure)
+        {
+            return resolved.Error;
+        }
+
+        var stay = resolved.Value;
 
         // Быстрая проверка для понятной ошибки; гарантию против гонок даёт ограничение EXCLUDE в БД.
-        if (await db.Set<BookingRoom>().AnyAsync(b => b.RoomId == room.Id && b.IsBlocking && b.CheckIn < stay.End && b.CheckOut > stay.Start, ct))
+        if ((await stays.BusyRoomsAsync([room.Id], stay, null, ct)).Count > 0)
         {
             return BookingErrors.RoomUnavailable;
         }
 
-        var quote = await prices.QuoteAsync(new PriceRequest(room.RoomTypeId, room.BasePrice, room.PriceOverride, stay, r.PromoCode, r.Services ?? []), ct);
+        var quote = await stays.PriceAsync(room, stay, r.PromoCode, r.Services ?? [], ct);
         if (quote.IsFailure)
         {
             return quote.Error;
@@ -238,17 +258,29 @@ internal sealed class BookingService(
             new GuestContact(r.GuestName, phone, email), r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now);
         db.Set<Booking>().Add(booking);
         audit.Record(new AuditEntry("booking.created", "Booking", booking.Id.ToString(),
-            After: new { booking.Number, Status = booking.Status.ToString(), room = room.Number, stay.Start, stay.End, booking.TotalAmount }));
+            After: new { booking.Number, Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), room = room.Number, stay.StartsAt, stay.EndsAt, booking.TotalAmount }));
 
         try
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is DbException { SqlState: "23P01" })
+        catch (Exception ex) when (SqlState(ex) == ExclusionViolation)
         {
-            // Параллельный запрос успел занять номер на пересекающиеся даты.
+            // Параллельный запрос успел занять номер на пересекающееся время.
             db.ChangeTracker.Clear();
             return BookingErrors.RoomUnavailable;
+        }
+        catch (Exception ex) when (SqlState(ex) == DeadlockDetected)
+        {
+            // Одновременные вставки пересекающихся броней: PostgreSQL прерывает одну из ждущих друг друга транзакций.
+            // Номер, скорее всего, занят победившей бронью; если нет (она тоже откатилась) — повторяем один раз.
+            db.ChangeTracker.Clear();
+            if (!retryOnDeadlock || (await stays.BusyRoomsAsync([room.Id], stay, null, ct)).Count > 0)
+            {
+                return BookingErrors.RoomUnavailable;
+            }
+
+            return await CreateAsync(r, retryOnDeadlock: false, ct);
         }
 
         return await ToDtoAsync(booking, ct);
@@ -316,6 +348,77 @@ internal sealed class BookingService(
         return await SaveAsync(booking, ct);
     }
 
+    public async Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: false, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        var plan = await PlanExtensionAsync(booking, units, ct);
+        if (plan.IsFailure)
+        {
+            return plan.Error;
+        }
+
+        var p = plan.Value;
+        return new ExtensionQuoteDto(booking.Kind.ToString(), units, stays.Format(p.Stay.EndsAt), p.Price.Total, p.Price, p.MaxUnits,
+            p.NextStart is { } next ? stays.Format(next) : null);
+    }
+
+    public async Task<Result<BookingDto>> ExtendAsync(Guid id, ExtendBookingRequest r, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: true, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        if (r.Version is { } version)
+        {
+            db.Entry(booking).Property(b => b.Version).OriginalValue = version;
+        }
+
+        var plan = await PlanExtensionAsync(booking, r.Units, ct);
+        if (plan.IsFailure)
+        {
+            return plan.Error;
+        }
+
+        var p = plan.Value;
+        var result = booking.Extend(p.Stay, r.Units, p.Price.Total, JsonSerializer.Serialize(p.Price, JsonSerializerOptions.Web), currentUser.UserId, clock.UtcNow);
+        if (result.IsFailure)
+        {
+            return result.Error;
+        }
+
+        audit.Record(new AuditEntry("booking.extended", "Booking", id.ToString(),
+            After: new { booking.Number, Kind = booking.Kind.ToString(), r.Units, p.Stay.EndsAt, Amount = p.Price.Total }));
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return BookingErrors.ConcurrencyConflict;
+        }
+        catch (Exception ex) when (SqlState(ex) == ExclusionViolation)
+        {
+            db.ChangeTracker.Clear();
+            return BookingErrors.ExtensionConflict(stays.Format(p.Stay.EndsAt));
+        }
+        catch (Exception ex) when (SqlState(ex) == DeadlockDetected)
+        {
+            // Номер в этот момент бронируют параллельно — пусть пользователь обновит и повторит.
+            db.ChangeTracker.Clear();
+            return BookingErrors.ConcurrencyConflict;
+        }
+
+        return await ToDtoAsync(booking, ct);
+    }
+
     public async Task<Result<IReadOnlyList<BookingHistoryDto>>> GetHistoryAsync(Guid id, CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);
@@ -333,6 +436,96 @@ internal sealed class BookingService(
                 h.Id, h.EventType, Parse(h.OldValues), Parse(h.NewValues), h.ChangedBy,
                 h.ChangedBy is { } by && names.TryGetValue(by, out var name) ? name : null, h.ChangedAt, h.Comment))
             .ToList();
+    }
+
+    /// <summary>
+    /// План продления: новый период, цена добавленного времени (по текущим ценам, без скидки и услуг),
+    /// сколько максимум можно добавить до следующей брони. Ошибка — если номер дальше занят или нарушены правила.
+    /// </summary>
+    private async Task<Result<ExtensionPlan>> PlanExtensionAsync(Booking booking, int units, CancellationToken ct)
+    {
+        if (!BookingStatusMachine.CanExtend(booking.Status))
+        {
+            return Error.Conflict("booking.extend_not_allowed", "Продлить можно только подтверждённую бронь или бронь заселённого гостя.");
+        }
+
+        if (units < 1)
+        {
+            return Error.Validation("booking.extend_invalid", "Продление — минимум на 1.");
+        }
+
+        var settings = await stays.SettingsAsync(ct);
+        var line = booking.Rooms[0];
+        var room = await rooms.GetAsync(line.RoomId, ct);
+        if (room is null)
+        {
+            return BookingErrors.RoomNotFound;
+        }
+
+        StayPeriod extended;
+        StayPeriod added;
+        if (booking.Kind == BookingKind.Hourly)
+        {
+            if ((booking.Hours ?? 0) + units > settings.HourlyMaxHours)
+            {
+                return BookingErrors.ExtensionTooLong(settings.HourlyMaxHours);
+            }
+
+            if (!room.SellsHourly)
+            {
+                return BookingErrors.RoomNotHourly;
+            }
+
+            var start = stays.Local(booking.StartsAt);
+            extended = stays.Hourly(settings, start, (booking.Hours ?? 0) + units);
+            added = stays.Hourly(settings, stays.Local(booking.EndsAt), units);
+        }
+        else
+        {
+            if (booking.Nights + units > BookingErrors.MaxNights)
+            {
+                return Error.BusinessRule("booking.extension_too_long", $"Не более {BookingErrors.MaxNights} ночей в одной брони.");
+            }
+
+            var full = stays.Nightly(settings, booking.CheckIn, booking.CheckOut.AddDays(units));
+            extended = full with { StartsAt = booking.StartsAt };
+            added = stays.Nightly(settings, booking.CheckOut, booking.CheckOut.AddDays(units));
+        }
+
+        var nextStart = await stays.NextBookingStartAsync(line.RoomId, booking.Id, line.EndsAt, ct);
+        var buffer = extended.BlockedUntil - extended.EndsAt;
+        int? maxUnits = null;
+        if (nextStart is { } next)
+        {
+            var latestEnd = next - buffer;
+            maxUnits = booking.Kind == BookingKind.Hourly
+                ? (int)Math.Floor((latestEnd - line.EndsAt).TotalHours)
+                : CountNights(settings, booking.CheckOut, latestEnd);
+            if (extended.BlockedUntil > next)
+            {
+                return BookingErrors.ExtensionConflict(stays.Format(latestEnd));
+            }
+        }
+
+        var price = await stays.PriceAsync(room, added, null, [], ct);
+        if (price.IsFailure)
+        {
+            return price.Error;
+        }
+
+        return new ExtensionPlan(extended, price.Value, maxUnits is { } max ? Math.Max(0, max) : null, nextStart);
+    }
+
+    /// <summary>Сколько ночей можно добавить, чтобы выезд (в час выезда) не был позже <paramref name="latestEnd"/>.</summary>
+    private int CountNights(HotelSettingsSnapshot settings, DateOnly checkOut, DateTimeOffset latestEnd)
+    {
+        var nights = 0;
+        while (nights < BookingErrors.MaxExtendNights && clock.ToUtc(checkOut.AddDays(nights + 1), settings.CheckOutTime) <= latestEnd)
+        {
+            nights++;
+        }
+
+        return nights;
     }
 
     private async Task<Result<BookingDto>> SaveAsync(Booking booking, CancellationToken ct)
@@ -362,7 +555,9 @@ internal sealed class BookingService(
     private async Task<Booking?> LoadAsync(Guid id, bool tracking, CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);
-        var query = db.Set<Booking>().Include(b => b.Rooms).Include(b => b.Services).Where(b => b.Id == id && b.HotelId == hotelId);
+        var query = db.Set<Booking>()
+            .Include(b => b.Rooms).Include(b => b.Services).Include(b => b.Extensions)
+            .Where(b => b.Id == id && b.HotelId == hotelId);
         return await (tracking ? query : query.AsNoTracking()).FirstOrDefaultAsync(ct);
     }
 
@@ -376,20 +571,58 @@ internal sealed class BookingService(
             actions.Add("confirm");
         }
 
+        if (BookingStatusMachine.CanExtend(b.Status))
+        {
+            actions.Add("extend");
+        }
+
         if (BookingStatusMachine.CanTransition(b.Status, BookingStatus.Cancelled))
         {
             actions.Add("cancel");
         }
 
+        var authors = await users.GetNamesAsync(b.Extensions.Where(e => e.CreatedBy != null).Select(e => e.CreatedBy!.Value), ct);
+        var extensions = b.Extensions
+            .OrderBy(e => e.CreatedAt)
+            .Select(e => new BookingExtensionDto(e.Unit == BookingKind.Hourly ? "Hour" : "Night", e.Quantity, stays.Format(e.PreviousEndsAt), stays.Format(e.NewEndsAt),
+                e.Amount, e.CreatedBy is { } by && authors.TryGetValue(by, out var n) ? n : null, e.CreatedAt))
+            .ToList();
+
         return new BookingDto(
-            b.Id, b.Number, b.Status.ToString(), b.Source.ToString(), b.CheckIn, b.CheckOut, b.CheckOut.DayNumber - b.CheckIn.DayNumber,
+            b.Id, b.Number, b.Status.ToString(), b.Source.ToString(), b.CheckIn, b.CheckOut, b.Nights,
             b.Adults, b.Children, b.GuestName, b.GuestPhone, b.GuestEmail, b.Comment,
             new BookingRoomDto(line.RoomId, room?.Number ?? "—", line.RoomTypeId, room?.RoomTypeName ?? "—"),
             b.AccommodationAmount, b.DiscountAmount, b.ServicesAmount, b.TotalAmount, b.PromoCode,
             JsonSerializer.Deserialize<PriceQuote>(b.PriceSnapshot, JsonSerializerOptions.Web),
             b.Services.Select(s => new BookingServiceDto(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
-            actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version);
+            actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version,
+            b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions);
     }
 
     private static JsonElement? Parse(string? json) => json is null ? null : JsonDocument.Parse(json).RootElement.Clone();
+
+    /// <summary>SQLSTATE нарушения ограничения EXCLUDE (пересечение броней).</summary>
+    private const string ExclusionViolation = "23P01";
+
+    /// <summary>SQLSTATE взаимной блокировки транзакций PostgreSQL.</summary>
+    private const string DeadlockDetected = "40P01";
+
+    /// <summary>
+    /// Код ошибки PostgreSQL в цепочке исключений: EF оборачивает его в DbUpdateException,
+    /// а при исчерпании автоповторов (временные сбои, deadlock) — ещё и в InvalidOperationException.
+    /// </summary>
+    private static string? SqlState(Exception? ex)
+    {
+        for (; ex is not null; ex = ex.InnerException)
+        {
+            if (ex is DbException { SqlState: { } state })
+            {
+                return state;
+            }
+        }
+
+        return null;
+    }
+
+    private sealed record ExtensionPlan(StayPeriod Stay, PriceQuote Price, int? MaxUnits, DateTimeOffset? NextStart);
 }

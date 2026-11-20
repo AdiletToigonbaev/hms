@@ -16,6 +16,14 @@ const SETTINGS_FIELDS = [
   "prepaymentPercent",
   "paymentHoldMinutes",
   "pendingHoldHours",
+  "hourlyMinHours",
+  "hourlyMaxHours",
+  "cleaningBufferMinutes",
+  "hourlyFreeCancelMinutes",
+  "hourlyLateCancelPenaltyHours",
+  "hourlyNoShowAfterMinutes",
+  "hourlyNoShowPenaltyHours",
+  "hourlyPendingHoldMinutes",
   "freeCancelHoursBeforeCheckIn",
   "lateCancelPenaltyNights",
   "noShowPenaltyNights",
@@ -68,13 +76,21 @@ const settingsSchema = z.object({
   prepaymentPercent: int(0, 100, "Предоплата — от 0 до 100%."),
   paymentHoldMinutes: int(5, 1440, "От 5 минут до 24 часов."),
   pendingHoldHours: int(1, 168, "От 1 часа до 7 дней."),
+  hourlyMinHours: int(1, 24, "Минимум часов — от 1 до 24."),
+  hourlyMaxHours: int(1, 24, "Максимум часов — от 1 до 24."),
+  cleaningBufferMinutes: int(0, 240, "Уборка — от 0 до 240 минут."),
+  hourlyFreeCancelMinutes: int(0, 10080, "От 0 минут до 7 дней."),
+  hourlyLateCancelPenaltyHours: int(0, 24, "От 0 до 24 часов."),
+  hourlyNoShowAfterMinutes: int(5, 720, "От 5 минут до 12 часов."),
+  hourlyNoShowPenaltyHours: int(0, 24, "От 0 до 24 часов."),
+  hourlyPendingHoldMinutes: int(5, 1440, "От 5 минут до 24 часов."),
   freeCancelHoursBeforeCheckIn: int(0, 720, "От 0 до 720 часов."),
   lateCancelPenaltyNights: int(0, 30, "От 0 до 30 ночей."),
   noShowPenaltyNights: int(0, 30, "От 0 до 30 ночей."),
   earlyDeparturePenaltyNights: int(0, 30, "От 0 до 30 ночей."),
   rules: text(5000),
   version: z.coerce.number().int(),
-});
+}).refine((v) => v.hourlyMaxHours >= v.hourlyMinHours, { path: ["hourlyMaxHours"], message: "Максимум часов не меньше минимума." });
 
 export async function saveSettingsAction(_: FormState, form: FormData): Promise<FormState> {
   const parsed = settingsSchema.safeParse(Object.fromEntries(form));
@@ -87,6 +103,9 @@ export async function saveSettingsAction(_: FormState, form: FormData): Promise<
     prepaymentPercent: s.prepaymentPercent,
     paymentHoldMinutes: s.paymentHoldMinutes,
     pendingHoldHours: s.pendingHoldHours,
+    hourlyMinHours: s.hourlyMinHours,
+    hourlyMaxHours: s.hourlyMaxHours,
+    cleaningBufferMinutes: s.cleaningBufferMinutes,
     autoConfirmWebBookings: checkbox(form, "autoConfirmWebBookings"),
     autoReleaseRoomAfterCleaning: checkbox(form, "autoReleaseRoomAfterCleaning"),
     requireEmailConfirmation: checkbox(form, "requireEmailConfirmation"),
@@ -98,6 +117,14 @@ export async function saveSettingsAction(_: FormState, form: FormData): Promise<
     },
     rules: s.rules,
     version: s.version,
+    hourlyPolicy: {
+      freeCancelMinutesBeforeStart: s.hourlyFreeCancelMinutes,
+      lateCancelPenaltyHours: s.hourlyLateCancelPenaltyHours,
+      noShowAfterMinutes: s.hourlyNoShowAfterMinutes,
+      noShowPenaltyHours: s.hourlyNoShowPenaltyHours,
+      pendingHoldMinutes: s.hourlyPendingHoldMinutes,
+      refundUnusedOnEarlyDeparture: checkbox(form, "hourlyRefundUnused"),
+    },
   };
   const result = await api("/hotel/settings", { method: "PUT", body });
   if (!result.ok) {

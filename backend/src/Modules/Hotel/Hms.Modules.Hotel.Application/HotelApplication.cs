@@ -22,6 +22,15 @@ public sealed record CancellationPolicyDto(
     int NoShowPenaltyNights,
     int EarlyDeparturePenaltyNights);
 
+/// <summary>Правила почасовых броней: отмена, неявка, удержание веб-брони, досрочный выезд.</summary>
+public sealed record HourlyPolicyDto(
+    int FreeCancelMinutesBeforeStart,
+    int LateCancelPenaltyHours,
+    int NoShowAfterMinutes,
+    int NoShowPenaltyHours,
+    int PendingHoldMinutes,
+    bool RefundUnusedOnEarlyDeparture);
+
 /// <param name="CheckInTime">Время заезда, «HH:mm».</param>
 public sealed record HotelSettingsDto(
     string CheckInTime,
@@ -34,9 +43,13 @@ public sealed record HotelSettingsDto(
     bool AutoReleaseRoomAfterCleaning,
     bool RequireEmailConfirmation,
     string NoShowCutoffTime,
+    int HourlyMinHours,
+    int HourlyMaxHours,
+    int CleaningBufferMinutes,
     CancellationPolicyDto CancellationPolicy,
     string? Rules,
-    uint Version);
+    uint Version,
+    HourlyPolicyDto HourlyPolicy);
 
 public sealed record UpdateHotelSettingsRequest(
     string CheckInTime,
@@ -48,9 +61,13 @@ public sealed record UpdateHotelSettingsRequest(
     bool AutoReleaseRoomAfterCleaning,
     bool RequireEmailConfirmation,
     string NoShowCutoffTime,
+    int HourlyMinHours,
+    int HourlyMaxHours,
+    int CleaningBufferMinutes,
     CancellationPolicyDto CancellationPolicy,
     string? Rules,
-    uint Version);
+    uint Version,
+    HourlyPolicyDto? HourlyPolicy = null);
 
 /// <summary>Публичные сведения для сайта (без внутренних настроек).</summary>
 public sealed record PublicHotelInfoDto(
@@ -62,7 +79,9 @@ public sealed record PublicHotelInfoDto(
     string CheckInTime,
     string CheckOutTime,
     string? Rules,
-    int FreeCancelHoursBeforeCheckIn);
+    int FreeCancelHoursBeforeCheckIn,
+    int HourlyMinHours = 2,
+    int HourlyMaxHours = 12);
 
 public sealed record IntegrationDto(
     string Provider,
@@ -145,6 +164,10 @@ public sealed class UpdateHotelSettingsRequestValidator : AbstractValidator<Upda
         RuleFor(x => x.PrepaymentPercent).InclusiveBetween(0, 100).WithMessage("Предоплата — от 0 до 100%.");
         RuleFor(x => x.PaymentHoldMinutes).InclusiveBetween(5, 1440).WithMessage("От 5 минут до 24 часов.");
         RuleFor(x => x.PendingHoldHours).InclusiveBetween(1, 168).WithMessage("От 1 часа до 7 дней.");
+        RuleFor(x => x.HourlyMinHours).InclusiveBetween(1, 24).WithMessage("Минимум часов — от 1 до 24.");
+        RuleFor(x => x.HourlyMaxHours).InclusiveBetween(1, 24).WithMessage("Максимум часов — от 1 до 24.")
+            .GreaterThanOrEqualTo(x => x.HourlyMinHours).WithMessage("Максимум часов не меньше минимума.");
+        RuleFor(x => x.CleaningBufferMinutes).InclusiveBetween(0, 240).WithMessage("Уборка — от 0 до 240 минут.");
         RuleFor(x => x.CancellationPolicy).NotNull();
         RuleFor(x => x.CancellationPolicy.FreeCancelHoursBeforeCheckIn).InclusiveBetween(0, 720).When(x => x.CancellationPolicy is not null)
             .WithMessage("От 0 до 720 часов.");
@@ -155,6 +178,14 @@ public sealed class UpdateHotelSettingsRequestValidator : AbstractValidator<Upda
         RuleFor(x => x.CancellationPolicy.EarlyDeparturePenaltyNights).InclusiveBetween(0, 30).When(x => x.CancellationPolicy is not null)
             .WithMessage("От 0 до 30 ночей.");
         RuleFor(x => x.Rules).MaximumLength(5000);
+        When(x => x.HourlyPolicy is not null, () =>
+        {
+            RuleFor(x => x.HourlyPolicy!.FreeCancelMinutesBeforeStart).InclusiveBetween(0, 10080).WithMessage("От 0 минут до 7 дней.");
+            RuleFor(x => x.HourlyPolicy!.LateCancelPenaltyHours).InclusiveBetween(0, 24).WithMessage("От 0 до 24 часов.");
+            RuleFor(x => x.HourlyPolicy!.NoShowAfterMinutes).InclusiveBetween(5, 720).WithMessage("От 5 минут до 12 часов.");
+            RuleFor(x => x.HourlyPolicy!.NoShowPenaltyHours).InclusiveBetween(0, 24).WithMessage("От 0 до 24 часов.");
+            RuleFor(x => x.HourlyPolicy!.PendingHoldMinutes).InclusiveBetween(5, 1440).WithMessage("От 5 минут до 24 часов.");
+        });
     }
 }
 

@@ -1,5 +1,6 @@
 using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Bookings.Domain;
+using Hms.Modules.Pricing.Contracts;
 using Hms.Modules.Pricing.Domain;
 using Hms.SharedKernel;
 
@@ -101,6 +102,41 @@ public class PricingCalculationTests
         discount.CheckApplicable(Stay(3, 3 + nights))?.Code.Should().Be(expectedError);
     }
 
+    [Fact]
+    public void Hourly_UsesHourRates_GroupsEqualHours_AndChargesServicesOnce()
+    {
+        // 2026-12-04 — пятница: вечерний тариф «за час» на пятницу, ночные тарифы на часы не влияют
+        var evening = Rate("Вечер пятницы", 4, 4, WeekDays.Friday, 700m, 1);
+        evening.SetUnit(RateUnit.Hour);
+        var nightly = Rate("Сезон", 1, 31, WeekDays.All, 9999m, 5);
+        var water = Service("Вода", 100m, perNight: true);
+
+        var quote = PriceCalculation.CalculateHourly(new DateTime(2026, 12, 3, 22, 0, 0), 4, 500m, null, [evening, nightly], null, [(water, 2)]);
+
+        // 22:00 и 23:00 четверга — цена часа; 00:00 и 01:00 пятницы — тариф
+        quote.Kind.Should().Be(PriceQuote.HourlyKind);
+        quote.Hours.Should().HaveCount(2);
+        quote.Hours![0].Should().BeEquivalentTo(new { Hours = 2, UnitPrice = 500m, Amount = 1000m, Source = PriceCalculation.HourPriceSource });
+        quote.Hours[1].Should().BeEquivalentTo(new { Hours = 2, UnitPrice = 700m, Amount = 1400m, Source = "Тариф «Вечер пятницы»" });
+        quote.AccommodationTotal.Should().Be(2400m);
+        quote.ServicesTotal.Should().Be(200m);
+        quote.Total.Should().Be(2600m);
+    }
+
+    [Fact]
+    public void Hourly_RoomOverride_BeatsTypePrice_AndPromoChecksMinHoursOnly()
+    {
+        var quote = PriceCalculation.CalculateHourly(new DateTime(2026, 12, 3, 10, 0, 0), 3, 500m, 650m, [], null, []);
+        quote.Total.Should().Be(1950m);
+        quote.Hours!.Single().Source.Should().Be(PriceCalculation.RoomHourPriceSource);
+
+        var discount = new Discount(Guid.NewGuid(), Now);
+        discount.Update("Длительное", "LONG", DiscountType.Percent, 10m, null, null, 3, Now);
+        discount.SetMinHours(4);
+        discount.CheckApplicableHourly(new DateOnly(2026, 12, 3), 3)!.Code.Should().Be("pricing.promo_min_hours");
+        discount.CheckApplicableHourly(new DateOnly(2026, 12, 3), 4).Should().BeNull("минимум ночей к почасовой брони не относится");
+    }
+
     private static ExtraService Service(string name, decimal price, bool perNight)
     {
         var s = new ExtraService(Guid.NewGuid(), Now);
@@ -113,8 +149,14 @@ public class BookingDomainTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
 
-    private static Booking NewBooking(bool confirm) => Booking.Create(
-        Guid.NewGuid(), "26-000001", BookingSource.Admin, new DateRange(new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 3)),
+    private static readonly DateTimeOffset Start = new(2026, 12, 1, 8, 0, 0, TimeSpan.Zero);
+
+    private static StayPeriod Hourly(int hours, int buffer = 30) =>
+        new(BookingKind.Hourly, new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 1), Start, Start.AddHours(hours), Start.AddHours(hours).AddMinutes(buffer), hours);
+
+    private static Booking NewBooking(bool confirm, StayPeriod? stay = null) => Booking.Create(
+        Guid.NewGuid(), "26-000001", BookingSource.Admin,
+        stay ?? new StayPeriod(BookingKind.Nightly, new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 3), Start, Start.AddDays(2), Start.AddDays(2), 2),
         2, 0, new GuestContact("Гость", "+996555123456", null), null, Guid.NewGuid(), Guid.NewGuid(),
         new BookingPrice(6000m, 0m, 0m, 6000m, null, null, [], "{}"), confirm, Guid.NewGuid(), Now);
 
@@ -171,5 +213,45 @@ public class BookingDomainTests
         booking.CancelReason.Should().Be("Гость передумал");
         booking.Confirm(null, Now).Error!.Code.Should().Be("booking.invalid_transition");
         booking.History.Select(h => h.EventType).Should().Equal("created", "status_changed");
+    }
+
+    [Fact]
+    public void Extend_Hourly_MovesEnd_AddsAmount_AndWritesHistory()
+    {
+        var booking = NewBooking(confirm: true, Hourly(2));
+
+        booking.Extend(Hourly(4), 2, 1000m, "{}", null, Now).IsSuccess.Should().BeTrue();
+
+        booking.Hours.Should().Be(4);
+        booking.EndsAt.Should().Be(Start.AddHours(4));
+        booking.Rooms[0].BlockedUntil.Should().Be(Start.AddHours(4).AddMinutes(30));
+        booking.ExtensionsAmount.Should().Be(1000m);
+        booking.TotalAmount.Should().Be(7000m);
+        booking.Extensions.Should().ContainSingle().Which.Should().BeEquivalentTo(new { Quantity = 2, Amount = 1000m, PreviousEndsAt = Start.AddHours(2) });
+        booking.History.Select(h => h.EventType).Should().Equal("created", "extended");
+    }
+
+    [Fact]
+    public void Extend_IsForbidden_ForPendingOrCancelled_AndMustMoveEndForward()
+    {
+        NewBooking(confirm: false, Hourly(2)).Extend(Hourly(3), 1, 500m, "{}", null, Now).Error!.Code.Should().Be("booking.extend_not_allowed");
+
+        var booking = NewBooking(confirm: true, Hourly(3));
+        booking.Extend(Hourly(2), 1, 500m, "{}", null, Now).Error!.Code.Should().Be("booking.extend_invalid");
+        booking.Cancel("Отмена", null, Now);
+        booking.Extend(Hourly(4), 1, 500m, "{}", null, Now).Error!.Code.Should().Be("booking.extend_not_allowed");
+    }
+
+    [Theory]
+    [InlineData(0, 2, false)]  // стык с учётом уборки: следующая бронь начинается в момент окончания уборки
+    [InlineData(-1, 2, true)]  // начало раньше окончания уборки — пересечение
+    [InlineData(-270, 1, false)] // бронь целиком раньше: 06:00–07:00 + уборка до 07:30, первая — с 08:00
+    public void StayPeriod_Overlap_CountsCleaningBuffer(int startOffsetMinutes, int hours, bool overlaps)
+    {
+        var first = Hourly(2);
+        var nextStart = first.BlockedUntil.AddMinutes(startOffsetMinutes);
+        var next = new StayPeriod(BookingKind.Hourly, first.CheckIn, first.CheckOut, nextStart, nextStart.AddHours(hours), nextStart.AddHours(hours).AddMinutes(30), hours);
+
+        first.Overlaps(next.StartsAt, next.BlockedUntil).Should().Be(overlaps);
     }
 }

@@ -45,20 +45,23 @@ test("владелец задаёт сезонный тариф, создаёт 
   const rate = page.locator("#rate-form");
   await rate.getByLabel("Название", { exact: true }).fill(`Сезон ${suffix}`);
   await rate.getByLabel("Категория", { exact: true }).selectOption({ label: typeName });
-  await rate.getByLabel("Первая ночь", { exact: true }).fill(checkIn);
-  await rate.getByLabel("Последняя ночь", { exact: true }).fill(checkIn);
-  await rate.getByLabel("Цена за ночь", { exact: true }).fill("4000");
+  await rate.getByLabel("С даты", { exact: true }).fill(checkIn);
+  await rate.getByLabel("По дату", { exact: true }).fill(checkIn);
+  await rate.getByLabel("Цена, сом", { exact: true }).fill("4000");
   await rate.getByRole("button", { name: "Добавить" }).click();
   await expect(page.getByRole("cell", { name: `Сезон ${suffix}`, exact: true })).toBeVisible();
 
   // Подбор номера: цена считается на backend — 4000 + 3000
   // Календарь: быстрая кнопка «Неделя» от выбранного заезда, затем нужные даты через адрес страницы
+  // По умолчанию — почасовая бронь; посуточная — на вкладке «По суткам»
   await page.goto("/admin/bookings/new");
+  await expect(page.getByRole("link", { name: "По часам", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", { name: "По суткам", exact: true }).click();
   await page.getByRole("button", { name: /^Заезд — Выезд/ }).click();
   await page.getByRole("button", { name: "Неделя", exact: true }).click();
   await page.getByRole("button", { name: "Готово", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Заезд — Выезд/ })).toContainText("7 ночей");
-  await page.goto(`/admin/bookings/new?checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
+  await page.goto(`/admin/bookings/new?kind=nightly&checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
   await expect(page.getByRole("button", { name: /^Заезд — Выезд/ })).toContainText("2 ночи");
   await page.getByLabel("Категория", { exact: true }).selectOption({ label: typeName });
   await page.getByRole("button", { name: "Найти номера" }).click();
@@ -77,7 +80,7 @@ test("владелец задаёт сезонный тариф, создаёт 
   const number = (await page.getByRole("heading", { level: 1 }).textContent())!.replace("Бронь", "").trim();
 
   // Тот же номер на те же даты больше не предлагается
-  await page.goto(`/admin/bookings/new?checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
+  await page.goto(`/admin/bookings/new?kind=nightly&checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
   await expect(page.getByRole("link", { name: `Выбрать: Номер ${suffix}`, exact: true })).toHaveCount(0);
 
   // Отмена: причина обязательна, номер освобождается, история пишется
@@ -97,6 +100,6 @@ test("владелец задаёт сезонный тариф, создаёт 
   await page.getByRole("alertdialog").getByRole("button", { name: "Да, отменить бронь" }).click();
   await expect(page.getByText("Статус изменён: Подтверждена → Отменена")).toBeVisible();
 
-  await page.goto(`/admin/bookings/new?checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
+  await page.goto(`/admin/bookings/new?kind=nightly&checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
   await expect(page.getByRole("link", { name: `Выбрать: Номер ${suffix}`, exact: true })).toBeVisible();
 });

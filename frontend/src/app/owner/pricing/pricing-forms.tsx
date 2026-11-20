@@ -47,10 +47,14 @@ export function RateForm({ rate, types }: { rate?: Rate; types: RoomType[] }) {
           ))}
         </SelectField>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <SelectField id="rate-unit" name="unit" label={t("unit")} defaultValue={v.unit ?? rate?.unit ?? "Night"} key={v.unit ?? rate?.unit} error={e.unit}>
+          <option value="Night">{t("unitNight")}</option>
+          <option value="Hour">{t("unitHour")}</option>
+        </SelectField>
         <Field id="rate-dateFrom" name="dateFrom" type="date" label={t("dateFrom")} required defaultValue={v.dateFrom ?? rate?.dateFrom} error={e.dateFrom} />
         <Field id="rate-dateTo" name="dateTo" type="date" label={t("dateTo")} required defaultValue={v.dateTo ?? rate?.dateTo} error={e.dateTo} />
-        <Field id="rate-price" name="price" inputMode="decimal" label={t("price")} required className="tabular" defaultValue={v.price ?? rate?.price} error={e.price} />
+        <Field id="rate-price" name="price" inputMode="decimal" label={t("rateprice")} required className="tabular" defaultValue={v.price ?? rate?.price} error={e.price} />
         <Field id="rate-priority" name="priority" type="number" min={0} max={100} label={t("priority")} defaultValue={v.priority ?? rate?.priority ?? 1} error={e.priority} />
       </div>
       <p className="-mt-2 text-xs text-muted-foreground">{t("priorityHint")}</p>
@@ -95,7 +99,7 @@ export function DiscountForm({ discount }: { discount?: Discount }) {
         <Field id="discount-name" name="name" label={t("name")} required placeholder="Постоянный гость" defaultValue={v.name ?? discount?.name} error={e.name} />
         <Field id="discount-code" name="code" label={t("code")} className="uppercase" autoComplete="off" defaultValue={v.code ?? discount?.code ?? ""} error={e.code} hint={t("codeHint")} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-6">
         <SelectField id="discount-type" name="type" label={t("type")} defaultValue={v.type ?? discount?.type ?? "Percent"} error={e.type} key={v.type ?? discount?.type}>
           <option value="Percent">{t("percent")}</option>
           <option value="Amount">{t("amount")}</option>
@@ -104,6 +108,7 @@ export function DiscountForm({ discount }: { discount?: Discount }) {
         <Field id="discount-validFrom" name="validFrom" type="date" label={t("validFrom")} defaultValue={v.validFrom ?? discount?.validFrom ?? ""} error={e.validFrom} />
         <Field id="discount-validTo" name="validTo" type="date" label={t("validTo")} defaultValue={v.validTo ?? discount?.validTo ?? ""} error={e.validTo} />
         <Field id="discount-minNights" name="minNights" type="number" min={0} max={365} label={t("minNights")} defaultValue={v.minNights ?? discount?.minNights ?? 0} error={e.minNights} />
+        <Field id="discount-minHours" name="minHours" type="number" min={0} max={24} label={t("minHours")} defaultValue={v.minHours ?? discount?.minHours ?? 0} error={e.minHours} />
       </div>
       <div className="flex gap-2">
         <SubmitButton pending={pending}>{discount ? t("save") : t("create")}</SubmitButton>

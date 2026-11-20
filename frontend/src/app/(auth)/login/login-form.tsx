@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import { Field } from "@/components/forms/field";
+import { PasswordField } from "@/components/forms/password-field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import type { FormState } from "@/lib/api/problem";
@@ -27,9 +28,8 @@ export function LoginForm() {
         defaultValue={state.values?.login}
         error={state.fieldErrors?.login}
       />
-      <Field
+      <PasswordField
         name="password"
-        type="password"
         label={t("password")}
         autoComplete="current-password"
         required

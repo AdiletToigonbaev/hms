@@ -5,7 +5,7 @@ export type DisplayStatus = RoomStatus | "Reserved";
 /** Подписи статусов номера. Цвет всегда дублируется текстом (docs/design/design-direction.md). */
 export const roomStatusLabel: Record<DisplayStatus, string> = {
   Available: "Свободен",
-  Reserved: "Бронь сегодня",
+  Reserved: "Бронь",
   Occupied: "Занят",
   Cleaning: "Уборка",
   Maintenance: "Ремонт",
@@ -51,4 +51,17 @@ export function groupByFloor<T extends { floor: number | null }>(rooms: readonly
     groups.set(room.floor, list);
   }
   return [...groups.entries()].sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : a - b));
+}
+
+/** Подсказка к статусу «Бронь»: «до 14:30» (сейчас по брони) или «в 15:00» (ближайшая сегодня); другой день — с датой. */
+export function roomBookingHint(room: { occupiedUntil: string | null; nextBookingAt: string | null }, today: string): string | null {
+  const short = (local: string) => {
+    const time = local.slice(11, 16);
+    if (local.slice(0, 10) === today) return time;
+    const [, m, d] = local.slice(0, 10).split("-");
+    return `${d}.${m} ${time}`;
+  };
+  if (room.occupiedUntil) return `по брони до ${short(room.occupiedUntil)}`;
+  if (room.nextBookingAt) return `бронь в ${short(room.nextBookingAt)}`;
+  return null;
 }

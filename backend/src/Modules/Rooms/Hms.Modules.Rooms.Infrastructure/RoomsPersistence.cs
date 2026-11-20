@@ -34,6 +34,7 @@ internal sealed class RoomsModelConfigurator : IModelConfigurator
             e.Property(x => x.Description).HasMaxLength(2000);
             e.Property(x => x.BedType).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.BasePrice).HasPrecision(14, 2);
+            e.Property(x => x.HourlyPrice).HasPrecision(14, 2);
             e.Property(x => x.Version).IsRowVersion();
             e.HasMany(x => x.Amenities).WithOne().HasForeignKey(x => x.RoomTypeId).OnDelete(DeleteBehavior.Cascade);
             e.Navigation(x => x.Amenities).UsePropertyAccessMode(PropertyAccessMode.Field);
@@ -59,6 +60,7 @@ internal sealed class RoomsModelConfigurator : IModelConfigurator
             e.Property(x => x.Description).HasMaxLength(2000);
             e.Property(x => x.BedType).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.PriceOverride).HasPrecision(14, 2);
+            e.Property(x => x.HourlyPriceOverride).HasPrecision(14, 2);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Version).IsRowVersion();
             e.HasOne<RoomType>().WithMany().HasForeignKey(x => x.RoomTypeId).OnDelete(DeleteBehavior.Restrict);

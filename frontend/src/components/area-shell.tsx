@@ -1,11 +1,9 @@
-import { LogOut, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
-import { logoutAction } from "@/app/(auth)/actions";
 import { Brand } from "@/components/brand";
+import { LogoutButton } from "@/components/logout-button";
 import { NavLinks, type NavItem } from "@/components/layout/nav-links";
-import { Button } from "@/components/ui/button";
 import type { Role } from "@/lib/api/types";
 import { requireUser } from "@/lib/auth/session";
 import { getHotelInfo } from "@/lib/hotel";
@@ -32,7 +30,7 @@ const roleLabel: Record<Role, string> = {
  * Проверяет вход и роль (перенаправляет без доступа). Рендерится внутри <Suspense> — читает cookies.
  */
 export async function AreaShell({ roles, title, nav, children }: AreaShellProps) {
-  const [user, hotel, t] = await Promise.all([requireUser(roles), getHotelInfo(), getTranslations("Common")]);
+  const [user, hotel] = await Promise.all([requireUser(roles), getHotelInfo()]);
   const role = user.roles[0] ?? "Guest";
   const items = typeof nav === "function" ? nav(user.roles) : nav;
 
@@ -42,11 +40,7 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
         <p className="truncate text-sm font-medium">{user.fullName}</p>
         <p className="text-xs text-muted-foreground">{roleLabel[role]}</p>
       </div>
-      <form action={logoutAction}>
-        <Button type="submit" variant="ghost" size="icon" aria-label={t("logout")} title={t("logout")}>
-          <LogOut aria-hidden />
-        </Button>
-      </form>
+      <LogoutButton />
     </div>
   );
 

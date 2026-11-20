@@ -95,7 +95,9 @@ export default async function PricingPage({ searchParams }: PageProps<"/owner/pr
                         {formatStayDate(r.dateFrom)} — {formatStayDate(r.dateTo)}
                       </TableCell>
                       <TableCell>{describeDays(r.daysOfWeek)}</TableCell>
-                      <TableCell className="tabular text-right whitespace-nowrap">{formatMoney(r.price)}</TableCell>
+                      <TableCell className="tabular text-right whitespace-nowrap">
+                        {formatMoney(r.price)} <span className="text-xs text-muted-foreground">{r.unit === "Hour" ? t("perHourShort") : t("perNightShort")}</span>
+                      </TableCell>
                       <TableCell className="tabular text-right">{r.priority}</TableCell>
                       <TableCell>{status(r.isActive)}</TableCell>
                       <TableCell className="text-right whitespace-nowrap">
@@ -152,6 +154,7 @@ export default async function PricingPage({ searchParams }: PageProps<"/owner/pr
                             ? `${d.validFrom ? formatStayDate(d.validFrom) : "…"} — ${d.validTo ? formatStayDate(d.validTo) : "…"}`
                             : null,
                           d.minNights > 0 ? t("nights", { n: d.minNights }) : null,
+                          d.minHours > 0 ? t("hoursMin", { n: d.minHours }) : null,
                         ]
                           .filter(Boolean)
                           .join(" · ") || t("any")}

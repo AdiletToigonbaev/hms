@@ -20,7 +20,13 @@ public sealed record NightPrice(DateOnly Date, decimal Price, string Source);
 
 public sealed record ServiceCharge(Guid ServiceId, string Name, int Quantity, decimal UnitPrice, bool PerNight, decimal Total);
 
-/// <summary>Расчёт: цены по ночам, скидка (только на проживание), услуги, итог. Все суммы — KGS, 2 знака.</summary>
+/// <summary>Часы почасовой брони с одной ценой: [From, To) по времени гостиницы.</summary>
+public sealed record HourPrice(DateTime From, DateTime To, int Hours, decimal UnitPrice, decimal Amount, string Source);
+
+/// <summary>
+/// Расчёт: цены по ночам (посуточно) или по часам (почасово), скидка (только на проживание), услуги, итог.
+/// Все суммы — KGS, 2 знака. Старые снимки без Kind/Hours читаются как посуточные.
+/// </summary>
 public sealed record PriceQuote(
     IReadOnlyList<NightPrice> Nights,
     decimal AccommodationTotal,
@@ -29,10 +35,31 @@ public sealed record PriceQuote(
     decimal DiscountAmount,
     IReadOnlyList<ServiceCharge> Services,
     decimal ServicesTotal,
-    decimal Total);
+    decimal Total,
+    string Kind = PriceQuote.NightlyKind,
+    IReadOnlyList<HourPrice>? Hours = null)
+{
+    public const string NightlyKind = "Nightly";
+    public const string HourlyKind = "Hourly";
+}
+
+/// <summary>Запрос расчёта почасовой брони.</summary>
+/// <param name="StartLocal">Начало по времени гостиницы (целый час).</param>
+/// <param name="HourlyPrice">Цена часа категории.</param>
+/// <param name="RoomHourlyOverride">Цена часа номера (если задана — вместо цены категории).</param>
+public sealed record HourlyPriceRequest(
+    Guid RoomTypeId,
+    decimal HourlyPrice,
+    decimal? RoomHourlyOverride,
+    DateTime StartLocal,
+    int Hours,
+    string? PromoCode,
+    IReadOnlyList<ServiceLine> Services);
 
 /// <summary>Расчёт стоимости — только на backend (ТЗ §5, BOOK-4).</summary>
 public interface IPriceCalculator
 {
     Task<Result<PriceQuote>> QuoteAsync(PriceRequest request, CancellationToken ct);
+
+    Task<Result<PriceQuote>> QuoteHourlyAsync(HourlyPriceRequest request, CancellationToken ct);
 }

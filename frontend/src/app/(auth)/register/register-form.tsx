@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import { Field } from "@/components/forms/field";
+import { PasswordField } from "@/components/forms/password-field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -35,9 +36,8 @@ export function RegisterForm() {
       <Field name="fullName" label={t("fullName")} autoComplete="name" required defaultValue={values.fullName} error={errors.fullName} />
       <Field name="email" type="email" label={t("email")} autoComplete="email" required defaultValue={values.email} error={errors.email} />
       <Field name="phone" type="tel" label={t("phone")} autoComplete="tel" hint={t("phoneHint")} defaultValue={values.phone} error={errors.phone} />
-      <Field
+      <PasswordField
         name="password"
-        type="password"
         label={t("password")}
         autoComplete="new-password"
         hint={t("passwordHint")}

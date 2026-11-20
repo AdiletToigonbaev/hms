@@ -33,6 +33,15 @@ export const staySchema = z
   .refine((v) => v.checkOut > v.checkIn, { path: ["checkOut"], message: "Дата выезда должна быть позже даты заезда." })
   .refine((v) => nightsBetween(v.checkIn, v.checkOut) <= MAX_NIGHTS, { path: ["checkOut"], message: `Не более ${MAX_NIGHTS} ночей в одной брони.` });
 
+/** Почасовая бронь: дата, начало — целый час, длительность (границы — в настройках гостиницы, проверяет API). */
+export const hourlySchema = z.object({
+  date: isoDate("Укажите дату."),
+  startHour: z.coerce.number().int().min(0, "Время начала — от 00:00 до 23:00.").max(23, "Время начала — от 00:00 до 23:00."),
+  hours: z.coerce.number().int().min(1, "От 1 до 24 часов.").max(24, "От 1 до 24 часов."),
+  adults: z.coerce.number().int().min(1, "Взрослых — от 1 до 20.").max(20, "Взрослых — от 1 до 20."),
+  children: z.coerce.number().int().min(0, "Детей — от 0 до 20.").max(20, "Детей — от 0 до 20.").default(0),
+});
+
 const guestFields = {
   guestName: z.string().trim().min(1, "Укажите имя гостя.").max(200),
   guestPhone: z
@@ -50,19 +59,29 @@ const guestFields = {
 
 const contactRequired = (v: { guestPhone: string | null; guestEmail: string | null }) => Boolean(v.guestPhone || v.guestEmail);
 
+const bookingGuest = z.object({
+  roomId: z.string().uuid({ error: "Выберите номер." }),
+  ...guestFields,
+  promoCode: z
+    .string()
+    .trim()
+    .max(30)
+    .transform((v) => (v === "" ? null : v.toUpperCase())),
+});
+
+/** Посуточная бронь. */
 export const createBookingSchema = staySchema
-  .and(
-    z.object({
-      roomId: z.string().uuid({ error: "Выберите номер." }),
-      ...guestFields,
-      promoCode: z
-        .string()
-        .trim()
-        .max(30)
-        .transform((v) => (v === "" ? null : v.toUpperCase())),
-    }),
-  )
+  .and(bookingGuest)
   .refine(contactRequired, { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
+
+/** Почасовая бронь. */
+export const createHourlyBookingSchema = hourlySchema
+  .and(bookingGuest)
+  .refine(contactRequired, { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
+
+export const extendSchema = z.object({
+  units: z.coerce.number().int().min(1, "Минимум 1.").max(30, "Не более 30."),
+});
 
 export const updateBookingSchema = z
   .object({
@@ -84,6 +103,7 @@ export const rateSchema = z
     dateTo: isoDate("Укажите конец периода."),
     price: money("Цена — больше нуля, не более двух знаков после запятой."),
     priority: z.coerce.number().int().min(0, "Приоритет — от 0 до 100.").max(100, "Приоритет — от 0 до 100.").default(0),
+    unit: z.enum(["Night", "Hour"], { error: "Укажите: за ночь или за час." }).default("Night"),
   })
   .refine((v) => v.dateTo >= v.dateFrom, { path: ["dateTo"], message: "Конец периода не раньше начала." })
   .refine((v) => nightsBetween(v.dateFrom, v.dateTo) <= 730, { path: ["dateTo"], message: "Период тарифа — не более двух лет." });
@@ -101,6 +121,12 @@ export const discountSchema = z
     validFrom: optionalDate,
     validTo: optionalDate,
     minNights: optionalInt(0, 365, "Минимум ночей — от 0 до 365.").transform((v) => v ?? 0),
+    minHours: z
+      .string()
+      .optional()
+      .transform((v) => v ?? "")
+      .pipe(optionalInt(0, 24, "Минимум часов — от 0 до 24."))
+      .transform((v) => v ?? 0),
   })
   .refine((v) => v.type !== "Percent" || v.value <= 100, { path: ["value"], message: "Процент — не более 100." })
   .refine((v) => !v.validFrom || !v.validTo || v.validTo >= v.validFrom, { path: ["validTo"], message: "Конец периода не раньше начала." });

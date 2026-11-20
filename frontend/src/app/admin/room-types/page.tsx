@@ -70,6 +70,13 @@ export default async function RoomTypesPage() {
                     <span className="text-muted-foreground">{t("from")} </span>
                     <span className="font-semibold">{formatMoney(type.basePrice)}</span>
                     <span className="text-sm text-muted-foreground"> {t("perNight")}</span>
+                    {type.hourlyPrice !== null && (
+                      <>
+                        <span className="text-muted-foreground"> · </span>
+                        <span className="font-semibold">{formatMoney(type.hourlyPrice)}</span>
+                        <span className="text-sm text-muted-foreground"> {t("perHour")}</span>
+                      </>
+                    )}
                   </p>
                 </div>
               </Link>

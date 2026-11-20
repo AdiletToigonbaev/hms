@@ -11,8 +11,8 @@ import { roomSchema, roomTypeSchema, statusChangeSchema } from "@/lib/validation
 
 // Каждое действие — отдельная точка входа (прямой POST): права проверяет API на каждом вызове.
 
-const TYPE_FIELDS = ["name", "description", "capacity", "bedsCount", "bedType", "basePrice", "sortOrder"] as const;
-const ROOM_FIELDS = ["roomTypeId", "number", "floor", "capacity", "bedsCount", "bedType", "priceOverride", "description"] as const;
+const TYPE_FIELDS = ["name", "description", "capacity", "bedsCount", "bedType", "basePrice", "hourlyPrice", "sortOrder"] as const;
+const ROOM_FIELDS = ["roomTypeId", "number", "floor", "capacity", "bedsCount", "bedType", "priceOverride", "hourlyPriceOverride", "description"] as const;
 const uuid = z.string().uuid();
 
 function authGuard(status: number) {

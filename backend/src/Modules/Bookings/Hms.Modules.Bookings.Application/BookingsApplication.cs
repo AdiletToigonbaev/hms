@@ -5,26 +5,85 @@ using Hms.SharedKernel;
 
 namespace Hms.Modules.Bookings.Application;
 
+/// <summary>
+/// Время проживания в запросе. Посуточно (Kind = Nightly или не задан): CheckIn, CheckOut.
+/// Почасово (Kind = Hourly): Date, StartHour (0–23, начало — целый час), Hours.
+/// </summary>
+public interface IStayInput
+{
+    string? Kind { get; }
+
+    DateOnly? CheckIn { get; }
+
+    DateOnly? CheckOut { get; }
+
+    DateOnly? Date { get; }
+
+    int? StartHour { get; }
+
+    int? Hours { get; }
+}
+
+public static class StayKinds
+{
+    public const string Nightly = "Nightly";
+    public const string Hourly = "Hourly";
+
+    public static bool IsHourly(this IStayInput input) => string.Equals(input?.Kind, Hourly, StringComparison.OrdinalIgnoreCase);
+}
+
 // ---- Подбор и расчёт ----
 
-public sealed record AvailabilityQuery(DateOnly CheckIn, DateOnly CheckOut, int? Adults, int? Children, Guid? RoomTypeId);
+public sealed record AvailabilityQuery(
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
+    int? Adults,
+    int? Children,
+    Guid? RoomTypeId,
+    string? Kind = null,
+    DateOnly? Date = null,
+    int? StartHour = null,
+    int? Hours = null) : IStayInput;
 
 /// <summary>Свободный номер с расчётом стоимости (для персонала).</summary>
 public sealed record AvailableRoomDto(Guid RoomId, string Number, int? Floor, Guid RoomTypeId, string RoomTypeName, int Capacity, PriceQuote Quote);
 
 /// <summary>Свободная категория (для сайта): без номеров комнат, только количество и цена «от».</summary>
-public sealed record PublicAvailabilityDto(Guid RoomTypeId, string RoomTypeName, int Capacity, int AvailableCount, int Nights, decimal TotalFrom);
+/// <param name="Units">Ночи (посуточно) или часы (почасово).</param>
+public sealed record PublicAvailabilityDto(Guid RoomTypeId, string RoomTypeName, int Capacity, int AvailableCount, int Nights, decimal TotalFrom, string Kind = StayKinds.Nightly, int Units = 0);
 
-public sealed record QuoteRequest(Guid RoomId, DateOnly CheckIn, DateOnly CheckOut, int Adults, int Children, string? PromoCode, IReadOnlyList<ServiceLine>? Services);
+public sealed record QuoteRequest(
+    Guid RoomId,
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
+    int Adults,
+    int Children,
+    string? PromoCode,
+    IReadOnlyList<ServiceLine>? Services,
+    string? Kind = null,
+    DateOnly? Date = null,
+    int? StartHour = null,
+    int? Hours = null) : IStayInput;
 
-public sealed record PublicQuoteRequest(Guid RoomTypeId, DateOnly CheckIn, DateOnly CheckOut, int Adults, int Children, string? PromoCode, IReadOnlyList<ServiceLine>? Services);
+public sealed record PublicQuoteRequest(
+    Guid RoomTypeId,
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
+    int Adults,
+    int Children,
+    string? PromoCode,
+    IReadOnlyList<ServiceLine>? Services,
+    string? Kind = null,
+    DateOnly? Date = null,
+    int? StartHour = null,
+    int? Hours = null) : IStayInput;
 
 // ---- Бронь ----
 
 public sealed record CreateBookingRequest(
     Guid RoomId,
-    DateOnly CheckIn,
-    DateOnly CheckOut,
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
     int Adults,
     int Children,
     string GuestName,
@@ -33,16 +92,38 @@ public sealed record CreateBookingRequest(
     string? Comment,
     string? PromoCode,
     IReadOnlyList<ServiceLine>? Services,
-    bool Confirm);
+    bool Confirm,
+    string? Kind = null,
+    DateOnly? Date = null,
+    int? StartHour = null,
+    int? Hours = null) : IStayInput;
 
 public sealed record UpdateBookingRequest(string GuestName, string? GuestPhone, string? GuestEmail, int Adults, int Children, string? Comment, uint? Version);
 
 public sealed record CancelBookingRequest(string Reason);
 
+/// <summary>Продление: на сколько часов (почасовая) или ночей (посуточная). Version — защита от двойного нажатия.</summary>
+public sealed record ExtendBookingRequest(int Units, uint? Version);
+
+/// <param name="MaxUnits">Сколько максимум можно добавить (номер дальше занят); null — без ограничения в пределах правил.</param>
+/// <param name="NextBookingStartsAt">Когда начинается следующая бронь номера (время гостиницы), если она ограничивает продление.</param>
+public sealed record ExtensionQuoteDto(
+    string Kind,
+    int Units,
+    string NewEndsAt,
+    decimal Amount,
+    PriceQuote Price,
+    int? MaxUnits,
+    string? NextBookingStartsAt);
+
 public sealed record BookingRoomDto(Guid RoomId, string Number, Guid RoomTypeId, string RoomTypeName);
 
 public sealed record BookingServiceDto(Guid ServiceId, string Name, int Quantity, decimal UnitPrice, bool PerNight, decimal Total);
 
+public sealed record BookingExtensionDto(string Kind, int Quantity, string PreviousEndsAt, string NewEndsAt, decimal Amount, string? CreatedByName, DateTimeOffset CreatedAt);
+
+/// <param name="StartsAt">Начало по времени гостиницы, «yyyy-MM-ddTHH:mm».</param>
+/// <param name="EndsAt">Выезд по времени гостиницы.</param>
 public sealed record BookingDto(
     Guid Id,
     string Number,
@@ -70,7 +151,13 @@ public sealed record BookingDto(
     DateTimeOffset? CancelledAt,
     string? CancelReason,
     DateTimeOffset CreatedAt,
-    uint Version);
+    uint Version,
+    string Kind,
+    string StartsAt,
+    string EndsAt,
+    int? Hours,
+    decimal ExtensionsAmount,
+    IReadOnlyList<BookingExtensionDto> Extensions);
 
 public sealed record BookingListItemDto(
     Guid Id,
@@ -84,9 +171,13 @@ public sealed record BookingListItemDto(
     string RoomNumber,
     string RoomTypeName,
     decimal TotalAmount,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string Kind,
+    string StartsAt,
+    string EndsAt,
+    int? Hours);
 
-public sealed record BookingQuery(string? Status, DateOnly? From, DateOnly? To, Guid? RoomId, string? Search, int? Page, int? PageSize);
+public sealed record BookingQuery(string? Status, DateOnly? From, DateOnly? To, Guid? RoomId, string? Search, int? Page, int? PageSize, string? Kind = null);
 
 public sealed record BookingHistoryDto(
     Guid Id,
@@ -123,35 +214,68 @@ public interface IBookingService
 
     Task<Result<BookingDto>> CancelAsync(Guid id, CancelBookingRequest request, CancellationToken ct);
 
+    Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct);
+
+    Task<Result<BookingDto>> ExtendAsync(Guid id, ExtendBookingRequest request, CancellationToken ct);
+
     Task<Result<IReadOnlyList<BookingHistoryDto>>> GetHistoryAsync(Guid id, CancellationToken ct);
 }
 
 public static class BookingErrors
 {
     public const int MaxNights = 60;
+    public const int MaxExtendNights = 30;
 
     public static readonly Error NotFound = Error.NotFound("booking.not_found", "Бронь не найдена.");
-    public static readonly Error RoomUnavailable = Error.Conflict("booking.room_unavailable", "Номер на эти даты уже занят.");
+    public static readonly Error RoomUnavailable = Error.Conflict("booking.room_unavailable", "Номер на это время уже занят.");
     public static readonly Error RoomNotSellable = Error.BusinessRule("booking.room_not_sellable", "Номер не продаётся: в архиве или «вне продажи».");
+    public static readonly Error RoomNotHourly = Error.BusinessRule("booking.room_not_hourly", "Номер не продаётся по часам: у категории и номера не задана цена часа.");
     public static readonly Error RoomNotFound = Error.NotFound("booking.room_not_found", "Номер не найден.");
-    public static readonly Error RoomTypeUnavailable = Error.Conflict("booking.room_type_unavailable", "Свободных номеров этой категории на эти даты нет.");
+    public static readonly Error RoomTypeUnavailable = Error.Conflict("booking.room_type_unavailable", "Свободных номеров этой категории на это время нет.");
     public static readonly Error PastDates = Error.BusinessRule("booking.past_dates", "Дата заезда уже прошла.");
+    public static readonly Error StartInPast = Error.BusinessRule("booking.start_in_past", "Время начала уже прошло.");
     public static readonly Error ConcurrencyConflict = Error.Conflict("concurrency.conflict", "Бронь изменил другой пользователь. Обновите страницу и повторите.");
 
     public static Error CapacityExceeded(int capacity) =>
         Error.BusinessRule("booking.capacity_exceeded", $"Номер рассчитан не более чем на {capacity} гост.");
+
+    public static Error HoursOutOfRange(int min, int max) =>
+        Error.BusinessRule("booking.hours_out_of_range", $"Почасовая бронь — от {min} до {max} ч. Дольше — оформите посуточно.");
+
+    public static Error ExtensionConflict(string until) =>
+        Error.Conflict("booking.extension_conflict", $"Номер дальше занят — продлить можно не позже чем до {until}.");
+
+    public static Error ExtensionTooLong(int max) =>
+        Error.BusinessRule("booking.extension_too_long", $"Почасовая бронь не может быть длиннее {max} ч. Продлите посуточно новой бронью.");
 }
 
 // ---- Валидация ----
 
 internal static class StayRules
 {
-    public static void Apply<T>(AbstractValidator<T> v, Func<T, DateOnly> checkIn, Func<T, DateOnly> checkOut)
+    public static void Apply<T>(AbstractValidator<T> v)
+        where T : IStayInput
     {
-        v.RuleFor(x => checkOut(x)).GreaterThan(x => checkIn(x)).OverridePropertyName("checkOut")
-            .WithMessage("Дата выезда должна быть позже даты заезда.");
-        v.RuleFor(x => x).Must(x => checkOut(x).DayNumber - checkIn(x).DayNumber <= BookingErrors.MaxNights).OverridePropertyName("checkOut")
-            .WithMessage($"Не более {BookingErrors.MaxNights} ночей в одной брони.");
+        v.RuleFor(x => x.Kind).Must(k => k is null || k.Equals(StayKinds.Nightly, StringComparison.OrdinalIgnoreCase) || k.Equals(StayKinds.Hourly, StringComparison.OrdinalIgnoreCase))
+            .WithMessage("Вид брони: по суткам или по часам.");
+
+        v.When(x => !x.IsHourly(), () =>
+        {
+            v.RuleFor(x => x.CheckIn).NotNull().WithMessage("Укажите дату заезда.");
+            v.RuleFor(x => x.CheckOut).NotNull().WithMessage("Укажите дату выезда.")
+                .GreaterThan(x => x.CheckIn).When(x => x.CheckIn is not null).WithMessage("Дата выезда должна быть позже даты заезда.");
+            v.RuleFor(x => x).Must(x => x.CheckIn is null || x.CheckOut is null || x.CheckOut.Value.DayNumber - x.CheckIn.Value.DayNumber <= BookingErrors.MaxNights)
+                .OverridePropertyName("checkOut").WithMessage($"Не более {BookingErrors.MaxNights} ночей в одной брони.");
+        });
+
+        v.When(x => x.IsHourly(), () =>
+        {
+            v.RuleFor(x => x.Date).NotNull().WithMessage("Укажите дату.");
+            v.RuleFor(x => x.StartHour).NotNull().WithMessage("Укажите время начала.")
+                .InclusiveBetween(0, 23).WithMessage("Время начала — целый час от 00:00 до 23:00.");
+            v.RuleFor(x => x.Hours).NotNull().WithMessage("Укажите количество часов.")
+                .InclusiveBetween(1, 24).WithMessage("От 1 до 24 часов.");
+        });
     }
 }
 
@@ -159,7 +283,7 @@ public sealed class AvailabilityQueryValidator : AbstractValidator<AvailabilityQ
 {
     public AvailabilityQueryValidator()
     {
-        StayRules.Apply(this, x => x.CheckIn, x => x.CheckOut);
+        StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).When(x => x.Adults is not null);
         RuleFor(x => x.Children).InclusiveBetween(0, 20).When(x => x.Children is not null);
     }
@@ -170,7 +294,7 @@ public sealed class QuoteRequestValidator : AbstractValidator<QuoteRequest>
     public QuoteRequestValidator()
     {
         RuleFor(x => x.RoomId).NotEmpty();
-        StayRules.Apply(this, x => x.CheckIn, x => x.CheckOut);
+        StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).WithMessage("Взрослых — от 1 до 20.");
         RuleFor(x => x.Children).InclusiveBetween(0, 20);
         RuleForEach(x => x.Services).ChildRules(s => s.RuleFor(l => l.Quantity).InclusiveBetween(1, 50));
@@ -182,7 +306,7 @@ public sealed class PublicQuoteRequestValidator : AbstractValidator<PublicQuoteR
     public PublicQuoteRequestValidator()
     {
         RuleFor(x => x.RoomTypeId).NotEmpty();
-        StayRules.Apply(this, x => x.CheckIn, x => x.CheckOut);
+        StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).WithMessage("Взрослых — от 1 до 20.");
         RuleFor(x => x.Children).InclusiveBetween(0, 20);
         RuleForEach(x => x.Services).ChildRules(s => s.RuleFor(l => l.Quantity).InclusiveBetween(1, 50));
@@ -194,7 +318,7 @@ public sealed class CreateBookingRequestValidator : AbstractValidator<CreateBook
     public CreateBookingRequestValidator()
     {
         RuleFor(x => x.RoomId).NotEmpty().WithMessage("Выберите номер.");
-        StayRules.Apply(this, x => x.CheckIn, x => x.CheckOut);
+        StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).WithMessage("Взрослых — от 1 до 20.");
         RuleFor(x => x.Children).InclusiveBetween(0, 20).WithMessage("Детей — от 0 до 20.");
         RuleFor(x => x.GuestName).NotEmpty().WithMessage("Укажите имя гостя.").MaximumLength(200);
@@ -226,4 +350,10 @@ public sealed class UpdateBookingRequestValidator : AbstractValidator<UpdateBook
 public sealed class CancelBookingRequestValidator : AbstractValidator<CancelBookingRequest>
 {
     public CancelBookingRequestValidator() => RuleFor(x => x.Reason).NotEmpty().WithMessage("Укажите причину отмены.").MaximumLength(500);
+}
+
+public sealed class ExtendBookingRequestValidator : AbstractValidator<ExtendBookingRequest>
+{
+    public ExtendBookingRequestValidator() =>
+        RuleFor(x => x.Units).InclusiveBetween(1, BookingErrors.MaxExtendNights).WithMessage($"Продление — от 1 до {BookingErrors.MaxExtendNights}.");
 }

@@ -92,8 +92,19 @@ public sealed class RoomRate
         UpdatedAt = now;
     }
 
+    /// <summary>За что цена тарифа: за ночь (посуточно) или за час (почасовые брони).</summary>
+    public RateUnit Unit { get; private set; } = RateUnit.Night;
+
+    public void SetUnit(RateUnit unit) => Unit = unit;
+
     public bool AppliesTo(DateOnly night) =>
         IsActive && night >= DateFrom && night <= DateTo && DaysOfWeek.HasFlag(night.DayOfWeek.ToFlag());
+}
+
+public enum RateUnit
+{
+    Night,
+    Hour,
 }
 
 public enum DiscountType
@@ -141,6 +152,11 @@ public sealed class Discount
 
     public int MinNights { get; private set; }
 
+    /// <summary>Минимум часов для почасовой брони (минимум ночей относится только к посуточным).</summary>
+    public int MinHours { get; private set; }
+
+    public void SetMinHours(int hours) => MinHours = hours;
+
     public bool IsActive { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -179,6 +195,22 @@ public sealed class Discount
         }
 
         return stay.Nights < MinNights ? PricingErrors.PromoMinNights(MinNights) : null;
+    }
+
+    /// <summary>Применимость к почасовой брони: период — по дате начала, условие — минимум часов.</summary>
+    public Error? CheckApplicableHourly(DateOnly arrival, int hours)
+    {
+        if (!IsActive)
+        {
+            return PricingErrors.PromoInactive;
+        }
+
+        if ((ValidFrom is { } from && arrival < from) || (ValidTo is { } to && arrival > to))
+        {
+            return PricingErrors.PromoOutOfPeriod;
+        }
+
+        return hours < MinHours ? PricingErrors.PromoMinHours(MinHours) : null;
     }
 
     /// <summary>Сумма скидки: процент округляется до копеек (половина — от нуля), сумма не больше стоимости проживания.</summary>
@@ -251,6 +283,9 @@ public static class PricingErrors
     public static readonly Error PromoOutOfPeriod = Error.BusinessRule("pricing.promo_out_of_period", "Промокод не действует на эти даты заезда.");
     public static readonly Error ServiceNotFound = Error.BusinessRule("pricing.service_unavailable", "Услуга недоступна.");
 
+    public static Error PromoMinHours(int hours) =>
+        Error.BusinessRule("pricing.promo_min_hours", $"Промокод действует при брони от {hours} ч.");
+
     public static Error PromoMinNights(int nights) =>
         Error.BusinessRule("pricing.promo_min_nights", $"Промокод действует при проживании от {nights} ночей.");
 }
@@ -276,7 +311,7 @@ public static class PriceCalculation
         foreach (var night in stay.EachNight())
         {
             var rate = rates
-                .Where(r => r.AppliesTo(night))
+                .Where(r => r.Unit == RateUnit.Night && r.AppliesTo(night))
                 .OrderByDescending(r => r.Priority)
                 .ThenByDescending(r => r.CreatedAt)
                 .FirstOrDefault();
@@ -309,5 +344,62 @@ public static class PriceCalculation
             charges,
             servicesTotal,
             accommodation - discountAmount + servicesTotal);
+    }
+
+    public const string HourPriceSource = "Цена часа";
+    public const string RoomHourPriceSource = "Цена часа номера";
+
+    /// <summary>
+    /// Почасовая бронь: каждый час — по тарифу «за час» с наибольшим приоритетом на дату и день недели этого часа,
+    /// иначе цена часа номера, иначе цена часа категории. Подряд идущие часы с одной ценой объединяются в строку.
+    /// Услуги «за ночь» в почасовой брони считаются один раз.
+    /// </summary>
+    public static PriceQuote CalculateHourly(
+        DateTime startLocal,
+        int hours,
+        decimal hourlyPrice,
+        decimal? roomHourlyOverride,
+        IReadOnlyList<RoomRate> rates,
+        Discount? discount,
+        IReadOnlyList<(ExtraService Service, int Quantity)> services)
+    {
+        ArgumentNullException.ThrowIfNull(rates);
+        ArgumentNullException.ThrowIfNull(services);
+
+        var lines = new List<HourPrice>();
+        for (var i = 0; i < hours; i++)
+        {
+            var from = startLocal.AddHours(i);
+            var day = DateOnly.FromDateTime(from);
+            var rate = rates
+                .Where(r => r.Unit == RateUnit.Hour && r.AppliesTo(day))
+                .OrderByDescending(r => r.Priority)
+                .ThenByDescending(r => r.CreatedAt)
+                .FirstOrDefault();
+            var (price, source) = rate is not null
+                ? (rate.Price, $"Тариф «{rate.Name}»")
+                : roomHourlyOverride is { } own ? (own, RoomHourPriceSource) : (hourlyPrice, HourPriceSource);
+
+            if (lines.Count > 0 && lines[^1].UnitPrice == price && lines[^1].Source == source)
+            {
+                var last = lines[^1];
+                lines[^1] = last with { To = from.AddHours(1), Hours = last.Hours + 1, Amount = last.Amount + price };
+            }
+            else
+            {
+                lines.Add(new HourPrice(from, from.AddHours(1), 1, price, price, source));
+            }
+        }
+
+        var accommodation = lines.Sum(l => l.Amount);
+        var discountAmount = discount?.AmountFor(accommodation) ?? 0m;
+        var charges = services
+            .Where(s => s.Quantity > 0)
+            .Select(s => new ServiceCharge(s.Service.Id, s.Service.Name, s.Quantity, s.Service.Price, false, Money.Kgs(s.Service.Price * s.Quantity).Amount))
+            .ToList();
+        var servicesTotal = charges.Sum(c => c.Total);
+
+        return new PriceQuote([], accommodation, discount?.Id, discount?.Name, discountAmount, charges, servicesTotal,
+            accommodation - discountAmount + servicesTotal, PriceQuote.HourlyKind, lines);
     }
 }

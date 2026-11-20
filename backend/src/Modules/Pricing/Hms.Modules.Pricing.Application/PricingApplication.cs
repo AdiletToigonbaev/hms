@@ -4,14 +4,15 @@ using Hms.SharedKernel;
 namespace Hms.Modules.Pricing.Application;
 
 /// <param name="DaysOfWeek">Маска: Пн=1, Вт=2, Ср=4, Чт=8, Пт=16, Сб=32, Вс=64; все дни — 127.</param>
-public sealed record RateDto(Guid Id, Guid RoomTypeId, string Name, DateOnly DateFrom, DateOnly DateTo, int DaysOfWeek, decimal Price, int Priority, bool IsActive);
+public sealed record RateDto(Guid Id, Guid RoomTypeId, string Name, DateOnly DateFrom, DateOnly DateTo, int DaysOfWeek, decimal Price, int Priority, bool IsActive, string Unit = "Night");
 
-public sealed record SaveRateRequest(Guid RoomTypeId, string Name, DateOnly DateFrom, DateOnly DateTo, int DaysOfWeek, decimal Price, int Priority, bool IsActive);
+/// <param name="Unit">Night — цена за ночь, Hour — за час.</param>
+public sealed record SaveRateRequest(Guid RoomTypeId, string Name, DateOnly DateFrom, DateOnly DateTo, int DaysOfWeek, decimal Price, int Priority, bool IsActive, string Unit = "Night");
 
-public sealed record DiscountDto(Guid Id, string Name, string? Code, string Type, decimal Value, DateOnly? ValidFrom, DateOnly? ValidTo, int MinNights, bool IsActive);
+public sealed record DiscountDto(Guid Id, string Name, string? Code, string Type, decimal Value, DateOnly? ValidFrom, DateOnly? ValidTo, int MinNights, bool IsActive, int MinHours = 0);
 
 /// <param name="Type">Percent или Amount.</param>
-public sealed record SaveDiscountRequest(string Name, string? Code, string Type, decimal Value, DateOnly? ValidFrom, DateOnly? ValidTo, int MinNights);
+public sealed record SaveDiscountRequest(string Name, string? Code, string Type, decimal Value, DateOnly? ValidFrom, DateOnly? ValidTo, int MinNights, int MinHours = 0);
 
 public sealed record ServiceDto(Guid Id, string Name, string? Description, decimal Price, bool IsPerNight, bool IsPublic, bool IsActive);
 
@@ -63,6 +64,7 @@ public sealed class SaveRateRequestValidator : AbstractValidator<SaveRateRequest
         RuleFor(x => x.DaysOfWeek).InclusiveBetween(1, 127).WithMessage("Выберите хотя бы один день недели.");
         RuleFor(x => x.Price).Must(PriceRules.IsMoney).WithMessage("Цена — больше нуля, не более двух знаков после запятой.");
         RuleFor(x => x.Priority).InclusiveBetween(0, 100).WithMessage("Приоритет — от 0 до 100.");
+        RuleFor(x => x.Unit).Must(u => u is "Night" or "Hour").WithMessage("Укажите: за ночь или за час.");
     }
 }
 
@@ -79,6 +81,7 @@ public sealed class SaveDiscountRequestValidator : AbstractValidator<SaveDiscoun
         RuleFor(x => x.ValidTo).GreaterThanOrEqualTo(x => x.ValidFrom).When(x => x.ValidFrom is not null && x.ValidTo is not null)
             .WithMessage("Конец периода не раньше начала.");
         RuleFor(x => x.MinNights).InclusiveBetween(0, 365);
+        RuleFor(x => x.MinHours).InclusiveBetween(0, 24).WithMessage("Минимум часов — от 0 до 24.");
     }
 }
 

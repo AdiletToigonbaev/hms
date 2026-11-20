@@ -65,6 +65,24 @@ public sealed record CancellationPolicy(
     int NoShowPenaltyNights = 1,
     int EarlyDeparturePenaltyNights = 0);
 
+/// <summary>
+/// Правила почасовых броней (решение заказчика 2026-11-21, значения по умолчанию — roadmap §6.1a).
+/// Все значения настраивает владелец; в коде не зашиваются.
+/// </summary>
+/// <param name="FreeCancelMinutesBeforeStart">Бесплатная отмена не позже чем за столько минут до начала.</param>
+/// <param name="LateCancelPenaltyHours">Штраф за позднюю отмену, часов (по цене часа брони).</param>
+/// <param name="NoShowAfterMinutes">Через сколько минут после начала гость считается не приехавшим (номер освобождается).</param>
+/// <param name="NoShowPenaltyHours">Штраф за неявку, часов.</param>
+/// <param name="PendingHoldMinutes">Сколько неподтверждённая веб-бронь держит номер (но не дольше начала брони).</param>
+/// <param name="RefundUnusedOnEarlyDeparture">Возвращать ли деньги за неиспользованные часы при досрочном выезде.</param>
+public sealed record HourlyPolicy(
+    int FreeCancelMinutesBeforeStart = 120,
+    int LateCancelPenaltyHours = 1,
+    int NoShowAfterMinutes = 30,
+    int NoShowPenaltyHours = 1,
+    int PendingHoldMinutes = 30,
+    bool RefundUnusedOnEarlyDeparture = false);
+
 /// <summary>Настройки гостиницы (одна строка на гостиницу).</summary>
 public sealed class HotelSettings
 {
@@ -72,6 +90,7 @@ public sealed class HotelSettings
     {
         Locale = "ru";
         CancellationPolicy = new CancellationPolicy();
+        HourlyPolicy = new HourlyPolicy();
     }
 
     public HotelSettings(Guid hotelId, DateTimeOffset now)
@@ -108,7 +127,18 @@ public sealed class HotelSettings
     /// <summary>Время дня после даты заезда, после которого неявка фиксируется как No-Show.</summary>
     public TimeOnly NoShowCutoffTime { get; private set; } = new(12, 0);
 
+    /// <summary>Почасовые брони: минимум часов.</summary>
+    public int HourlyMinHours { get; private set; } = 2;
+
+    /// <summary>Почасовые брони: максимум часов (дольше — посуточно).</summary>
+    public int HourlyMaxHours { get; private set; } = 12;
+
+    /// <summary>Сколько минут номер закрыт на уборку после выезда (почасовые и посуточные брони).</summary>
+    public int CleaningBufferMinutes { get; private set; } = 30;
+
     public CancellationPolicy CancellationPolicy { get; private set; }
+
+    public HourlyPolicy HourlyPolicy { get; private set; }
 
     public string? Rules { get; private set; }
 
@@ -130,7 +160,11 @@ public sealed class HotelSettings
         AutoReleaseRoomAfterCleaning = change.AutoReleaseRoomAfterCleaning;
         RequireEmailConfirmation = change.RequireEmailConfirmation;
         NoShowCutoffTime = change.NoShowCutoffTime;
+        HourlyMinHours = change.HourlyMinHours;
+        HourlyMaxHours = change.HourlyMaxHours;
+        CleaningBufferMinutes = change.CleaningBufferMinutes;
         CancellationPolicy = change.CancellationPolicy;
+        HourlyPolicy = change.HourlyPolicy ?? HourlyPolicy;
         Rules = string.IsNullOrWhiteSpace(change.Rules) ? null : change.Rules.Trim();
         UpdatedAt = now;
     }
@@ -147,5 +181,9 @@ public sealed record HotelSettingsChange(
     bool AutoReleaseRoomAfterCleaning,
     bool RequireEmailConfirmation,
     TimeOnly NoShowCutoffTime,
+    int HourlyMinHours,
+    int HourlyMaxHours,
+    int CleaningBufferMinutes,
     CancellationPolicy CancellationPolicy,
-    string? Rules);
+    string? Rules,
+    HourlyPolicy? HourlyPolicy = null);

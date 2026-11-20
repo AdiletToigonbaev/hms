@@ -1,14 +1,15 @@
 using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Bookings.Domain;
 using Hms.Platform.Persistence;
+using Hms.Platform.Time;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hms.Modules.Bookings.Infrastructure;
 
 /// <summary>
 /// Таблицы схемы <c>bookings</c>. Ограничение против пересечений
-/// <c>EXCLUDE USING gist (room_id WITH =, stay_range WITH &amp;&amp;) WHERE (is_blocking)</c>
-/// и вычисляемый столбец <c>stay_range daterange [check_in, check_out)</c> создаются SQL в миграции.
+/// <c>EXCLUDE USING gist (room_id WITH =, occupancy WITH &amp;&amp;) WHERE (is_blocking)</c>
+/// и вычисляемый столбец <c>occupancy tstzrange [starts_at, blocked_until)</c> создаются SQL в миграции.
 /// </summary>
 internal sealed class BookingsModelConfigurator : IModelConfigurator
 {
@@ -23,7 +24,8 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
         {
             e.ToTable("bookings", Schema, t =>
             {
-                t.HasCheckConstraint("ck_bookings_dates", "check_out > check_in");
+                t.HasCheckConstraint("ck_bookings_dates", "check_out >= check_in AND ends_at > starts_at");
+                t.HasCheckConstraint("ck_bookings_hours", "hours IS NULL OR hours BETWEEN 1 AND 24");
                 t.HasCheckConstraint("ck_bookings_adults", "adults >= 1");
                 t.HasCheckConstraint("ck_bookings_amounts", "total_amount >= 0 AND discount_amount >= 0 AND discount_amount <= accommodation_amount");
             });
@@ -31,6 +33,8 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.Number).HasMaxLength(20).IsRequired();
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Source).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10).HasDefaultValue(BookingKind.Nightly).HasSentinel(BookingKind.Nightly);
+            e.Property(x => x.ExtensionsAmount).HasPrecision(14, 2);
             e.Property(x => x.GuestName).HasMaxLength(200).IsRequired();
             e.Property(x => x.GuestPhone).HasMaxLength(32);
             e.Property(x => x.GuestEmail).HasMaxLength(256);
@@ -43,16 +47,17 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.TotalAmount).HasPrecision(14, 2);
             e.Property(x => x.PriceSnapshot).HasColumnType("jsonb").IsRequired();
             e.Property(x => x.Version).IsRowVersion();
-            e.Ignore(x => x.Stay);
             e.Ignore(x => x.Nights);
             e.HasMany(x => x.Rooms).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.Services).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.History).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Extensions).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
+            e.Navigation(x => x.Extensions).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Navigation(x => x.Rooms).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Navigation(x => x.Services).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Navigation(x => x.History).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.HasIndex(x => new { x.HotelId, x.Number }).IsUnique();
-            e.HasIndex(x => new { x.HotelId, x.Status, x.CheckIn });
+            e.HasIndex(x => new { x.HotelId, x.Status, x.StartsAt });
             e.HasIndex(x => x.GuestId);
         });
 
@@ -63,6 +68,18 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.Id).ValueGeneratedNever();
             e.HasIndex(x => x.BookingId);
             e.HasIndex(x => new { x.RoomId, x.CheckIn });
+            e.HasIndex(x => new { x.RoomId, x.StartsAt });
+        });
+
+        b.Entity<BookingExtension>(e =>
+        {
+            e.ToTable("booking_extensions", Schema, t => t.HasCheckConstraint("ck_booking_extensions_qty", "quantity > 0 AND amount >= 0 AND new_ends_at > previous_ends_at"));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Unit).HasConversion<string>().HasMaxLength(10);
+            e.Property(x => x.Amount).HasPrecision(14, 2);
+            e.Property(x => x.PriceSnapshot).HasColumnType("jsonb").IsRequired();
+            e.HasIndex(x => x.BookingId);
         });
 
         b.Entity<BookingServiceLine>(e =>
@@ -91,19 +108,28 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
 }
 
 /// <summary>Запросы модуля Rooms к бронированиям.</summary>
-internal sealed class RoomBookingQueries(DbContext db) : IRoomBookingQueries
+internal sealed class RoomBookingQueries(DbContext db, IHotelClock clock) : IRoomBookingQueries
 {
-    public async Task<IReadOnlySet<Guid>> RoomsWithArrivalOnAsync(DateOnly date, CancellationToken ct) =>
-        (await db.Set<BookingRoom>().AsNoTracking()
-            .Where(r => r.IsBlocking && r.CheckIn == date)
-            .Select(r => r.RoomId)
-            .Distinct()
-            .ToListAsync(ct))
-        .ToHashSet();
+    public async Task<IReadOnlyDictionary<Guid, RoomTodayState>> TodayStatesAsync(DateTimeOffset now, DateTimeOffset dayEnd, CancellationToken ct)
+    {
+        var rows = await db.Set<BookingRoom>().AsNoTracking()
+            .Where(r => r.IsBlocking && r.EndsAt > now && r.StartsAt < dayEnd)
+            .Select(r => new { r.RoomId, r.StartsAt, r.EndsAt })
+            .ToListAsync(ct);
+        return rows.GroupBy(r => r.RoomId).ToDictionary(
+            g => g.Key,
+            g => new RoomTodayState(
+                g.Where(r => r.StartsAt <= now).Select(r => (DateTimeOffset?)r.EndsAt).Max(),
+                g.Where(r => r.StartsAt > now).Select(r => (DateTimeOffset?)r.StartsAt).Min()));
+    }
 
     public Task<bool> HasAnyBookingAsync(Guid roomId, CancellationToken ct) =>
         db.Set<BookingRoom>().AnyAsync(r => r.RoomId == roomId, ct);
 
-    public Task<bool> HasUpcomingBookingsAsync(Guid roomId, DateOnly today, CancellationToken ct) =>
-        db.Set<BookingRoom>().AnyAsync(r => r.RoomId == roomId && r.IsBlocking && r.CheckOut > today, ct);
+    /// <summary>Действующие брони, которые ещё не закончились (с учётом уборки).</summary>
+    public Task<bool> HasUpcomingBookingsAsync(Guid roomId, DateOnly today, CancellationToken ct)
+    {
+        var now = clock.UtcNow;
+        return db.Set<BookingRoom>().AnyAsync(r => r.RoomId == roomId && r.IsBlocking && r.BlockedUntil > now, ct);
+    }
 }

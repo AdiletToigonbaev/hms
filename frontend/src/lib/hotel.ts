@@ -17,5 +17,7 @@ export async function getHotelInfo(): Promise<PublicHotelInfo> {
         checkOutTime: "12:00",
         rules: null,
         freeCancelHoursBeforeCheckIn: 24,
+        hourlyMinHours: 2,
+        hourlyMaxHours: 12,
       };
 }

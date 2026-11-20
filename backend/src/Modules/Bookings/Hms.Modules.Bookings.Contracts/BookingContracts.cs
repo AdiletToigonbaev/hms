@@ -13,11 +13,18 @@ public enum BookingStatus
     Expired,
 }
 
+/// <param name="OccupiedUntil">Номер сейчас по брони — до этого момента (выезд гостя).</param>
+/// <param name="NextStartsAt">Начало ближайшей брони сегодня.</param>
+public sealed record RoomTodayState(DateTimeOffset? OccupiedUntil, DateTimeOffset? NextStartsAt);
+
 /// <summary>Запросы других модулей к бронированиям (номерной фонд, позже — уборка, финансы).</summary>
 public interface IRoomBookingQueries
 {
-    /// <summary>Номера, на которые в указанный день заезд по действующей брони (статус отображения «Бронь сегодня»).</summary>
-    Task<IReadOnlySet<Guid>> RoomsWithArrivalOnAsync(DateOnly date, CancellationToken ct);
+    /// <summary>
+    /// Занятость номеров на сегодня по действующим броням: кто занят сейчас (до какого времени)
+    /// и когда ближайшая бронь до конца дня. Номера без броней в словарь не попадают.
+    /// </summary>
+    Task<IReadOnlyDictionary<Guid, RoomTodayState>> TodayStatesAsync(DateTimeOffset now, DateTimeOffset dayEnd, CancellationToken ct);
 
     /// <summary>Есть ли у номера хоть одна бронь (тогда номер нельзя удалить — только архивировать).</summary>
     Task<bool> HasAnyBookingAsync(Guid roomId, CancellationToken ct);

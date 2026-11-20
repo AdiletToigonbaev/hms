@@ -41,8 +41,13 @@ public sealed record RoomInfo(
     decimal? PriceOverride,
     RoomStatus Status,
     bool IsArchived,
-    bool RoomTypeArchived)
+    bool RoomTypeArchived,
+    decimal? HourlyBasePrice = null,
+    decimal? HourlyPriceOverride = null)
 {
+    /// <summary>Продаётся ли номер по часам: задана цена часа у номера или категории.</summary>
+    public bool SellsHourly => (HourlyPriceOverride ?? HourlyBasePrice) is not null;
+
     /// <summary>Можно продавать: номер и категория не в архиве, номер не «вне продажи».</summary>
     public bool IsSellable => !IsArchived && !RoomTypeArchived && Status != RoomStatus.OutOfService;
 }

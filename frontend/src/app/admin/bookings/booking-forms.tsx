@@ -1,17 +1,19 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Field } from "@/components/forms/field";
+import { SelectField } from "@/components/forms/native-select";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/api/problem";
-import type { Booking, ExtraService } from "@/lib/api/types";
-import { formatMoney } from "@/lib/format";
-import { cancelBookingAction, confirmBookingAction, createBookingAction, updateBookingAction } from "./actions";
+import { nightsLabel } from "@/lib/bookings/status";
+import type { Booking, ExtensionQuote, ExtraService } from "@/lib/api/types";
+import { formatHotelLocal, formatMoney } from "@/lib/format";
+import { cancelBookingAction, confirmBookingAction, createBookingAction, extendBookingAction, quoteExtensionAction, updateBookingAction } from "./actions";
 
 const textarea =
   "min-h-20 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive";
@@ -20,13 +22,9 @@ function newKey() {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-export interface StayParams {
-  roomId: string;
-  checkIn: string;
-  checkOut: string;
-  adults: number;
-  children: number;
-}
+export type StayParams =
+  | { kind: "Nightly"; roomId: string; checkIn: string; checkOut: string; adults: number; children: number }
+  | { kind: "Hourly"; roomId: string; date: string; startHour: number; hours: number; adults: number; children: number };
 
 /**
  * Данные гостя и создание брони. Ключ идемпотентности живёт, пока данные не изменились:
@@ -44,7 +42,7 @@ export function CreateBookingForm({ stay, services }: { stay: StayParams; servic
   }, [state]);
   const e = state.fieldErrors ?? {};
   const v = state.values ?? {};
-  const stayError = e.checkIn ?? e.checkOut ?? e.roomId ?? e.adults ?? e.children;
+  const stayError = e.checkIn ?? e.checkOut ?? e.date ?? e.startHour ?? e.hours ?? e.roomId ?? e.adults ?? e.children;
   return (
     <form action={action} className="grid gap-4" noValidate>
       <input type="hidden" name="idempotencyKey" value={key} />
@@ -229,3 +227,79 @@ function CancelBookingForm({
     </form>
   );
 }
+
+/**
+ * Продление: выбор «на сколько» → расчёт API (новое время выезда, доплата, свободен ли номер) →
+ * окно подтверждения → продление. Версия брони защищает от двойного продления.
+ */
+export function ExtendBookingForm({ booking: b, maxUnits }: { booking: Booking; maxUnits: number }) {
+  const t = useTranslations("Bookings");
+  const [state, action, pending] = useActionState<FormState, FormData>(extendBookingAction, {});
+  const [quoteState, setQuoteState] = useState<FormState>({});
+  const [quote, setQuote] = useState<ExtensionQuote | null>(null);
+  const [quoting, startQuote] = useTransition();
+  const formRef = useRef<HTMLFormElement>(null);
+  const hourly = b.kind === "Hourly";
+  const options = Array.from({ length: Math.max(0, maxUnits) }, (_, i) => i + 1);
+
+  if (options.length === 0) return <p className="text-sm text-muted-foreground">{t("extendNotAvailable")}</p>;
+
+  return (
+    <form ref={formRef} action={action} className="grid gap-3" noValidate>
+      <input type="hidden" name="id" value={b.id} />
+      <input type="hidden" name="version" value={b.version} />
+      <FormAlert state={state.error ? state : quoteState.error ? quoteState : state} success={t("extended")} />
+      <div className="flex flex-wrap items-end gap-2">
+        <SelectField
+          name="units"
+          id="extend-units"
+          label={hourly ? t("extendHours") : t("extendNights")}
+          defaultValue="1"
+          className="w-32"
+          error={state.fieldErrors?.units ?? quoteState.fieldErrors?.units}
+        >
+          {options.map((n) => (
+            <option key={n} value={n}>
+              {hourly ? `+${n} ч` : `+${nightsLabel(n)}`}
+            </option>
+          ))}
+        </SelectField>
+        <SubmitButton
+          pending={pending || quoting}
+          variant="outline"
+          onClick={(e) => {
+            e.preventDefault();
+            const units = Number(new FormData(formRef.current!).get("units"));
+            startQuote(async () => {
+              const result = await quoteExtensionAction(b.id, units);
+              if (result.ok) {
+                setQuoteState({});
+                setQuote(result.quote);
+              } else {
+                setQuote(null);
+                setQuoteState(result.state);
+              }
+            });
+          }}
+        >
+          {t("extend")}
+        </SubmitButton>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("extendHint")}</p>
+      <ConfirmDialog
+        open={quote !== null}
+        onOpenChange={(open) => !open && setQuote(null)}
+        title={t("extendConfirmTitle", { number: b.number })}
+        description={
+          quote
+            ? t("extendConfirmText", { end: formatHotelLocal(quote.newEndsAt), amount: formatMoney(quote.amount) })
+            : ""
+        }
+        confirmLabel={t("extendConfirmYes")}
+        cancelLabel={t("extendConfirmNo")}
+        onConfirm={() => formRef.current?.requestSubmit()}
+      />
+    </form>
+  );
+}
+

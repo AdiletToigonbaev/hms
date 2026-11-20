@@ -27,7 +27,8 @@ public sealed record RoomTypeDto(
     int ActiveRoomCount,
     IReadOnlyList<AmenityDto> Amenities,
     IReadOnlyList<PhotoDto> Photos,
-    uint Version);
+    uint Version,
+    decimal? HourlyPrice = null);
 
 public sealed record SaveRoomTypeRequest(
     string Name,
@@ -37,7 +38,8 @@ public sealed record SaveRoomTypeRequest(
     string BedType,
     decimal BasePrice,
     int SortOrder,
-    uint? Version);
+    uint? Version,
+    decimal? HourlyPrice = null);
 
 public sealed record SetAmenitiesRequest(IReadOnlyList<Guid> AmenityIds);
 
@@ -64,7 +66,11 @@ public sealed record RoomDto(
     IReadOnlyList<string> ManualStatusTargets,
     bool IsArchived,
     IReadOnlyList<PhotoDto> Photos,
-    uint Version);
+    uint Version,
+    decimal? HourlyPriceOverride = null,
+    decimal? EffectiveHourlyPrice = null,
+    string? OccupiedUntil = null,
+    string? NextBookingAt = null);
 
 public sealed record SaveRoomRequest(
     Guid RoomTypeId,
@@ -75,7 +81,8 @@ public sealed record SaveRoomRequest(
     string? BedType,
     decimal? PriceOverride,
     string? Description,
-    uint? Version);
+    uint? Version,
+    decimal? HourlyPriceOverride = null);
 
 public sealed record ChangeRoomStatusRequest(string Status, string? Reason);
 
@@ -101,7 +108,8 @@ public sealed record PublicRoomTypeDto(
     string BedType,
     decimal PriceFrom,
     IReadOnlyList<AmenityDto> Amenities,
-    IReadOnlyList<PhotoDto> Photos);
+    IReadOnlyList<PhotoDto> Photos,
+    decimal? HourlyPriceFrom = null);
 
 // ---- Сервисы ----
 
@@ -209,6 +217,8 @@ public sealed class SaveRoomTypeRequestValidator : AbstractValidator<SaveRoomTyp
         RuleFor(x => x.BedType).Must(RoomRules.BedTypes.Contains).WithMessage("Выберите тип кроватей.");
         RuleFor(x => x.BasePrice).Must(RoomRules.IsMoney).WithMessage("Цена — больше нуля, не более двух знаков после запятой.");
         RuleFor(x => x.SortOrder).InclusiveBetween(0, 1000);
+        RuleFor(x => x.HourlyPrice).Must(v => RoomRules.IsMoney(v!.Value)).When(x => x.HourlyPrice is not null)
+            .WithMessage("Цена часа — больше нуля, не более двух знаков после запятой.");
     }
 }
 
@@ -225,6 +235,8 @@ public sealed class SaveRoomRequestValidator : AbstractValidator<SaveRoomRequest
         RuleFor(x => x.BedType).Must(v => RoomRules.BedTypes.Contains(v)).When(x => x.BedType is not null).WithMessage("Выберите тип кроватей.");
         RuleFor(x => x.PriceOverride).Must(v => RoomRules.IsMoney(v!.Value)).When(x => x.PriceOverride is not null)
             .WithMessage("Цена — больше нуля, не более двух знаков после запятой.");
+        RuleFor(x => x.HourlyPriceOverride).Must(v => RoomRules.IsMoney(v!.Value)).When(x => x.HourlyPriceOverride is not null)
+            .WithMessage("Цена часа — больше нуля, не более двух знаков после запятой.");
         RuleFor(x => x.Description).MaximumLength(2000);
     }
 }

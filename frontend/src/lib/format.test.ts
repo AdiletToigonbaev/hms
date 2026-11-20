@@ -33,3 +33,12 @@ describe("formatHotelDateTime", () => {
     expect(plain(formatHotelDateTime("2026-11-30T19:30:00Z"))).toBe("01.12.2026, 01:30");
   });
 });
+
+describe("hotel local time", () => {
+  it("formats API local time without time zone shifts", async () => {
+    const { formatHotelLocal, formatHotelTime } = await import("./format");
+    expect(formatHotelLocal("2026-12-04T22:00")).toBe("04.12.2026 22:00");
+    expect(formatHotelTime("2026-12-04T09:00")).toBe("09:00");
+    expect(() => formatHotelLocal("04.12.2026")).toThrow(RangeError);
+  });
+});

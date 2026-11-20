@@ -8,11 +8,12 @@ import { PriceBreakdown } from "@/components/price-breakdown";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api/server";
-import type { Booking, BookingHistoryItem, BookingStatus } from "@/lib/api/types";
+import type { Booking, BookingHistoryItem, BookingStatus, ExtensionQuote } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { bookingStatusLabel, nightsLabel } from "@/lib/bookings/status";
-import { formatHotelDateTime, formatStayDate } from "@/lib/format";
-import { BookingActions, BookingDetailsForm } from "../booking-forms";
+import { formatHotelDateTime, formatHotelLocal, formatHotelTime } from "@/lib/format";
+import { getHotelInfo } from "@/lib/hotel";
+import { BookingActions, BookingDetailsForm, ExtendBookingForm } from "../booking-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Bookings"))("title") };
@@ -28,18 +29,35 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const created = (await searchParams).created === "1";
 
-  const [t, user, booking, history] = await Promise.all([
+  const [t, user, booking, history, hotelInfo] = await Promise.all([
     getTranslations("Bookings"),
     getCurrentUser(),
     api<Booking>(`/bookings/${id}`),
     api<BookingHistoryItem[]>(`/bookings/${id}/history`),
+    getHotelInfo(),
   ]);
   if (!booking.ok) notFound();
   const b = booking.data;
   const can = (p: string) => user?.permissions.includes(p) ?? false;
   const editable = can("booking.edit") && !["Cancelled", "CheckedOut", "NoShow", "Expired"].includes(b.status);
   const showActions = can("booking.edit") || can("booking.cancel");
-  const evKey = (e: string) => (["created", "status_changed", "details_changed"].includes(e) ? (`ev_${e}` as "ev_created") : null);
+  const evKey = (e: string) => (["created", "status_changed", "details_changed", "extended"].includes(e) ? (`ev_${e}` as "ev_created") : null);
+  const hourly = b.kind === "Hourly";
+
+  // Продление: предел по правилам и по следующей брони номера (считает API).
+  let extendMax = 0;
+  let extendLimitHint: string | null = null;
+  if (can("booking.edit") && b.allowedActions.includes("extend")) {
+    const byRules = hourly ? hotelInfo.hourlyMaxHours - (b.hours ?? 0) : Math.min(30, 60 - b.nights);
+    const probe = byRules > 0 ? await api<ExtensionQuote>(`/bookings/${id}/extend/quote?units=1`) : null;
+    extendMax = probe?.ok ? Math.min(byRules, probe.data.maxUnits ?? byRules) : 0;
+    if (probe?.ok && probe.data.nextBookingStartsAt && probe.data.maxUnits !== null && probe.data.maxUnits < byRules) {
+      extendLimitHint = t("extendMax", {
+        time: formatHotelLocal(probe.data.nextBookingStartsAt),
+        n: hourly ? `${probe.data.maxUnits} ч` : nightsLabel(probe.data.maxUnits),
+      });
+    }
+  }
 
   return (
     <div className="grid gap-6">
@@ -56,9 +74,9 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         </div>
         <p className="text-sm text-muted-foreground">
           <span className="tabular">
-            {formatStayDate(b.checkIn)} — {formatStayDate(b.checkOut)}
+            {hourly ? `${formatHotelLocal(b.startsAt)}–${formatHotelTime(b.endsAt)}` : `${formatHotelLocal(b.startsAt)} — ${formatHotelLocal(b.endsAt)}`}
           </span>{" "}
-          · {nightsLabel(b.nights)} · {t("room")}{" "}
+          · {hourly ? `${b.hours} ч · ${t("kindHourly").toLowerCase()}` : nightsLabel(b.nights)} · {t("room")}{" "}
           <Link href={`/admin/rooms/${b.room.roomId}`} className="font-medium text-foreground underline-offset-4 hover:underline">
             {b.room.number}
           </Link>{" "}
@@ -83,7 +101,18 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               </CardTitle>
               <CardDescription>{t("priceNote")}</CardDescription>
             </CardHeader>
-            <CardContent>{b.price && <PriceBreakdown quote={b.price} />}</CardContent>
+            <CardContent>
+              {b.price && (
+                <PriceBreakdown
+                  quote={b.price}
+                  extras={b.extensions.map((x) => ({
+                    label: `${t("extensionLine", { n: x.kind === "Hour" ? `${x.quantity} ч` : nightsLabel(x.quantity) })} · до ${formatHotelLocal(x.newEndsAt)}`,
+                    amount: x.amount,
+                  }))}
+                  total={b.totalAmount}
+                />
+              )}
+            </CardContent>
           </Card>
 
           <Card>
@@ -116,7 +145,18 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <BookingActions booking={b} canConfirm={can("booking.edit")} canCancel={can("booking.cancel")} />
+                <div className="grid gap-6">
+                  {extendMax > 0 && (
+                    <section className="grid gap-2" aria-labelledby="extend-title">
+                      <h3 id="extend-title" className="font-heading text-base">
+                        {t("extendTitle")}
+                      </h3>
+                      {extendLimitHint && <p className="text-xs text-muted-foreground">{extendLimitHint}</p>}
+                      <ExtendBookingForm booking={b} maxUnits={extendMax} />
+                    </section>
+                  )}
+                  <BookingActions booking={b} canConfirm={can("booking.edit")} canCancel={can("booking.cancel")} />
+                </div>
                 {b.cancelReason && (
                   <p className="mt-2 text-sm">
                     <span className="text-muted-foreground">{t("cancelReason")}:</span> {b.cancelReason}

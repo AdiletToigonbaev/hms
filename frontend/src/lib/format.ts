@@ -46,6 +46,23 @@ const dateTimeFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: hotelTimeZone,
 });
 
+/**
+ * Местное время гостиницы «yyyy-MM-ddTHH:mm» (так его отдаёт API для броней) → «20.11.2026 10:00».
+ * Без пересчёта поясов: время уже гостиничное.
+ */
+export function formatHotelLocal(local: string): string {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(local);
+  if (!match) {
+    throw new RangeError(`Ожидается время YYYY-MM-DDTHH:mm: ${local}`);
+  }
+  return `${formatStayDate(match[1])} ${match[2]}`;
+}
+
+/** Только время «10:00» из местного времени гостиницы. */
+export function formatHotelTime(local: string): string {
+  return local.slice(11, 16);
+}
+
 /** Форматирует момент времени (ISO 8601 UTC с backend) во времени отеля. */
 export function formatHotelDateTime(isoInstant: string): string {
   const date = new Date(isoInstant);

@@ -10,7 +10,9 @@ import { api } from "@/lib/api/server";
 import type { Room, RoomStatusHistoryItem, RoomType } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { formatHotelDateTime, formatMoney } from "@/lib/format";
-import { roomStatusLabel } from "@/lib/rooms/status";
+import { hotelTimeZone } from "@/i18n/config";
+import { hotelToday } from "@/lib/bookings/status";
+import { roomBookingHint, roomStatusLabel } from "@/lib/rooms/status";
 import { PhotoManager, RoomDangerZone, RoomForm, StatusChangeForm } from "../room-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -44,10 +46,18 @@ export default async function RoomPage({ params }: PageProps<"/admin/rooms/[id]"
             {t("number")} {r.number}
           </h1>
           <RoomStatusBadge status={r.displayStatus} />
+          {roomBookingHint(r, hotelToday(hotelTimeZone)) && (
+            <span className="text-sm font-medium text-status-reserved">{roomBookingHint(r, hotelToday(hotelTimeZone))}</span>
+          )}
           {r.isArchived && <Badge variant="outline">{t("archived")}</Badge>}
         </div>
         <p className="text-sm text-muted-foreground">
           {r.roomTypeName} · {r.floor !== null ? `${t("floor")} ${r.floor} · ` : ""}
+          {r.effectiveHourlyPrice !== null && (
+            <>
+              <span className="tabular">{formatMoney(r.effectiveHourlyPrice)}</span> {t("perHour")} ·{" "}
+            </>
+          )}
           <span className="tabular">{formatMoney(r.effectivePrice)}</span> {t("perNight")} · {r.effectiveCapacity} {t("guests")}
         </p>
       </div>

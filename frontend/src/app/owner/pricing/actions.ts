@@ -12,8 +12,8 @@ import { discountSchema, rateSchema, serviceSchema } from "@/lib/validation/book
 // Каждое действие — отдельная точка входа: права (rate.manage, только владелец) проверяет API.
 
 const uuid = z.string().uuid();
-const RATE_FIELDS = ["roomTypeId", "name", "dateFrom", "dateTo", "price", "priority"] as const;
-const DISCOUNT_FIELDS = ["name", "code", "type", "value", "validFrom", "validTo", "minNights"] as const;
+const RATE_FIELDS = ["roomTypeId", "name", "dateFrom", "dateTo", "price", "priority", "unit"] as const;
+const DISCOUNT_FIELDS = ["name", "code", "type", "value", "validFrom", "validTo", "minNights", "minHours"] as const;
 const SERVICE_FIELDS = ["name", "description", "price"] as const;
 
 function optionalId(form: FormData) {

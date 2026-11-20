@@ -92,8 +92,13 @@ test("владелец входит, создаёт администратора
   await admin.goto("/owner/staff");
   await expect(admin).toHaveURL(/\/admin$/);
 
-  // Выход
-  await admin.getByRole("button", { name: "Выйти" }).click();
+  // Выход — через окно подтверждения: «Остаться» ничего не меняет
+  await admin.getByRole("button", { name: "Выйти" }).filter({ visible: true }).first().click();
+  await admin.getByRole("alertdialog").getByRole("button", { name: "Остаться" }).click();
+  await expect(admin.getByRole("alertdialog")).toBeHidden();
+  await expect(admin).toHaveURL(/\/admin$/);
+  await admin.getByRole("button", { name: "Выйти" }).filter({ visible: true }).first().click();
+  await admin.getByRole("alertdialog").getByRole("button", { name: "Да, выйти" }).click();
   await expect(admin).toHaveURL(/\/login$/);
   await admin.goto("/admin");
   await expect(admin).toHaveURL(/\/login/);

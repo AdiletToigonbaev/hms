@@ -36,6 +36,7 @@ internal sealed class PricingModelConfigurator : IModelConfigurator
             e.Property(x => x.Name).HasMaxLength(100).IsRequired();
             e.Property(x => x.Price).HasPrecision(14, 2);
             e.Property(x => x.DaysOfWeek).HasConversion<int>();
+            e.Property(x => x.Unit).HasConversion<string>().HasMaxLength(10).HasDefaultValue(RateUnit.Night).HasSentinel(RateUnit.Night);
             e.HasIndex(x => new { x.RoomTypeId, x.DateFrom, x.DateTo });
         });
 
@@ -47,6 +48,7 @@ internal sealed class PricingModelConfigurator : IModelConfigurator
             e.Property(x => x.Code).HasMaxLength(30);
             e.Property(x => x.Type).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Value).HasPrecision(14, 2);
+            e.ToTable(t => t.HasCheckConstraint("ck_discounts_min_hours", "min_hours BETWEEN 0 AND 24"));
             e.HasIndex(x => new { x.HotelId, x.Code }).IsUnique().HasFilter("code IS NOT NULL");
         });
 
@@ -68,28 +70,63 @@ internal sealed class PriceCalculator(DbContext db, IHotelContext hotel) : IPric
     public async Task<Result<PriceQuote>> QuoteAsync(PriceRequest r, CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);
-        var last = r.Stay.End.AddDays(-1);
-        var rates = await db.Set<RoomRate>().AsNoTracking()
-            .Where(x => x.HotelId == hotelId && x.RoomTypeId == r.RoomTypeId && x.IsActive && x.DateFrom <= last && x.DateTo >= r.Stay.Start)
-            .ToListAsync(ct);
-
-        Discount? discount = null;
-        if (!string.IsNullOrWhiteSpace(r.PromoCode))
+        var rates = await RatesAsync(hotelId, r.RoomTypeId, RateUnit.Night, r.Stay.Start, r.Stay.End.AddDays(-1), ct);
+        var discount = await DiscountAsync(hotelId, r.PromoCode, d => d.CheckApplicable(r.Stay), ct);
+        if (discount.IsFailure)
         {
-            var code = r.PromoCode.Trim().ToUpperInvariant();
-            discount = await db.Set<Discount>().AsNoTracking().FirstOrDefaultAsync(d => d.HotelId == hotelId && d.Code == code, ct);
-            if (discount is null)
-            {
-                return PricingErrors.PromoNotFound;
-            }
-
-            if (discount.CheckApplicable(r.Stay) is { } error)
-            {
-                return error;
-            }
+            return discount.Error;
         }
 
-        var ids = r.Services.Select(s => s.ServiceId).Distinct().ToList();
+        var services = await ServicesAsync(hotelId, r.Services, ct);
+        return services.IsFailure
+            ? services.Error
+            : PriceCalculation.Calculate(r.Stay, r.BasePrice, r.RoomPriceOverride, rates, discount.Value, services.Value);
+    }
+
+    public async Task<Result<PriceQuote>> QuoteHourlyAsync(HourlyPriceRequest r, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        var first = DateOnly.FromDateTime(r.StartLocal);
+        var last = DateOnly.FromDateTime(r.StartLocal.AddHours(r.Hours).AddTicks(-1));
+        var rates = await RatesAsync(hotelId, r.RoomTypeId, RateUnit.Hour, first, last, ct);
+        var discount = await DiscountAsync(hotelId, r.PromoCode, d => d.CheckApplicableHourly(first, r.Hours), ct);
+        if (discount.IsFailure)
+        {
+            return discount.Error;
+        }
+
+        var services = await ServicesAsync(hotelId, r.Services, ct);
+        return services.IsFailure
+            ? services.Error
+            : PriceCalculation.CalculateHourly(r.StartLocal, r.Hours, r.HourlyPrice, r.RoomHourlyOverride, rates, discount.Value, services.Value);
+    }
+
+    private Task<List<RoomRate>> RatesAsync(Guid hotelId, Guid roomTypeId, RateUnit unit, DateOnly from, DateOnly to, CancellationToken ct) =>
+        db.Set<RoomRate>().AsNoTracking()
+            .Where(x => x.HotelId == hotelId && x.RoomTypeId == roomTypeId && x.Unit == unit && x.IsActive && x.DateFrom <= to && x.DateTo >= from)
+            .ToListAsync(ct);
+
+    /// <summary>Промокод: null — без скидки; ошибка — код не найден или не подходит.</summary>
+    private async Task<Result<Discount?>> DiscountAsync(Guid hotelId, string? promoCode, Func<Discount, Error?> check, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(promoCode))
+        {
+            return Result.Success<Discount?>(null);
+        }
+
+        var code = promoCode.Trim().ToUpperInvariant();
+        var discount = await db.Set<Discount>().AsNoTracking().FirstOrDefaultAsync(d => d.HotelId == hotelId && d.Code == code, ct);
+        if (discount is null)
+        {
+            return PricingErrors.PromoNotFound;
+        }
+
+        return check(discount) is { } error ? error : Result.Success<Discount?>(discount);
+    }
+
+    private async Task<Result<IReadOnlyList<(ExtraService Service, int Quantity)>>> ServicesAsync(Guid hotelId, IReadOnlyList<ServiceLine> requested, CancellationToken ct)
+    {
+        var ids = requested.Select(s => s.ServiceId).Distinct().ToList();
         var catalog = await db.Set<ExtraService>().AsNoTracking()
             .Where(s => s.HotelId == hotelId && s.IsActive && ids.Contains(s.Id))
             .ToDictionaryAsync(s => s.Id, ct);
@@ -98,11 +135,11 @@ internal sealed class PriceCalculator(DbContext db, IHotelContext hotel) : IPric
             return PricingErrors.ServiceNotFound;
         }
 
-        var lines = r.Services
+        IReadOnlyList<(ExtraService Service, int Quantity)> lines = requested
             .GroupBy(s => s.ServiceId)
             .Select(g => (catalog[g.Key], g.Sum(x => x.Quantity)))
             .ToList();
-        return PriceCalculation.Calculate(r.Stay, r.BasePrice, r.RoomPriceOverride, rates, discount, lines);
+        return Result.Success(lines);
     }
 }
 
@@ -114,7 +151,7 @@ internal sealed class PricingAdminService(DbContext db, IHotelContext hotel, IRo
         return await db.Set<RoomRate>().AsNoTracking()
             .Where(r => r.HotelId == hotelId && (roomTypeId == null || r.RoomTypeId == roomTypeId))
             .OrderByDescending(r => r.IsActive).ThenBy(r => r.DateFrom).ThenByDescending(r => r.Priority)
-            .Select(r => new RateDto(r.Id, r.RoomTypeId, r.Name, r.DateFrom, r.DateTo, (int)r.DaysOfWeek, r.Price, r.Priority, r.IsActive))
+            .Select(r => new RateDto(r.Id, r.RoomTypeId, r.Name, r.DateFrom, r.DateTo, (int)r.DaysOfWeek, r.Price, r.Priority, r.IsActive, r.Unit.ToString()))
             .ToListAsync(ct);
     }
 
@@ -139,6 +176,7 @@ internal sealed class PricingAdminService(DbContext db, IHotelContext hotel, IRo
             rate = found;
             var before = ToDto(rate);
             rate.Update(r.Name, r.DateFrom, r.DateTo, (WeekDays)r.DaysOfWeek, r.Price, r.Priority, r.IsActive, now);
+            rate.SetUnit(Enum.Parse<RateUnit>(r.Unit));
             audit.Record(new AuditEntry("rate.updated", "RoomRate", rate.Id.ToString(), before, ToDto(rate)));
         }
         else
@@ -149,6 +187,7 @@ internal sealed class PricingAdminService(DbContext db, IHotelContext hotel, IRo
                 rate.Update(r.Name, r.DateFrom, r.DateTo, (WeekDays)r.DaysOfWeek, r.Price, r.Priority, false, now);
             }
 
+            rate.SetUnit(Enum.Parse<RateUnit>(r.Unit));
             db.Set<RoomRate>().Add(rate);
             audit.Record(new AuditEntry("rate.created", "RoomRate", rate.Id.ToString(), After: ToDto(rate)));
         }
@@ -210,6 +249,7 @@ internal sealed class PricingAdminService(DbContext db, IHotelContext hotel, IRo
 
         var before = id is null ? null : ToDto(discount);
         discount.Update(r.Name, code, Enum.Parse<DiscountType>(r.Type), r.Value, r.ValidFrom, r.ValidTo, r.MinNights, now);
+        discount.SetMinHours(r.MinHours);
         audit.Record(new AuditEntry(id is null ? "discount.created" : "discount.updated", "Discount", discount.Id.ToString(), before, ToDto(discount)));
         try
         {
@@ -290,9 +330,9 @@ internal sealed class PricingAdminService(DbContext db, IHotelContext hotel, IRo
         return ToDto(service);
     }
 
-    private static RateDto ToDto(RoomRate r) => new(r.Id, r.RoomTypeId, r.Name, r.DateFrom, r.DateTo, (int)r.DaysOfWeek, r.Price, r.Priority, r.IsActive);
+    private static RateDto ToDto(RoomRate r) => new(r.Id, r.RoomTypeId, r.Name, r.DateFrom, r.DateTo, (int)r.DaysOfWeek, r.Price, r.Priority, r.IsActive, r.Unit.ToString());
 
-    private static DiscountDto ToDto(Discount d) => new(d.Id, d.Name, d.Code, d.Type.ToString(), d.Value, d.ValidFrom, d.ValidTo, d.MinNights, d.IsActive);
+    private static DiscountDto ToDto(Discount d) => new(d.Id, d.Name, d.Code, d.Type.ToString(), d.Value, d.ValidFrom, d.ValidTo, d.MinNights, d.IsActive, d.MinHours);
 
     private static ServiceDto ToDto(ExtraService s) => new(s.Id, s.Name, s.Description, s.Price, s.IsPerNight, s.IsPublic, s.IsActive);
 }

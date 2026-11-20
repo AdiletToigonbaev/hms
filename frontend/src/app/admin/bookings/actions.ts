@@ -5,9 +5,9 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { toFormState, withValues, type FormState } from "@/lib/api/problem";
 import { api } from "@/lib/api/server";
-import type { Booking } from "@/lib/api/types";
+import type { Booking, ExtensionQuote } from "@/lib/api/types";
 import { checkbox, fieldErrors } from "@/lib/validation/auth";
-import { cancelSchema, createBookingSchema, updateBookingSchema } from "@/lib/validation/bookings";
+import { cancelSchema, createBookingSchema, createHourlyBookingSchema, extendSchema, updateBookingSchema } from "@/lib/validation/bookings";
 
 // Каждое действие — отдельная точка входа (прямой POST): права проверяет API на каждом вызове.
 // Стоимость в браузере не считается — её рассчитывает и фиксирует API.
@@ -22,7 +22,8 @@ function authGuard(status: number) {
 }
 
 export async function createBookingAction(_: FormState, form: FormData): Promise<FormState> {
-  const parsed = createBookingSchema.safeParse(Object.fromEntries(form));
+  const hourly = form.get("kind") === "Hourly";
+  const parsed = (hourly ? createHourlyBookingSchema : createBookingSchema).safeParse(Object.fromEntries(form));
   if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, CREATE_FIELDS);
 
   const key = idempotencyKey.safeParse(form.get("idempotencyKey"));
@@ -37,7 +38,7 @@ export async function createBookingAction(_: FormState, form: FormData): Promise
   const result = await api<Booking>("/bookings", {
     method: "POST",
     headers: { "Idempotency-Key": key.data },
-    body: { ...parsed.data, services, confirm: checkbox(form, "confirm") },
+    body: { ...parsed.data, kind: hourly ? "Hourly" : "Nightly", services, confirm: checkbox(form, "confirm") },
   });
   if (!result.ok) {
     authGuard(result.status);
@@ -70,6 +71,33 @@ export async function confirmBookingAction(_: FormState, form: FormData): Promis
   if (!result.ok) {
     authGuard(result.status);
     return toFormState(result.problem);
+  }
+  revalidatePath(`/admin/bookings/${id}`);
+  return { ok: true };
+}
+
+/** Расчёт продления для окна подтверждения: новое время выезда и доплата (считает API). */
+export async function quoteExtensionAction(id: string, units: number): Promise<{ ok: true; quote: ExtensionQuote } | { ok: false; state: FormState }> {
+  const bookingId = uuid.parse(id);
+  const parsed = extendSchema.safeParse({ units });
+  if (!parsed.success) return { ok: false, state: { ok: false, fieldErrors: fieldErrors(parsed.error) } };
+  const result = await api<ExtensionQuote>(`/bookings/${bookingId}/extend/quote?units=${parsed.data.units}`);
+  if (!result.ok) {
+    authGuard(result.status);
+    return { ok: false, state: toFormState(result.problem) };
+  }
+  return { ok: true, quote: result.data };
+}
+
+export async function extendBookingAction(_: FormState, form: FormData): Promise<FormState> {
+  const id = uuid.parse(form.get("id"));
+  const parsed = extendSchema.safeParse(Object.fromEntries(form));
+  if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, ["units"]);
+  const version = form.get("version") ? Number(form.get("version")) : null;
+  const result = await api<Booking>(`/bookings/${id}/extend`, { method: "POST", body: { units: parsed.data.units, version } });
+  if (!result.ok) {
+    authGuard(result.status);
+    return withValues(toFormState(result.problem), form, ["units"]);
   }
   revalidatePath(`/admin/bookings/${id}`);
   return { ok: true };

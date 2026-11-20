@@ -207,6 +207,7 @@ internal sealed class RoomTypeService(DbContext db, IHotelContext hotel, IAuditT
         var now = time.GetUtcNow();
         var type = new RoomType(await hotel.GetHotelIdAsync(ct), r.Name.Trim(), now);
         type.Update(r.Name, r.Description, r.Capacity, r.BedsCount, Enum.Parse<BedType>(r.BedType), Money.Kgs(r.BasePrice), r.SortOrder, now);
+        type.SetHourlyPrice(r.HourlyPrice is { } hourly ? Money.Kgs(hourly) : null);
         db.Set<RoomType>().Add(type);
         audit.Record(new AuditEntry("room_type.created", "RoomType", type.Id.ToString(), After: Snapshot(type)));
         return await store.SaveAsync(ct) is { } error ? error : await ToDtoAsync(type, ct);
@@ -227,6 +228,7 @@ internal sealed class RoomTypeService(DbContext db, IHotelContext hotel, IAuditT
 
         var before = Snapshot(type);
         type.Update(r.Name, r.Description, r.Capacity, r.BedsCount, Enum.Parse<BedType>(r.BedType), Money.Kgs(r.BasePrice), r.SortOrder, time.GetUtcNow());
+        type.SetHourlyPrice(r.HourlyPrice is { } hourly ? Money.Kgs(hourly) : null);
         audit.Record(new AuditEntry("room_type.updated", "RoomType", type.Id.ToString(), before, Snapshot(type)));
         return await store.SaveAsync(ct) is { } error ? error : await ToDtoAsync(type, ct);
     }
@@ -350,8 +352,8 @@ internal sealed class RoomTypeService(DbContext db, IHotelContext hotel, IAuditT
         var roomCount = await db.Set<Room>().CountAsync(r => r.RoomTypeId == t.Id && !r.IsArchived, ct);
         return new RoomTypeDto(
             t.Id, t.Name, t.Description, t.Capacity, t.BedsCount, t.BedType.ToString(), t.BasePrice, t.SortOrder, t.IsArchived,
-            roomCount, amenities, await store.PhotosAsync(t.Id, null, ct), t.Version);
+            roomCount, amenities, await store.PhotosAsync(t.Id, null, ct), t.Version, t.HourlyPrice);
     }
 
-    private static object Snapshot(RoomType t) => new { t.Name, t.Capacity, t.BedsCount, BedType = t.BedType.ToString(), t.BasePrice, t.SortOrder };
+    private static object Snapshot(RoomType t) => new { t.Name, t.Capacity, t.BedsCount, BedType = t.BedType.ToString(), t.BasePrice, t.HourlyPrice, t.SortOrder };
 }

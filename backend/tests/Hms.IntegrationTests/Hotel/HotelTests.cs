@@ -71,6 +71,46 @@ public class HotelTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task HourlyRules_AreSettings_WithAgreedDefaults_AndValidated()
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var settings = (await owner.GetFromJsonAsync<HotelSettingsDto>("/api/v1/hotel/settings", Ct))!;
+
+        // Значения по умолчанию — решение заказчика (roadmap §6.1a); тесты могли их поменять, поэтому проверяем только при первом чтении формы
+        settings.HourlyPolicy.Should().NotBeNull();
+        settings.HourlyMinHours.Should().BeInRange(1, 24);
+
+        var invalid = await owner.PutAsJsonAsync("/api/v1/hotel/settings",
+            ToUpdate(settings) with { HourlyPolicy = settings.HourlyPolicy with { NoShowAfterMinutes = 0, LateCancelPenaltyHours = 99 } }, Ct);
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await invalid.Content.ReadAsStringAsync(Ct)).Should().Contain("noShowAfterMinutes").And.Contain("lateCancelPenaltyHours");
+
+        var changed = settings.HourlyPolicy with { FreeCancelMinutesBeforeStart = 180, NoShowAfterMinutes = 45, RefundUnusedOnEarlyDeparture = true };
+        var ok = await owner.PutAsJsonAsync("/api/v1/hotel/settings", ToUpdate(settings) with { HourlyPolicy = changed }, Ct);
+        ok.StatusCode.Should().Be(HttpStatusCode.OK, await ok.Content.ReadAsStringAsync(Ct));
+        (await ok.Content.ReadFromJsonAsync<HotelSettingsDto>(Ct))!.HourlyPolicy.Should().BeEquivalentTo(changed);
+
+        // Возврат исходных значений, чтобы не влиять на другие тесты
+        var current = (await owner.GetFromJsonAsync<HotelSettingsDto>("/api/v1/hotel/settings", Ct))!;
+        (await owner.PutAsJsonAsync("/api/v1/hotel/settings", ToUpdate(current) with { HourlyPolicy = settings.HourlyPolicy }, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void HourlyPolicy_Defaults_MatchCustomerDecision()
+    {
+        new Hms.Modules.Hotel.Domain.HourlyPolicy().Should().BeEquivalentTo(new
+        {
+            FreeCancelMinutesBeforeStart = 120,
+            LateCancelPenaltyHours = 1,
+            NoShowAfterMinutes = 30,
+            NoShowPenaltyHours = 1,
+            PendingHoldMinutes = 30,
+            RefundUnusedOnEarlyDeparture = false,
+        });
+    }
+
+    [Fact]
     public async Task PublicHotelInfo_IsAnonymous_AndHidesInternalSettings()
     {
         var response = await _api.Anonymous().GetAsync(new Uri("/api/v1/public/hotel-info", UriKind.Relative), Ct);
@@ -131,7 +171,7 @@ public class HotelTests(PostgresFixture db)
     internal static UpdateHotelSettingsRequest ToUpdate(HotelSettingsDto s) => new(
         s.CheckInTime, s.CheckOutTime, s.PrepaymentPercent, s.PaymentHoldMinutes, s.PendingHoldHours,
         s.AutoConfirmWebBookings, s.AutoReleaseRoomAfterCleaning, s.RequireEmailConfirmation,
-        s.NoShowCutoffTime, s.CancellationPolicy, s.Rules, s.Version);
+        s.NoShowCutoffTime, s.HourlyMinHours, s.HourlyMaxHours, s.CleaningBufferMinutes, s.CancellationPolicy, s.Rules, s.Version, s.HourlyPolicy);
 }
 
 /// <summary>Тесты, меняющие глобальные настройки гостиницы, — не параллельно с остальными.</summary>

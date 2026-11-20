@@ -40,3 +40,13 @@ describe("groupByFloor", () => {
     ]);
   });
 });
+
+describe("roomBookingHint", () => {
+  it("shows current booking end or next booking time", async () => {
+    const { roomBookingHint } = await import("./status");
+    expect(roomBookingHint({ occupiedUntil: "2026-11-21T14:30", nextBookingAt: "2026-11-21T18:00" }, "2026-11-21")).toBe("по брони до 14:30");
+    expect(roomBookingHint({ occupiedUntil: null, nextBookingAt: "2026-11-21T15:00" }, "2026-11-21")).toBe("бронь в 15:00");
+    expect(roomBookingHint({ occupiedUntil: "2026-11-22T12:00", nextBookingAt: null }, "2026-11-21")).toBe("по брони до 22.11 12:00");
+    expect(roomBookingHint({ occupiedUntil: null, nextBookingAt: null }, "2026-11-21")).toBeNull();
+  });
+});

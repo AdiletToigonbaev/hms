@@ -9,6 +9,13 @@ public enum BookingSource
     Web,
 }
 
+/// <summary>Вид брони (решение заказчика 2026-11-20): по суткам (ночи) или по часам.</summary>
+public enum BookingKind
+{
+    Nightly,
+    Hourly,
+}
+
 /// <summary>
 /// Переходы статусов брони (docs/database/database-design.md §4). Остальные запрещены.
 /// </summary>
@@ -28,20 +35,42 @@ public static class BookingStatusMachine
     /// <summary>Занимает ли бронь номер (участвует в ограничении против пересечений).</summary>
     public static bool IsBlocking(BookingStatus status) =>
         status is BookingStatus.Pending or BookingStatus.AwaitingPayment or BookingStatus.Confirmed or BookingStatus.CheckedIn;
+
+    /// <summary>Продлить можно подтверждённую бронь и бронь заселённого гостя.</summary>
+    public static bool CanExtend(BookingStatus status) => status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+}
+
+/// <summary>
+/// Период брони во времени. Номер занят на [StartsAt, BlockedUntil): до выезда и ещё на время уборки.
+/// Для посуточной брони StartsAt/EndsAt — часы заезда и выезда из настроек; Units — ночи; для почасовой — часы.
+/// </summary>
+public sealed record StayPeriod(
+    BookingKind Kind,
+    DateOnly CheckIn,
+    DateOnly CheckOut,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    DateTimeOffset BlockedUntil,
+    int Units)
+{
+    /// <summary>Пересекается ли с занятостью другой брони.</summary>
+    public bool Overlaps(DateTimeOffset otherStart, DateTimeOffset otherBlockedUntil) => StartsAt < otherBlockedUntil && otherStart < BlockedUntil;
 }
 
 /// <summary>Контакт гостя в брони. Карточка гостя в CRM и связь с ней — Sprint 4 (модуль Guests).</summary>
 public sealed record GuestContact(string FullName, string? Phone, string? Email);
 
 /// <summary>
-/// Бронь (ТЗ §5). Стоимость фиксируется снимком при создании (BOOK-4); все изменения пишутся в историю (BOOK-7).
-/// Номер на даты [CheckIn, CheckOut) занимает строка <see cref="BookingRoom"/> — по ней работает ограничение БД.
+/// Бронь (ТЗ §5). Стоимость фиксируется снимком при создании (BOOK-4); продление добавляет свою строку
+/// по ценам на момент продления. Все изменения пишутся в историю (BOOK-7).
+/// Номер на время [StartsAt, BlockedUntil) занимает строка <see cref="BookingRoom"/> — по ней работает ограничение БД.
 /// </summary>
 public sealed class Booking
 {
     private readonly List<BookingRoom> _rooms = [];
     private readonly List<BookingServiceLine> _services = [];
     private readonly List<BookingHistoryEntry> _history = [];
+    private readonly List<BookingExtension> _extensions = [];
 
     private Booking()
     {
@@ -61,9 +90,22 @@ public sealed class Booking
 
     public BookingSource Source { get; private set; }
 
+    public BookingKind Kind { get; private set; }
+
+    /// <summary>Дата заезда (для почасовой — дата начала) по времени гостиницы.</summary>
     public DateOnly CheckIn { get; private set; }
 
+    /// <summary>Дата выезда (для почасовой — дата окончания).</summary>
     public DateOnly CheckOut { get; private set; }
+
+    /// <summary>Начало проживания, UTC.</summary>
+    public DateTimeOffset StartsAt { get; private set; }
+
+    /// <summary>Окончание проживания (выезд), UTC.</summary>
+    public DateTimeOffset EndsAt { get; private set; }
+
+    /// <summary>Для почасовой брони — число часов (с продлениями).</summary>
+    public int? Hours { get; private set; }
 
     public int Adults { get; private set; }
 
@@ -90,9 +132,12 @@ public sealed class Booking
 
     public decimal ServicesAmount { get; private set; }
 
+    /// <summary>Сумма продлений (по ценам на момент продления).</summary>
+    public decimal ExtensionsAmount { get; private set; }
+
     public decimal TotalAmount { get; private set; }
 
-    /// <summary>Снимок расчёта (цены по ночам, тарифы, скидка, услуги) — JSON.</summary>
+    /// <summary>Снимок расчёта при создании (цены по ночам или часам, тарифы, скидка, услуги) — JSON.</summary>
     public string PriceSnapshot { get; private set; }
 
     public DateTimeOffset? ConfirmedAt { get; private set; }
@@ -115,15 +160,15 @@ public sealed class Booking
 
     public IReadOnlyList<BookingHistoryEntry> History => _history;
 
-    public DateRange Stay => new(CheckIn, CheckOut);
+    public IReadOnlyList<BookingExtension> Extensions => _extensions;
 
-    public int Nights => CheckOut.DayNumber - CheckIn.DayNumber;
+    public int Nights => Kind == BookingKind.Nightly ? CheckOut.DayNumber - CheckIn.DayNumber : 0;
 
     public static Booking Create(
         Guid hotelId,
         string number,
         BookingSource source,
-        DateRange stay,
+        StayPeriod stay,
         int adults,
         int children,
         GuestContact guest,
@@ -135,6 +180,7 @@ public sealed class Booking
         Guid? createdBy,
         DateTimeOffset now)
     {
+        ArgumentNullException.ThrowIfNull(stay);
         ArgumentNullException.ThrowIfNull(guest);
         ArgumentNullException.ThrowIfNull(price);
         var booking = new Booking
@@ -143,9 +189,13 @@ public sealed class Booking
             HotelId = hotelId,
             Number = number,
             Source = source,
+            Kind = stay.Kind,
             Status = confirm ? BookingStatus.Confirmed : BookingStatus.Pending,
-            CheckIn = stay.Start,
-            CheckOut = stay.End,
+            CheckIn = stay.CheckIn,
+            CheckOut = stay.CheckOut,
+            StartsAt = stay.StartsAt,
+            EndsAt = stay.EndsAt,
+            Hours = stay.Kind == BookingKind.Hourly ? stay.Units : null,
             Adults = adults,
             Children = children,
             GuestName = guest.FullName.Trim(),
@@ -166,7 +216,13 @@ public sealed class Booking
         };
         booking._rooms.Add(new BookingRoom(booking.Id, roomId, roomTypeId, stay, BookingStatusMachine.IsBlocking(booking.Status)));
         booking._services.AddRange(price.ServiceLines.Select(s => new BookingServiceLine(booking.Id, s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total, createdBy, now)));
-        booking.AddHistory("created", null, new { Status = booking.Status.ToString(), stay.Start, stay.End, roomId, price.Total }, createdBy, now, null);
+        booking.AddHistory(
+            "created",
+            null,
+            new { Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), stay.StartsAt, stay.EndsAt, roomId, price.Total },
+            createdBy,
+            now,
+            null);
         return booking;
     }
 
@@ -218,6 +274,50 @@ public sealed class Booking
         return Result.Success();
     }
 
+    /// <summary>
+    /// Продление (решение заказчика 2026-11-20): новый конец проживания, добавленное время — по ценам на момент продления.
+    /// Свободен ли номер, проверяет приложение и ограничение БД.
+    /// </summary>
+    public Result Extend(StayPeriod extended, int addedUnits, decimal amount, string snapshotJson, Guid? by, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(extended);
+        if (!BookingStatusMachine.CanExtend(Status))
+        {
+            return Error.Conflict("booking.extend_not_allowed", "Продлить можно только подтверждённую бронь или бронь заселённого гостя.");
+        }
+
+        if (extended.Kind != Kind || extended.EndsAt <= EndsAt)
+        {
+            return Error.Validation("booking.extend_invalid", "Новое время выезда должно быть позже текущего.");
+        }
+
+        var previousEnd = EndsAt;
+        _extensions.Add(new BookingExtension(Id, Kind, addedUnits, previousEnd, extended.EndsAt, amount, snapshotJson, by, now));
+        EndsAt = extended.EndsAt;
+        CheckOut = extended.CheckOut;
+        if (Kind == BookingKind.Hourly)
+        {
+            Hours = (Hours ?? 0) + addedUnits;
+        }
+
+        foreach (var room in _rooms)
+        {
+            room.Extend(extended);
+        }
+
+        ExtensionsAmount += amount;
+        TotalAmount += amount;
+        UpdatedAt = now;
+        AddHistory(
+            "extended",
+            new { EndsAt = previousEnd },
+            new { extended.EndsAt, Added = addedUnits, Unit = Kind == BookingKind.Hourly ? "Hour" : "Night", Amount = amount },
+            by,
+            now,
+            null);
+        return Result.Success();
+    }
+
     public void UpdateDetails(GuestContact guest, int adults, int children, string? comment, Guid? by, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(guest);
@@ -236,21 +336,28 @@ public sealed class Booking
         _history.Add(new BookingHistoryEntry(Id, eventType, oldValues, newValues, by, now, comment));
 }
 
-/// <summary>Номер в брони. <see cref="IsBlocking"/> = бронь занимает номер (Pending, AwaitingPayment, Confirmed, CheckedIn).</summary>
+/// <summary>
+/// Номер в брони. Занимает номер на [StartsAt, BlockedUntil), если <see cref="IsBlocking"/>
+/// (Pending, AwaitingPayment, Confirmed, CheckedIn). CheckIn/CheckOut — даты по времени гостиницы (для отчётов и «Бронь сегодня»).
+/// </summary>
 public sealed class BookingRoom
 {
     private BookingRoom()
     {
     }
 
-    public BookingRoom(Guid bookingId, Guid roomId, Guid roomTypeId, DateRange stay, bool isBlocking)
+    public BookingRoom(Guid bookingId, Guid roomId, Guid roomTypeId, StayPeriod stay, bool isBlocking)
     {
+        ArgumentNullException.ThrowIfNull(stay);
         Id = Guid.CreateVersion7();
         BookingId = bookingId;
         RoomId = roomId;
         RoomTypeId = roomTypeId;
-        CheckIn = stay.Start;
-        CheckOut = stay.End;
+        CheckIn = stay.CheckIn;
+        CheckOut = stay.CheckOut;
+        StartsAt = stay.StartsAt;
+        EndsAt = stay.EndsAt;
+        BlockedUntil = stay.BlockedUntil;
         IsBlocking = isBlocking;
     }
 
@@ -266,9 +373,67 @@ public sealed class BookingRoom
 
     public DateOnly CheckOut { get; private set; }
 
+    public DateTimeOffset StartsAt { get; private set; }
+
+    public DateTimeOffset EndsAt { get; private set; }
+
+    /// <summary>Конец занятости: выезд + время на уборку.</summary>
+    public DateTimeOffset BlockedUntil { get; private set; }
+
     public bool IsBlocking { get; private set; }
 
     internal void SetBlocking(bool blocking) => IsBlocking = blocking;
+
+    internal void Extend(StayPeriod extended)
+    {
+        CheckOut = extended.CheckOut;
+        EndsAt = extended.EndsAt;
+        BlockedUntil = extended.BlockedUntil;
+    }
+}
+
+/// <summary>Продление брони: на сколько, до какого времени и за какую сумму (снимок цен на момент продления).</summary>
+public sealed class BookingExtension
+{
+    private BookingExtension()
+    {
+        PriceSnapshot = "{}";
+    }
+
+    public BookingExtension(Guid bookingId, BookingKind unit, int quantity, DateTimeOffset previousEndsAt, DateTimeOffset newEndsAt, decimal amount, string priceSnapshot, Guid? createdBy, DateTimeOffset now)
+    {
+        Id = Guid.CreateVersion7();
+        BookingId = bookingId;
+        Unit = unit;
+        Quantity = quantity;
+        PreviousEndsAt = previousEndsAt;
+        NewEndsAt = newEndsAt;
+        Amount = amount;
+        PriceSnapshot = priceSnapshot;
+        CreatedBy = createdBy;
+        CreatedAt = now;
+    }
+
+    public Guid Id { get; private set; }
+
+    public Guid BookingId { get; private set; }
+
+    /// <summary>Nightly — ночи, Hourly — часы.</summary>
+    public BookingKind Unit { get; private set; }
+
+    public int Quantity { get; private set; }
+
+    public DateTimeOffset PreviousEndsAt { get; private set; }
+
+    public DateTimeOffset NewEndsAt { get; private set; }
+
+    public decimal Amount { get; private set; }
+
+    public string PriceSnapshot { get; private set; }
+
+    public Guid? CreatedBy { get; private set; }
+
+    public DateTimeOffset CreatedAt { get; private set; }
 }
 
 public sealed class BookingServiceLine

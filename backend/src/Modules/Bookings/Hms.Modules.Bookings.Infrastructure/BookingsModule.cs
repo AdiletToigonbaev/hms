@@ -21,6 +21,7 @@ public static class BookingsModule
     {
         services.AddSingleton<IModelConfigurator, BookingsModelConfigurator>();
         services.AddScoped<IRoomBookingQueries, RoomBookingQueries>();
+        services.AddScoped<Stays>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddValidatorsFromAssemblyContaining<CreateBookingRequestValidator>(includeInternalTypes: true);
@@ -66,6 +67,12 @@ public static class BookingsModule
             .WithValidation<UpdateBookingRequest>().RequirePermission(Permissions.BookingEdit);
         g.MapPost("/{id:guid}/confirm", async (Guid id, IBookingService s, CancellationToken ct) => (await s.ConfirmAsync(id, ct)).ToHttpResult())
             .RequirePermission(Permissions.BookingEdit);
+        g.MapGet("/{id:guid}/extend/quote", async (Guid id, int units, IBookingService s, CancellationToken ct) =>
+                (await s.QuoteExtensionAsync(id, units, ct)).ToHttpResult())
+            .RequirePermission(Permissions.BookingEdit);
+        g.MapPost("/{id:guid}/extend", async (Guid id, ExtendBookingRequest r, IBookingService s, CancellationToken ct) =>
+                (await s.ExtendAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<ExtendBookingRequest>().RequirePermission(Permissions.BookingEdit);
         g.MapPost("/{id:guid}/cancel", async (Guid id, CancelBookingRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.CancelAsync(id, r, ct)).ToHttpResult())
             .WithValidation<CancelBookingRequest>().RequirePermission(Permissions.BookingCancel);

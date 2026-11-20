@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
-import { Field } from "@/components/forms/field";
+import { PasswordField } from "@/components/forms/password-field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import type { FormState } from "@/lib/api/problem";
@@ -14,17 +14,15 @@ export function ChangePasswordForm() {
   return (
     <form action={action} className="grid gap-4" noValidate>
       <FormAlert state={state} />
-      <Field
+      <PasswordField
         name="currentPassword"
-        type="password"
         label={t("currentPassword")}
         autoComplete="current-password"
         required
         error={state.fieldErrors?.currentPassword}
       />
-      <Field
+      <PasswordField
         name="newPassword"
-        type="password"
         label={t("newPassword")}
         autoComplete="new-password"
         hint={t("passwordHint")}

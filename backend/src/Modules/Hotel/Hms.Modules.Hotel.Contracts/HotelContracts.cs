@@ -7,6 +7,15 @@ public sealed record CancellationPolicySnapshot(
     int NoShowPenaltyNights,
     int EarlyDeparturePenaltyNights);
 
+/// <summary>Правила почасовых броней (настраивает владелец, roadmap §6.1a).</summary>
+public sealed record HourlyPolicySnapshot(
+    int FreeCancelMinutesBeforeStart,
+    int LateCancelPenaltyHours,
+    int NoShowAfterMinutes,
+    int NoShowPenaltyHours,
+    int PendingHoldMinutes,
+    bool RefundUnusedOnEarlyDeparture);
+
 /// <summary>Настройки гостиницы, нужные другим модулям (бронирования, Identity, уборка).</summary>
 public sealed record HotelSettingsSnapshot(
     Guid HotelId,
@@ -23,7 +32,11 @@ public sealed record HotelSettingsSnapshot(
     bool AutoReleaseRoomAfterCleaning,
     bool RequireEmailConfirmation,
     TimeOnly NoShowCutoffTime,
-    CancellationPolicySnapshot CancellationPolicy);
+    int HourlyMinHours,
+    int HourlyMaxHours,
+    int CleaningBufferMinutes,
+    CancellationPolicySnapshot CancellationPolicy,
+    HourlyPolicySnapshot HourlyPolicy);
 
 /// <summary>
 /// Текущая гостиница и её настройки. Сейчас гостиница одна (ТЗ §2), модель данных готова к нескольким:

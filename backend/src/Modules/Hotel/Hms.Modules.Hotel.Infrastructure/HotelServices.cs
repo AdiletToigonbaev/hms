@@ -53,12 +53,18 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
                 r.AutoReleaseRoomAfterCleaning,
                 r.RequireEmailConfirmation,
                 ParseTime(r.NoShowCutoffTime),
+                r.HourlyMinHours,
+                r.HourlyMaxHours,
+                r.CleaningBufferMinutes,
                 new CancellationPolicy(
                     r.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
                     r.CancellationPolicy.LateCancelPenaltyNights,
                     r.CancellationPolicy.NoShowPenaltyNights,
                     r.CancellationPolicy.EarlyDeparturePenaltyNights),
-                r.Rules),
+                r.Rules,
+                r.HourlyPolicy is { } h
+                    ? new HourlyPolicy(h.FreeCancelMinutesBeforeStart, h.LateCancelPenaltyHours, h.NoShowAfterMinutes, h.NoShowPenaltyHours, h.PendingHoldMinutes, h.RefundUnusedOnEarlyDeparture)
+                    : null),
             time.GetUtcNow());
         audit.Record(new AuditEntry("hotel.settings.updated", "HotelSettings", settings.HotelId.ToString(), before, ToDto(settings)));
 
@@ -77,7 +83,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
         var s = await LoadSettingsAsync(ct);
         return new PublicHotelInfoDto(
             hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description,
-            FormatTime(s.CheckInTime), FormatTime(s.CheckOutTime), s.Rules, s.CancellationPolicy.FreeCancelHoursBeforeCheckIn);
+            FormatTime(s.CheckInTime), FormatTime(s.CheckOutTime), s.Rules, s.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
+            s.HourlyMinHours, s.HourlyMaxHours);
     }
 
     private async Task<HotelInfo> LoadHotelAsync(CancellationToken ct)
@@ -124,13 +131,23 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
         s.AutoReleaseRoomAfterCleaning,
         s.RequireEmailConfirmation,
         FormatTime(s.NoShowCutoffTime),
+        s.HourlyMinHours,
+        s.HourlyMaxHours,
+        s.CleaningBufferMinutes,
         new CancellationPolicyDto(
             s.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
             s.CancellationPolicy.LateCancelPenaltyNights,
             s.CancellationPolicy.NoShowPenaltyNights,
             s.CancellationPolicy.EarlyDeparturePenaltyNights),
         s.Rules,
-        s.Version);
+        s.Version,
+        new HourlyPolicyDto(
+            s.HourlyPolicy.FreeCancelMinutesBeforeStart,
+            s.HourlyPolicy.LateCancelPenaltyHours,
+            s.HourlyPolicy.NoShowAfterMinutes,
+            s.HourlyPolicy.NoShowPenaltyHours,
+            s.HourlyPolicy.PendingHoldMinutes,
+            s.HourlyPolicy.RefundUnusedOnEarlyDeparture));
 }
 
 internal sealed class IntegrationService(

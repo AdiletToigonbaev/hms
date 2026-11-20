@@ -36,6 +36,7 @@ internal sealed class HotelModelConfigurator : IModelConfigurator
             e.Property(x => x.Rules).HasMaxLength(5000);
             e.Property(x => x.Locale).HasMaxLength(10).IsRequired();
             e.OwnsOne(x => x.CancellationPolicy, p => p.ToJson("cancellation_policy"));
+            e.OwnsOne(x => x.HourlyPolicy, p => p.ToJson("hourly_policy"));
             e.Property(x => x.Version).IsRowVersion();
             e.ToTable(t =>
             {
@@ -105,11 +106,21 @@ internal sealed class HotelContext(DbContext db, IMemoryCache cache) : IHotelCon
             s.AutoReleaseRoomAfterCleaning,
             s.RequireEmailConfirmation,
             s.NoShowCutoffTime,
+            s.HourlyMinHours,
+            s.HourlyMaxHours,
+            s.CleaningBufferMinutes,
             new CancellationPolicySnapshot(
                 s.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
                 s.CancellationPolicy.LateCancelPenaltyNights,
                 s.CancellationPolicy.NoShowPenaltyNights,
-                s.CancellationPolicy.EarlyDeparturePenaltyNights));
+                s.CancellationPolicy.EarlyDeparturePenaltyNights),
+            new HourlyPolicySnapshot(
+                s.HourlyPolicy.FreeCancelMinutesBeforeStart,
+                s.HourlyPolicy.LateCancelPenaltyHours,
+                s.HourlyPolicy.NoShowAfterMinutes,
+                s.HourlyPolicy.NoShowPenaltyHours,
+                s.HourlyPolicy.PendingHoldMinutes,
+                s.HourlyPolicy.RefundUnusedOnEarlyDeparture));
 
         cache.Set(CacheKey, snapshot, TimeSpan.FromMinutes(5));
         return snapshot;
