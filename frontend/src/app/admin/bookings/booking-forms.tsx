@@ -1,7 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Field } from "@/components/forms/field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
@@ -146,14 +147,17 @@ export function BookingDetailsForm({ booking: b }: { booking: Booking }) {
   );
 }
 
-export function BookingActions({ booking: b }: { booking: Booking }) {
+/** Действия по статусу брони и правам сотрудника: подтверждение — `booking.edit`, отмена — `booking.cancel` (права проверяет и API). */
+export function BookingActions({ booking: b, canConfirm, canCancel }: { booking: Booking; canConfirm: boolean; canCancel: boolean }) {
   const t = useTranslations("Bookings");
   const [confirmState, confirm, confirming] = useActionState<FormState, FormData>(confirmBookingAction, {});
   const [cancelState, cancel, cancelling] = useActionState<FormState, FormData>(cancelBookingAction, {});
-  if (b.allowedActions.length === 0) return <p className="text-sm text-muted-foreground">{t("noActions")}</p>;
+  const showConfirm = canConfirm && b.allowedActions.includes("confirm");
+  const showCancel = canCancel && b.allowedActions.includes("cancel");
+  if (!showConfirm && !showCancel) return <p className="text-sm text-muted-foreground">{t("noActions")}</p>;
   return (
     <div className="grid gap-6">
-      {b.allowedActions.includes("confirm") && (
+      {showConfirm && (
         <form action={confirm} className="grid gap-3">
           <input type="hidden" name="id" value={b.id} />
           <FormAlert state={confirmState} />
@@ -162,25 +166,66 @@ export function BookingActions({ booking: b }: { booking: Booking }) {
           </div>
         </form>
       )}
-      {b.allowedActions.includes("cancel") && (
-        <form action={cancel} className="grid gap-3" noValidate>
-          <input type="hidden" name="id" value={b.id} />
-          <FormAlert state={cancelState} />
-          <Field
-            name="reason"
-            label={t("cancelReason")}
-            required
-            defaultValue={cancelState.values?.reason}
-            error={cancelState.fieldErrors?.reason}
-            hint={t("cancelHint")}
-          />
-          <div>
-            <SubmitButton pending={cancelling} variant="destructive">
-              {t("cancel")}
-            </SubmitButton>
-          </div>
-        </form>
-      )}
+      {showCancel && <CancelBookingForm booking={b} state={cancelState} action={cancel} pending={cancelling} />}
     </div>
+  );
+}
+
+/**
+ * Отмена брони — с окном подтверждения: действие необратимо, номер освобождается.
+ * Без причины окно не открывается — сразу показывается ошибка поля (проверка и в API).
+ */
+function CancelBookingForm({
+  booking: b,
+  state,
+  action,
+  pending,
+}: {
+  booking: Booking;
+  state: FormState;
+  action: (form: FormData) => void;
+  pending: boolean;
+}) {
+  const t = useTranslations("Bookings");
+  const formRef = useRef<HTMLFormElement>(null);
+  const [asking, setAsking] = useState(false);
+  return (
+    <form ref={formRef} action={action} className="grid gap-3" noValidate>
+      <input type="hidden" name="id" value={b.id} />
+      <FormAlert state={state} />
+      <Field
+        name="reason"
+        label={t("cancelReason")}
+        required
+        defaultValue={state.values?.reason}
+        error={state.fieldErrors?.reason}
+        hint={t("cancelHint")}
+      />
+      <div>
+        <SubmitButton
+          pending={pending}
+          variant="destructive"
+          onClick={(e) => {
+            const reason = new FormData(formRef.current!).get("reason");
+            if (typeof reason === "string" && reason.trim() !== "") {
+              e.preventDefault();
+              setAsking(true);
+            }
+          }}
+        >
+          {t("cancel")}
+        </SubmitButton>
+      </div>
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title={t("cancelConfirmTitle", { number: b.number })}
+        description={t("cancelConfirmText")}
+        confirmLabel={t("cancelConfirmYes")}
+        cancelLabel={t("cancelConfirmNo")}
+        destructive
+        onConfirm={() => formRef.current?.requestSubmit()}
+      />
+    </form>
   );
 }

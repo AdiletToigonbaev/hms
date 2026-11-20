@@ -2,6 +2,7 @@ import { ArrowLeft, BedDouble, Check } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { DateRangePicker } from "@/components/forms/date-range-picker";
 import { NativeSelect } from "@/components/forms/native-select";
 import { PageHeader } from "@/components/layout/page-header";
 import { PriceBreakdown } from "@/components/price-breakdown";
@@ -16,8 +17,9 @@ import type { AvailableRoom, ExtraService, RoomType } from "@/lib/api/types";
 import { errorKey } from "@/lib/api/problem";
 import { addDays, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { formatMoney, formatStayDate } from "@/lib/format";
+import { isIsoDate } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
-import { staySchema } from "@/lib/validation/bookings";
+import { MAX_NIGHTS, staySchema } from "@/lib/validation/bookings";
 import { CreateBookingForm } from "../booking-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -94,26 +96,37 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <form method="get" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(4,minmax(0,1fr))_minmax(0,1.5fr)_auto] lg:items-end">
-            <div className="grid gap-1.5">
-              <Label htmlFor="checkIn">{t("checkIn")}</Label>
-              <Input id="checkIn" name="checkIn" type="date" min={today} defaultValue={raw.checkIn} required />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="checkOut">{t("checkOut")}</Label>
-              <Input id="checkOut" name="checkOut" type="date" min={addDays(today, 1)} defaultValue={raw.checkOut} required />
+          <form
+            method="get"
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto] lg:items-end"
+          >
+            <div className="grid gap-1.5 sm:col-span-2 lg:col-span-1">
+              <span className="text-sm font-medium">{t("dates")}</span>
+              <DateRangePicker
+                key={`${raw.checkIn}-${raw.checkOut}`}
+                mode="stay"
+                startName="checkIn"
+                endName="checkOut"
+                defaultStart={isIsoDate(raw.checkIn) ? raw.checkIn : today}
+                defaultEnd={isIsoDate(raw.checkOut) ? raw.checkOut : addDays(today, 1)}
+                today={today}
+                min={today}
+                maxNights={MAX_NIGHTS}
+                startLabel={t("checkIn")}
+                endLabel={t("checkOut")}
+              />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="adults">{t("adults")}</Label>
-              <Input id="adults" name="adults" type="number" min={1} max={20} defaultValue={raw.adults} required />
+              <Input id="adults" name="adults" type="number" min={1} max={20} defaultValue={raw.adults} required className="h-14 rounded-xl" />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="children">{t("children")}</Label>
-              <Input id="children" name="children" type="number" min={0} max={20} defaultValue={raw.children} />
+              <Input id="children" name="children" type="number" min={0} max={20} defaultValue={raw.children} className="h-14 rounded-xl" />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="type">{t("roomType")}</Label>
-              <NativeSelect id="type" name="type" defaultValue={typeId}>
+              <NativeSelect id="type" name="type" defaultValue={typeId} className="h-14 rounded-xl">
                 <option value="">{t("anyType")}</option>
                 {types.ok &&
                   types.data
@@ -125,7 +138,9 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
                     ))}
               </NativeSelect>
             </div>
-            <Button type="submit">{t("findRooms")}</Button>
+            <Button type="submit" className="h-14 rounded-xl px-6">
+              {t("findRooms")}
+            </Button>
           </form>
           {searchError && (
             <p role="alert" className="mt-3 text-sm text-destructive">

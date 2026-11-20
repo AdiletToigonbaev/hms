@@ -116,7 +116,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <BookingActions booking={b} />
+                <BookingActions booking={b} canConfirm={can("booking.edit")} canCancel={can("booking.cancel")} />
                 {b.cancelReason && (
                   <p className="mt-2 text-sm">
                     <span className="text-muted-foreground">{t("cancelReason")}:</span> {b.cancelReason}

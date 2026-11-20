@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { BookingStatusBadge } from "@/components/booking-status-badge";
+import { DateRangePicker } from "@/components/forms/date-range-picker";
 import { NativeSelect } from "@/components/forms/native-select";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState, ErrorState } from "@/components/states/states";
@@ -12,7 +13,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { api } from "@/lib/api/server";
 import type { BookingListItem, Paged } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
-import { bookingStatusLabel, bookingStatuses, nightsLabel } from "@/lib/bookings/status";
+import { hotelTimeZone } from "@/i18n/config";
+import { bookingStatusLabel, bookingStatuses, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { formatMoney, formatStayDate } from "@/lib/format";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -76,8 +78,19 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
             </option>
           ))}
         </NativeSelect>
-        <Input type="date" name="from" defaultValue={from} aria-label={t("from")} title={t("from")} className="w-auto" />
-        <Input type="date" name="to" defaultValue={to} aria-label={t("to")} title={t("to")} className="w-auto" />
+        <DateRangePicker
+          key={`${from}-${to}`}
+          mode="period"
+          size="compact"
+          startName="from"
+          endName="to"
+          defaultStart={from || null}
+          defaultEnd={to || null}
+          today={hotelToday(hotelTimeZone)}
+          startLabel={t("from")}
+          endLabel={t("to")}
+          className="w-full sm:w-60"
+        />
         <Button type="submit" variant="outline">
           {t("filter")}
         </Button>

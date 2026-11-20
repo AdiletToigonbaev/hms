@@ -52,9 +52,14 @@ test("владелец задаёт сезонный тариф, создаёт 
   await expect(page.getByRole("cell", { name: `Сезон ${suffix}`, exact: true })).toBeVisible();
 
   // Подбор номера: цена считается на backend — 4000 + 3000
+  // Календарь: быстрая кнопка «Неделя» от выбранного заезда, затем нужные даты через адрес страницы
   await page.goto("/admin/bookings/new");
-  await page.getByLabel("Заезд", { exact: true }).fill(checkIn);
-  await page.getByLabel("Выезд", { exact: true }).fill(checkOut);
+  await page.getByRole("button", { name: /^Заезд — Выезд/ }).click();
+  await page.getByRole("button", { name: "Неделя", exact: true }).click();
+  await page.getByRole("button", { name: "Готово", exact: true }).click();
+  await expect(page.getByRole("button", { name: /^Заезд — Выезд/ })).toContainText("7 ночей");
+  await page.goto(`/admin/bookings/new?checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
+  await expect(page.getByRole("button", { name: /^Заезд — Выезд/ })).toContainText("2 ночи");
   await page.getByLabel("Категория", { exact: true }).selectOption({ label: typeName });
   await page.getByRole("button", { name: "Найти номера" }).click();
   await page.getByRole("link", { name: `Выбрать: Номер ${suffix}`, exact: true }).click();
@@ -78,10 +83,18 @@ test("владелец задаёт сезонный тариф, создаёт 
   // Отмена: причина обязательна, номер освобождается, история пишется
   await page.goto("/admin/bookings?search=" + encodeURIComponent(number));
   await page.getByRole("link", { name: number, exact: true }).click();
-  await page.getByRole("button", { name: "Отменить бронь" }).click();
+  await page.getByRole("button", { name: "Отменить бронь", exact: true }).click();
   await expect(page.getByText("Укажите причину отмены.").first()).toBeVisible();
   await page.getByLabel("Причина отмены", { exact: true }).fill("Гость передумал");
-  await page.getByRole("button", { name: "Отменить бронь" }).click();
+  // Окно подтверждения: «Нет» ничего не меняет, «Да» отменяет
+  await page.getByRole("button", { name: "Отменить бронь", exact: true }).click();
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText(`Отменить бронь ${number}?`);
+  await dialog.getByRole("button", { name: "Нет, оставить" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText("Подтверждена").filter({ visible: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Отменить бронь", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Да, отменить бронь" }).click();
   await expect(page.getByText("Статус изменён: Подтверждена → Отменена")).toBeVisible();
 
   await page.goto(`/admin/bookings/new?checkIn=${checkIn}&checkOut=${checkOut}&adults=2&children=0`);
