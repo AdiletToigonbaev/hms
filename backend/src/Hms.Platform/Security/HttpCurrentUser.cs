@@ -14,6 +14,8 @@ internal sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentU
     public Guid? UserId =>
         IsAuthenticated && Guid.TryParse(Http!.User.FindFirst(HmsClaimTypes.Subject)?.Value, out var id) ? id : null;
 
+    public string? Email => IsAuthenticated ? Http!.User.FindFirst(HmsClaimTypes.Email)?.Value : null;
+
     public string? IpAddress => Http?.Connection.RemoteIpAddress?.ToString();
 
     public string? UserAgent

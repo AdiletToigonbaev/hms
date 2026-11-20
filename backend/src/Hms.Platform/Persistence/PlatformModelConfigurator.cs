@@ -22,5 +22,17 @@ internal sealed class PlatformModelConfigurator : IModelConfigurator
             e.HasIndex(x => x.DedupKey).IsUnique().HasFilter("dedup_key IS NOT NULL");
             e.HasIndex(x => new { x.Status, x.NextAttemptAt });
         });
+
+        modelBuilder.Entity<Files.StoredFile>(e =>
+        {
+            e.ToTable("stored_files", Schema);
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Path).HasMaxLength(300).IsRequired();
+            e.Property(x => x.ContentType).HasMaxLength(100).IsRequired();
+            e.Property(x => x.Sha256).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OriginalName).HasMaxLength(200).IsRequired();
+            e.Property(x => x.Visibility).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(x => x.Path).IsUnique();
+        });
     }
 }

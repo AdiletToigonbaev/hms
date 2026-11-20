@@ -8,6 +8,9 @@ public interface ICurrentUser
     /// <summary>Идентификатор пользователя или null для анонимного запроса / фоновой задачи.</summary>
     Guid? UserId { get; }
 
+    /// <summary>Email из токена (для служебных писем пользователю).</summary>
+    string? Email { get; }
+
     string? IpAddress { get; }
 
     string? UserAgent { get; }

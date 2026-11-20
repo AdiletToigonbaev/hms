@@ -1,4 +1,5 @@
 using Hms.Modules.Audit.Contracts;
+using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Application;
 using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Identity.Domain;
@@ -19,6 +20,7 @@ internal sealed class AuthService(
     IUserAccessProvider access,
     IEmailOutbox emails,
     IAuditTrail audit,
+    IHotelContext hotel,
     TimeProvider time,
     IOptions<IdentityModuleOptions> options) : IAuthService
 {
@@ -85,7 +87,7 @@ internal sealed class AuthService(
             return error;
         }
 
-        return new RegisterResponse(user.Id, _options.RequireConfirmedEmailForGuests);
+        return new RegisterResponse(user.Id, (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation);
     }
 
     public async Task<Result<TokenResponse>> LoginAsync(LoginRequest request, CancellationToken ct)
@@ -126,7 +128,7 @@ internal sealed class AuthService(
         await users.ResetAccessFailedCountAsync(user);
 
         // Проверяется после пароля: иначе по ответу можно было бы узнать о существовании аккаунта.
-        if (user.UserType == UserType.Guest && _options.RequireConfirmedEmailForGuests && !user.EmailConfirmed)
+        if (user.UserType == UserType.Guest && !user.EmailConfirmed && (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation)
         {
             return IdentityErrors.EmailNotConfirmed;
         }

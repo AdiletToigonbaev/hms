@@ -24,15 +24,17 @@ public interface IUserAccessProvider
     void Invalidate(Guid userId);
 }
 
-public sealed class PermissionRequirement(string permission) : IAuthorizationRequirement
+/// <summary>Требуется хотя бы одно из перечисленных разрешений.</summary>
+public sealed class PermissionRequirement(params string[] permissions) : IAuthorizationRequirement
 {
-    public string Permission { get; } = permission;
+    public IReadOnlyList<string> Permissions { get; } = permissions;
 }
 
 /// <summary>Политики вида <c>perm:booking.cancel</c> создаются на лету — не нужно регистрировать каждую.</summary>
 internal sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> options) : DefaultAuthorizationPolicyProvider(options)
 {
     public const string Prefix = "perm:";
+    public const char Separator = '|';
 
     public override async Task<AuthorizationPolicy?> GetPolicyAsync(string policyName)
     {
@@ -40,7 +42,7 @@ internal sealed class PermissionPolicyProvider(IOptions<AuthorizationOptions> op
         {
             return new AuthorizationPolicyBuilder()
                 .RequireAuthenticatedUser()
-                .AddRequirements(new PermissionRequirement(policyName[Prefix.Length..]))
+                .AddRequirements(new PermissionRequirement(policyName[Prefix.Length..].Split(Separator)))
                 .Build();
         }
 
@@ -58,7 +60,7 @@ internal sealed class PermissionHandler(IUserAccessProvider access) : Authorizat
         }
 
         var state = await access.GetAsync(userId, CancellationToken.None);
-        if (state is { IsActive: true } && state.Permissions.Contains(requirement.Permission))
+        if (state is { IsActive: true } && requirement.Permissions.Any(state.Permissions.Contains))
         {
             context.Succeed(requirement);
         }
@@ -71,4 +73,9 @@ public static class PermissionEndpointExtensions
     public static TBuilder RequirePermission<TBuilder>(this TBuilder builder, string permission)
         where TBuilder : IEndpointConventionBuilder =>
         builder.RequireAuthorization(PermissionPolicyProvider.Prefix + permission);
+
+    /// <summary>Требует хотя бы одно из разрешений.</summary>
+    public static TBuilder RequireAnyPermission<TBuilder>(this TBuilder builder, params string[] permissions)
+        where TBuilder : IEndpointConventionBuilder =>
+        builder.RequireAuthorization(PermissionPolicyProvider.Prefix + string.Join(PermissionPolicyProvider.Separator, permissions));
 }

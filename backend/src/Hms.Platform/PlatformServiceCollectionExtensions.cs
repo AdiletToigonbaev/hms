@@ -1,5 +1,6 @@
 using FluentValidation;
 using Hms.Platform.Email;
+using Hms.Platform.Files;
 using Hms.Platform.Outbox;
 using Hms.Platform.Persistence;
 using Hms.Platform.Security;
@@ -37,6 +38,10 @@ public static class PlatformServiceCollectionExtensions
         services.AddScoped<IEmailOutbox, EmailOutbox>();
         services.AddScoped<IOutboxHandler, SendEmailOutboxHandler>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+
+        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.Section));
+        services.AddSingleton<IFileStorage, LocalFileStorage>();
+        services.AddScoped<IFileService, FileService>();
 
         // Сообщения валидации — на русском
         ValidatorOptions.Global.LanguageManager.Culture = new System.Globalization.CultureInfo("ru");

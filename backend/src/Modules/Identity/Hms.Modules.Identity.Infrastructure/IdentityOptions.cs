@@ -37,9 +37,6 @@ public sealed class IdentityModuleOptions
     /// <summary>Публичный адрес сайта — для ссылок в письмах (подтверждение email, сброс пароля).</summary>
     public string PublicWebUrl { get; set; } = "http://localhost:3000";
 
-    /// <summary>Требовать подтверждённый email для входа гостя (HotelSettings.RequireEmailConfirmation).</summary>
-    public bool RequireConfirmedEmailForGuests { get; set; } = true;
-
     public TimeSpan EmailConfirmationTokenLifetime { get; set; } = TimeSpan.FromHours(24);
 
     public TimeSpan PasswordResetTokenLifetime { get; set; } = TimeSpan.FromHours(2);
