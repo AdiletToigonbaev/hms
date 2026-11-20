@@ -51,7 +51,16 @@ internal sealed class HotelModelConfigurator : IModelConfigurator
             e.HasOne<HotelInfo>().WithMany().HasForeignKey(x => x.HotelId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Mode).HasConversion<string>().HasMaxLength(20);
-            e.Property(x => x.PublicConfig).HasColumnType("jsonb");
+            // Явный JSON-конвертер: без него Npgsql требует глобальной «динамической» сериализации.
+            e.Property(x => x.PublicConfig)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    v => System.Text.Json.JsonSerializer.Serialize(v, System.Text.Json.JsonSerializerOptions.Web),
+                    v => System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(v, System.Text.Json.JsonSerializerOptions.Web) ?? new Dictionary<string, string>(),
+                    new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<Dictionary<string, string>>(
+                        (a, b) => a!.Count == b!.Count && !a.Except(b).Any(),
+                        v => v.Aggregate(0, (h, kv) => HashCode.Combine(h, kv.Key, kv.Value)),
+                        v => new Dictionary<string, string>(v)));
             e.Property(x => x.LastCheckStatus).HasMaxLength(200);
             e.HasIndex(x => new { x.HotelId, x.Provider }).IsUnique();
         });
@@ -74,9 +83,9 @@ internal sealed class HotelContext(DbContext db, IMemoryCache cache) : IHotelCon
 
         var row = await (
             from h in db.Set<HotelInfo>().AsNoTracking()
-            join s in db.Set<HotelSettings>().AsNoTracking() on h.Id equals s.HotelId
+            join hs in db.Set<HotelSettings>().AsNoTracking() on h.Id equals hs.HotelId
             orderby h.CreatedAt
-            select new { Hotel = h, Settings = s })
+            select new { Hotel = h, Settings = hs })
             .FirstOrDefaultAsync(ct)
             ?? throw new InvalidOperationException("Гостиница не создана: выполните команду migrate.");
 

@@ -1,6 +1,8 @@
 using Hms.Api.Infrastructure;
 using Hms.Modules.Audit.Infrastructure;
+using Hms.Modules.Hotel.Infrastructure;
 using Hms.Modules.Identity.Infrastructure;
+using Hms.Platform.Files;
 using Hms.Platform.Persistence;
 using Hms.Platform.Time;
 using Microsoft.Extensions.Options;
@@ -38,6 +40,7 @@ try
 
     // Модули
     builder.Services.AddAuditModule();
+    builder.Services.AddHotelModule();
     builder.Services.AddIdentityModule(builder.Configuration);
 
     var app = builder.Build();
@@ -78,6 +81,8 @@ try
     var api = app.MapGroup("/api/v1");
     api.MapIdentityEndpoints();
     api.MapAuditEndpoints();
+    api.MapHotelEndpoints();
+    api.MapFileEndpoints();
 
     await app.RunAsync();
     return 0;
