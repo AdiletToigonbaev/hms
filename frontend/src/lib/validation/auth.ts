@@ -63,8 +63,11 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   return result;
 }
 
-/** Значение чекбокса из FormData (Base UI Checkbox отправляет "on"). */
+/**
+ * Отмечен ли чекбокс в отправленной форме. Семантика HTML: неотмеченный чекбокс не отправляется,
+ * отмеченный — отправляется с любым значением (Base UI без `value` шлёт пустую строку).
+ */
 export function checkbox(form: FormData, name: string): boolean {
   const value = form.get(name);
-  return value === "on" || value === "true";
+  return value !== null && value !== "false";
 }

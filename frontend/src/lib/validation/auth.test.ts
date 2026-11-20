@@ -64,6 +64,19 @@ describe("checkbox", () => {
     expect(checkbox(form, "a")).toBe(true);
     expect(checkbox(form, "b")).toBe(false);
   });
+
+  it("отмеченный чекбокс Base UI без value (пустая строка) — отмечен", () => {
+    // Регрессия: Base UI отправляет отмеченный чекбокс как name="" — согласие не засчитывалось.
+    const form = new FormData();
+    form.set("acceptPersonalData", "");
+    expect(checkbox(form, "acceptPersonalData")).toBe(true);
+  });
+
+  it("явное false — не отмечен", () => {
+    const form = new FormData();
+    form.set("a", "false");
+    expect(checkbox(form, "a")).toBe(false);
+  });
 });
 
 describe("локаль zod", () => {

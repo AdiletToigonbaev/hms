@@ -28,12 +28,13 @@ export function RegisterForm() {
   }
 
   const errors = state.fieldErrors ?? {};
+  const values = state.values ?? {};
   return (
     <form action={action} className="grid gap-4" noValidate>
       <FormAlert state={state} />
-      <Field name="fullName" label={t("fullName")} autoComplete="name" required error={errors.fullName} />
-      <Field name="email" type="email" label={t("email")} autoComplete="email" required error={errors.email} />
-      <Field name="phone" type="tel" label={t("phone")} autoComplete="tel" hint={t("phoneHint")} error={errors.phone} />
+      <Field name="fullName" label={t("fullName")} autoComplete="name" required defaultValue={values.fullName} error={errors.fullName} />
+      <Field name="email" type="email" label={t("email")} autoComplete="email" required defaultValue={values.email} error={errors.email} />
+      <Field name="phone" type="tel" label={t("phone")} autoComplete="tel" hint={t("phoneHint")} defaultValue={values.phone} error={errors.phone} />
       <Field
         name="password"
         type="password"
@@ -45,7 +46,7 @@ export function RegisterForm() {
       />
       <div className="grid gap-1.5">
         <div className="flex items-start gap-2">
-          <Checkbox id="acceptPersonalData" name="acceptPersonalData" aria-invalid={errors.acceptPersonalData ? true : undefined} />
+          <Checkbox id="acceptPersonalData" name="acceptPersonalData" value="true" defaultChecked={values.acceptPersonalData !== undefined} aria-invalid={errors.acceptPersonalData ? true : undefined} />
           <Label htmlFor="acceptPersonalData" className="leading-snug font-normal">
             {t("acceptPersonalData")}
           </Label>
@@ -53,7 +54,7 @@ export function RegisterForm() {
         {errors.acceptPersonalData && <p className="text-xs text-destructive">{errors.acceptPersonalData}</p>}
       </div>
       <div className="flex items-start gap-2">
-        <Checkbox id="acceptWhatsApp" name="acceptWhatsApp" />
+        <Checkbox id="acceptWhatsApp" name="acceptWhatsApp" value="true" defaultChecked={values.acceptWhatsApp !== undefined} />
         <Label htmlFor="acceptWhatsApp" className="leading-snug font-normal">
           {t("acceptWhatsApp")}
         </Label>

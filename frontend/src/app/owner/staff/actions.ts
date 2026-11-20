@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { api } from "@/lib/api/server";
-import { toFormState, type FormState } from "@/lib/api/problem";
+import { toFormState, withValues, type FormState } from "@/lib/api/problem";
 import type { PermissionOverride, Staff } from "@/lib/api/types";
 import { createStaffSchema, fieldErrors, PASSWORD_MIN } from "@/lib/validation/auth";
 
 // Каждое действие — отдельная точка входа (прямой POST), поэтому права проверяет API на каждом вызове.
+
+// Поля, которые возвращаются в форму при ошибке (пароли — никогда).
+const STAFF_FIELDS = ["fullName", "email", "phone", "role"] as const;
 
 function handleAuth(status: number) {
   if (status === 401) redirect("/login");
@@ -22,12 +25,12 @@ export async function createStaffAction(_: FormState, form: FormData): Promise<F
     role: form.get("role"),
     initialPassword: form.get("initialPassword"),
   });
-  if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error) };
+  if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, STAFF_FIELDS);
 
   const result = await api<Staff>("/staff", { method: "POST", body: parsed.data });
   if (!result.ok) {
     handleAuth(result.status);
-    return toFormState(result.problem);
+    return withValues(toFormState(result.problem), form, STAFF_FIELDS);
   }
   redirect(`/owner/staff/${result.data.id}`);
 }
@@ -41,7 +44,7 @@ const updateSchema = z.object({
 
 export async function updateStaffAction(_: FormState, form: FormData): Promise<FormState> {
   const parsed = updateSchema.safeParse(Object.fromEntries(form));
-  if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error) };
+  if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, STAFF_FIELDS);
   const { id, ...data } = parsed.data;
 
   const result = await api<Staff>(`/staff/${id}`, {
@@ -50,7 +53,7 @@ export async function updateStaffAction(_: FormState, form: FormData): Promise<F
   });
   if (!result.ok) {
     handleAuth(result.status);
-    return toFormState(result.problem);
+    return withValues(toFormState(result.problem), form, STAFF_FIELDS);
   }
   revalidatePath(`/owner/staff/${id}`);
   return { ok: true };

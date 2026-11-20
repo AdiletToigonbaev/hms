@@ -8,6 +8,26 @@ export interface FormState {
   /** Ошибки полей: поле → текст (валидация API уже на русском). */
   fieldErrors?: Record<string, string>;
   message?: string;
+  /**
+   * Введённые значения (без паролей): React 19 сбрасывает поля формы после серверного действия,
+   * поэтому при ошибке форма восстанавливает их отсюда через defaultValue.
+   */
+  values?: Record<string, string>;
+}
+
+/** Значения полей формы для повторного показа (пароли и служебные поля не возвращаются). */
+export function echoValues(form: FormData, names: readonly string[]): Record<string, string> {
+  const values: Record<string, string> = {};
+  for (const name of names) {
+    const value = form.get(name);
+    if (typeof value === "string") values[name] = value;
+  }
+  return values;
+}
+
+/** Ошибка с сохранением введённых значений. */
+export function withValues(state: FormState, form: FormData, names: readonly string[]): FormState {
+  return { ...state, values: echoValues(form, names) };
 }
 
 /** Коды ошибок API, для которых есть переведённые сообщения (Errors.<code>). */

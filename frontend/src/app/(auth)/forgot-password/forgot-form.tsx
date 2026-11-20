@@ -17,7 +17,7 @@ export function ForgotPasswordForm() {
       <FormAlert state={state} success={t("forgotSent")} />
       {!state.ok && (
         <>
-          <Field name="email" type="email" label={t("email")} autoComplete="email" required error={state.fieldErrors?.email} />
+          <Field name="email" type="email" label={t("email")} autoComplete="email" required defaultValue={state.values?.email} error={state.fieldErrors?.email} />
           <SubmitButton pending={pending}>{t("forgotSubmit")}</SubmitButton>
         </>
       )}

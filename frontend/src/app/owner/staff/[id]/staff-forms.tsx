@@ -24,9 +24,9 @@ export function ProfileForm({ staff }: { staff: Staff }) {
     <form action={action} className="grid gap-4" noValidate>
       <input type="hidden" name="id" value={staff.id} />
       <FormAlert state={state} success={t("saved")} />
-      <Field name="fullName" label={t("fullName")} defaultValue={staff.fullName} required error={errors.fullName} />
-      <Field name="email" type="email" label={auth("email")} defaultValue={staff.email ?? ""} error={errors.email} />
-      <Field name="phone" type="tel" label={auth("phone")} defaultValue={staff.phone ?? ""} error={errors.phone} />
+      <Field name="fullName" label={t("fullName")} defaultValue={state.values?.fullName ?? staff.fullName} required error={errors.fullName} />
+      <Field name="email" type="email" label={auth("email")} defaultValue={state.values?.email ?? staff.email ?? ""} error={errors.email} />
+      <Field name="phone" type="tel" label={auth("phone")} defaultValue={state.values?.phone ?? staff.phone ?? ""} error={errors.phone} />
       <SubmitButton pending={pending}>{common("save")}</SubmitButton>
     </form>
   );

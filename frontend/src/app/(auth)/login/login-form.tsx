@@ -19,7 +19,14 @@ export function LoginForm() {
     <form action={action} className="grid gap-4" noValidate>
       <input type="hidden" name="next" value={next} />
       <FormAlert state={state} />
-      <Field name="login" label={t("login")} autoComplete="username" required error={state.fieldErrors?.login} />
+      <Field
+        name="login"
+        label={t("login")}
+        autoComplete="username"
+        required
+        defaultValue={state.values?.login}
+        error={state.fieldErrors?.login}
+      />
       <Field
         name="password"
         type="password"

@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import ru from "../../../messages/ru.json";
-import { errorKey, toFormState } from "./problem";
+import { echoValues, errorKey, toFormState, withValues } from "./problem";
+
+describe("echoValues", () => {
+  it("возвращает только перечисленные поля — пароль не попадает в ответ", () => {
+    const form = new FormData();
+    form.set("email", "a@b.kg");
+    form.set("password", "secret-password");
+    form.set("acceptPersonalData", "");
+    expect(echoValues(form, ["email", "acceptPersonalData", "missing"])).toEqual({ email: "a@b.kg", acceptPersonalData: "" });
+    expect(withValues({ ok: false }, form, ["email"]).values).toEqual({ email: "a@b.kg" });
+  });
+});
 
 describe("toFormState", () => {
   it("переносит ошибки полей и известный код", () => {

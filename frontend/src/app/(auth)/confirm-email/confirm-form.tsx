@@ -50,7 +50,7 @@ export function ResendConfirmationForm() {
   return (
     <form action={action} className="grid gap-4" noValidate>
       <FormAlert state={state} success={t("resentText")} />
-      <Field name="email" type="email" label={t("email")} autoComplete="email" required error={state.fieldErrors?.email} />
+      <Field name="email" type="email" label={t("email")} autoComplete="email" required defaultValue={state.values?.email} error={state.fieldErrors?.email} />
       <SubmitButton pending={pending} variant="outline">
         {t("resendSubmit")}
       </SubmitButton>
