@@ -4,7 +4,8 @@
 - ASP.NET Core Identity, пароли — PBKDF2/Argon2-совместимый хэш Identity, политика: ≥10 символов; блокировка после 5 неудач (15 мин).
 - JWT access 15 мин; refresh-токен 14 дней в httpOnly, Secure, SameSite=Lax cookie, ротация и отзыв при повторном использовании; хэш токена в БД.
 - Для персонала — 2FA (TOTP) обязательна для Владельца (P1), опциональна для Администратора.
-- Гость: email + пароль; вход по WhatsApp OTP — P2.
+- Гость: email + пароль; подтверждение email (настройка `RequireEmailConfirmation`); вход по WhatsApp OTP — P2.
+- Ссылки подтверждения email и сброса пароля — одноразовые токены Identity с ограниченным сроком; ответы на «забыли пароль» не раскрывают, существует ли аккаунт.
 
 ## 2. Авторизация (RBAC + Permissions)
 Роль даёт набор разрешений; Владелец может добавлять/снимать разрешения у конкретного Администратора (`UserPermissions` с флагом grant/deny). Проверка — на backend через policy `[HasPermission("booking.cancel")]`. Объектные проверки (ownership): гость видит только свои сущности (`Booking.GuestUserId == currentUser`); уборщик — только свои задачи. Скрытие в UI — только удобство, не защита.
@@ -15,15 +16,16 @@
 | Возможность | Владелец | Администратор | Уборщик | Гость |
 |---|---|---|---|---|
 | Дашборд владельца, KPI, прибыль | ✔ | — | — | — |
+| Dashboard администратора (операционный, без прибыли/расходов) | ✔ | ✔ | — | — |
 | Финансовые отчёты, экспорт | ✔ | ⚙ (нет) | — | — |
-| Расходы: просмотр/создание | ✔ | ⚙ (создание да) | — | — |
-| Расходы: удаление/правка | ✔ | — | — | — |
+| Расходы: создание, просмотр созданных собой | ✔ | ⚙ (да) | — | — |
+| Расходы: просмотр всех, правка, аннулирование | ✔ | — | — | — |
 | Управление пользователями персонала | ✔ | — | — | — |
 | Настройки отеля, правила, отмена | ✔ | — | — | — |
 | Интеграции (банки, WhatsApp) | ✔ | — | — | — |
 | Тарифы, скидки | ✔ | ⚙ (просмотр) | — | просмотр цен |
 | Номера и категории: CRUD | ✔ | ✔ | — | просмотр каталога |
-| Смена статуса номера | ✔ | ✔ | ⚙ (только Cleaning→Inspected-запрос) | — |
+| Смена статуса номера | ✔ | ✔ | — (меняет только статус своих задач уборки; `Completed` = запрос на проверку) | — |
 | Бронирования: просмотр всех | ✔ | ✔ | — | своё |
 | Бронирования: создать/изменить | ✔ | ✔ | — | создать/своё |
 | Отмена брони | ✔ | ✔ (по правилам; штрафные исключения ⚙) | — | своё по правилам |
@@ -34,7 +36,7 @@
 | Возвраты: запрос | ✔ | ✔ | — | запрос своего |
 | Возвраты: утверждение | ✔ | ⚙ (лимит суммы) | — | — |
 | База гостей: просмотр | ✔ | ✔ | — | своё |
-| Документы гостей | ✔ | ⚙ (нет) | — | своё |
+| Документы гостей | ✔ | ⚙ (нет) | — | — (минимизация: гость не видит сохранённые номера документов) |
 | Задачи уборки: управление/назначение | ✔ | ✔ | — | — |
 | Задачи уборки: свои, старт/финиш, чек-лист | — | — | ✔ | — |
 | Проверка уборки (Inspected/Rejected) | ✔ | ✔ | — | — |
@@ -44,7 +46,7 @@
 | Аудит-лог | ✔ | — | — | — |
 | Профиль и пароль | ✔ | ✔ | ✔ | ✔ |
 
-Коды разрешений (примеры): `booking.view`, `booking.create`, `booking.edit`, `booking.cancel`, `payment.register`, `refund.request`, `refund.approve`, `finance.report.view`, `expense.create`, `guest.view`, `guest.documents.view`, `room.manage`, `housekeeping.manage`, `whatsapp.send`, `settings.manage`, `staff.manage`, `audit.view`.
+Коды разрешений (полный список, seed в Sprint 1): `dashboard.owner.view`, `dashboard.operations.view`, `booking.view`, `booking.create`, `booking.edit`, `booking.cancel`, `booking.cancel.penalty_override`, `checkin.perform`, `checkout.perform`, `calendar.view`, `room.manage`, `room.status.change`, `rate.view`, `rate.manage`, `guest.view`, `guest.manage`, `guest.documents.view`, `guest.documents.manage`, `payment.view`, `payment.register`, `payment.reverse`, `refund.request`, `refund.approve`, `expense.create`, `expense.manage`, `finance.report.view`, `report.export`, `housekeeping.manage`, `housekeeping.inspect`, `housekeeping.work`, `maintenance.create`, `maintenance.manage`, `whatsapp.send`, `whatsapp.templates.manage`, `settings.manage`, `integrations.manage`, `staff.manage`, `audit.view`. Лимит суммы — `UserPermissions.LimitAmount` (для `refund.approve`).
 
 ## 4. Защита API
 - Валидация входа (FluentValidation), строгие DTO (без привязки сущностей), ограничения размеров.

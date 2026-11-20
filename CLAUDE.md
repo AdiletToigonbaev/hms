@@ -51,11 +51,11 @@
 /                  CLAUDE.md, README.md, .gitignore
 docs/              requirements, architecture, database, api, integrations, development
 backend/           Hms.sln
-  src/             Hms.Api, Hms.SharedKernel, Hms.Platform,
+  src/             Hms.Api, Hms.SharedKernel, Hms.Platform, Hms.Persistence (HmsDbContext + миграции),
                    Modules/{Identity,Hotel,Rooms,Pricing,Bookings,Guests,FrontDesk,
                             Housekeeping,Finance,PaymentGateways,Messaging,Reporting,Audit}
                    (каждый модуль: Domain, Application, Infrastructure, Contracts)
-  tests/           Hms.UnitTests, Hms.IntegrationTests (Testcontainers), Hms.ApiTests
+  tests/           Hms.UnitTests, Hms.IntegrationTests (Testcontainers), Hms.ApiTests, Hms.ArchitectureTests
 frontend/          Next.js: src/{app,components,features,lib,i18n,hooks}
 deploy/            docker-compose.yml, nginx/, env.example, backup/
 .github/workflows/ CI: build, test, lint
@@ -67,22 +67,23 @@ deploy/            docker-compose.yml, nginx/, env.example, backup/
 dotnet build backend/Hms.sln
 dotnet test backend/Hms.sln                      # интеграционные тесты требуют Docker
 dotnet format backend/Hms.sln --verify-no-changes
-dotnet ef migrations add <Name> --project <Module.Infrastructure> --startup-project backend/src/Hms.Api
-dotnet ef database update --project <Module.Infrastructure> --startup-project backend/src/Hms.Api
+dotnet ef migrations add <Name> --project backend/src/Hms.Persistence --startup-project backend/src/Hms.Api
+dotnet ef database update --project backend/src/Hms.Persistence --startup-project backend/src/Hms.Api
 
 # frontend
 cd frontend && npm ci
 npm run dev | npm run build | npm run lint | npm test
 
-# окружение
+# окружение (dev: db, mailpit; затем api, web)
 docker compose -f deploy/docker-compose.yml up -d
 ```
 
 ## Соглашения
 - Код и идентификаторы — на английском; UI-строки — через i18n (ru по умолчанию); комментарии и документы допустимы на русском.
 - Ошибки API — ProblemDetails с кодом домена; DTO отдельно от сущностей.
+- Один `HmsDbContext`, схема PostgreSQL на модуль; модули обращаются друг к другу только через `*.Contracts` (проверяют архитектурные тесты).
 - Миграции в production применяются вручную при релизе.
 - Каждая фича — с тестами (в т.ч. гонки, повторные webhook, IDOR, права).
 
 ## Открытые вопросы
-См. `docs/development/development-roadmap.md` §6. Блокирующие: 1–7.
+См. `docs/development/development-roadmap.md` §6. Бизнес-правила (3–7) приняты как настраиваемые значения по умолчанию и ждут подтверждения заказчика; юридические вопросы 1–2 открыты и блокируют спринты 4, 6, 11. ER-диаграмма ждёт согласования.

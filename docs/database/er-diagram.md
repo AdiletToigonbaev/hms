@@ -1,11 +1,14 @@
 # ER-диаграмма
 
-Диаграмма разбита по модулям для читаемости. Рендер: любой Mermaid-совместимый просмотрщик (GitHub, VS Code).
+**Статус:** предложена архитектором, ожидает согласования заказчиком (ТЗ §14: «сначала подготовить ER-диаграмму и согласовать её»). Описание полей и обоснование отклонений от списка таблиц ТЗ: `database-design.md`.
+
+Диаграмма разбита по модулям для читаемости. Рендер: любой Mermaid-совместимый просмотрщик (GitHub, VS Code). Во всех бизнес-таблицах есть `HotelId → Hotels` (на диаграммах не показано, кроме модуля Hotel).
 
 ## 1. Identity и Hotel
 ```mermaid
 erDiagram
   Hotels ||--|| HotelSettings : has
+  Hotels ||--o{ IntegrationSettings : configures
   Users ||--o{ UserRoles : has
   Roles ||--o{ UserRoles : has
   Roles ||--o{ RolePermissions : grants
@@ -22,9 +25,12 @@ erDiagram
   RoomTypes ||--o{ Rooms : contains
   RoomTypes ||--o{ RoomRates : priced
   RoomTypes }o--o{ Amenities : "via RoomTypeAmenities"
-  RoomTypes ||--o{ RoomPhotos : shows
-  Rooms ||--o{ RoomStatusHistory : logs
+  RoomTypes ||--o{ RoomPhotos : "category photos"
+  Rooms ||--o{ RoomPhotos : "room photos"
   StoredFiles ||--o{ RoomPhotos : file
+  Rooms ||--o{ RoomStatusHistory : logs
+  Hotels ||--o{ Services : offers
+  Hotels ||--o{ Discounts : defines
 ```
 
 ## 3. Гости и бронирования
@@ -36,23 +42,26 @@ erDiagram
   Guests ||--o{ Bookings : makes
   Bookings ||--|{ BookingRooms : reserves
   Rooms ||--o{ BookingRooms : "exclude overlap"
+  RoomTypes ||--o{ BookingRooms : "type at booking"
   Bookings ||--o{ BookingGuests : includes
   Guests ||--o{ BookingGuests : participates
   Bookings ||--o{ BookingServices : adds
   Services ||--o{ BookingServices : of
   Bookings ||--o{ BookingHistory : logs
-  Discounts ||--o{ Bookings : applied
+  Discounts |o--o{ Bookings : "applied (DiscountId)"
 ```
 
 ## 4. Финансы
 ```mermaid
 erDiagram
-  Bookings ||--o{ Payments : paid_by
+  Bookings |o--o{ Payments : paid_by
   Guests ||--o{ Payments : pays
+  Payments |o--o| Payments : "reversal of"
   Payments ||--o{ PaymentTransactions : events
   Payments ||--o{ Refunds : refunded_by
+  Bookings ||--o{ Refunds : for
   ExpenseCategories ||--o{ Expenses : groups
-  StoredFiles ||--o{ Expenses : attachment
+  StoredFiles |o--o{ Expenses : attachment
   WebhookEvents }o..o{ PaymentTransactions : "dedup source"
 ```
 
@@ -61,7 +70,7 @@ erDiagram
 erDiagram
   Rooms ||--o{ HousekeepingTasks : cleaned
   Bookings |o--o{ HousekeepingTasks : triggers
-  Users ||--o{ HousekeepingTasks : assigned
+  Users |o--o{ HousekeepingTasks : assigned
   HousekeepingTasks ||--o{ HousekeepingChecklistItems : contains
   ChecklistTemplates ||--o{ ChecklistTemplateItems : defines
   RoomTypes |o--o{ ChecklistTemplates : for
@@ -73,14 +82,19 @@ erDiagram
 ```mermaid
 erDiagram
   Guests ||--o{ WhatsAppMessages : conversation
-  NotificationTemplates ||--o{ WhatsAppMessages : uses
-  MessageOutbox ||--o| WhatsAppMessages : delivers
-  Users ||--o{ AuditLogs : acts
+  NotificationTemplates |o--o{ WhatsAppMessages : uses
+  Bookings |o--o{ WhatsAppMessages : about
+  OutboxMessages |o..o| WhatsAppMessages : delivers
+  Users |o--o{ AuditLogs : acts
 ```
+`OutboxMessages`, `WebhookEvents`, `IdempotencyKeys`, `StoredFiles` — технические таблицы модуля Platform; связь с бизнес-сущностями логическая (через payload/ключи), без внешних ключей.
 
 ## Критичные ограничения
 - `BookingRooms`: `EXCLUDE USING gist (RoomId WITH =, StayRange WITH &&) WHERE (IsBlocking)`.
-- `Payments`: unique `(Provider, ExternalId)`; `PaymentTransactions`: unique `(Provider, ProviderTxnId, Kind)`.
+- `Bookings`: check `CheckOut > CheckIn`, `AdultsCount ≥ 1`.
+- `Payments`: unique `(Provider, ExternalId)` where not null; unique `(ReversalOfPaymentId)` where not null; check `Amount > 0`.
+- `PaymentTransactions`: unique `(Provider, ProviderTxnId, Kind)` where `ProviderTxnId` not null.
 - `WebhookEvents`: unique `(Source, DedupKey)`.
-- `Rooms`: unique `(HotelId, Number)`.
-- `Bookings`: check `CheckOut > CheckIn`.
+- `OutboxMessages`: unique `DedupKey`. `IdempotencyKeys`: unique `(Scope, Key)`.
+- `Rooms`: unique `(HotelId, Number)`. `IntegrationSettings`: unique `(HotelId, Provider)`.
+- `RoomPhotos`: check — заполнено ровно одно из `RoomTypeId`/`RoomId`.

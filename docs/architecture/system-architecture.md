@@ -27,22 +27,24 @@ flowchart LR
 | Модуль | Ответственность | Владеет таблицами |
 |---|---|---|
 | Identity | пользователи, роли, права, токены | Users, Roles, Permissions, RolePermissions, UserPermissions, RefreshTokens |
-| Hotel | отель, настройки, политики | Hotels, HotelSettings |
+| Hotel | отель, настройки, политики, настройки интеграций | Hotels, HotelSettings, IntegrationSettings |
 | Rooms | номера, категории, статусы, удобства | RoomTypes, Rooms, Amenities, RoomTypeAmenities, RoomPhotos, RoomStatusHistory |
 | Pricing | тарифы, скидки, услуги | RoomRates, Discounts, Services |
 | Bookings | брони, доступность, цены, правила отмены | Bookings, BookingRooms, BookingGuests, BookingServices, BookingHistory |
 | Guests | CRM, документы, согласия | Guests, GuestDocuments, GuestConsents |
-| FrontDesk | check-in/out (оркестрация) | — (пишет в Bookings, Rooms, Housekeeping) |
+| FrontDesk | check-in/out (оркестрация) | — (вызывает Contracts модулей Bookings, Rooms, Finance, Housekeeping в одной транзакции; чужие таблицы напрямую не трогает) |
 | Housekeeping | уборка, чек-листы, заявки | HousekeepingTasks, ChecklistTemplates, ChecklistTemplateItems, HousekeepingChecklistItems, MaintenanceRequests |
 | Finance | платежи, возвраты, расходы | Payments, PaymentTransactions, Refunds, Expenses, ExpenseCategories |
-| PaymentGateways | адаптеры банков, webhook | WebhookEvents (общая), провайдерные настройки |
-| Messaging | WhatsApp, шаблоны, очередь | WhatsAppMessages, NotificationTemplates, MessageOutbox |
+| PaymentGateways | адаптеры банков (`IPaymentProvider`), обработка webhook банков | — (пишет события через Platform, платежи — через Finance.Contracts) |
+| Messaging | WhatsApp, email, шаблоны, автоответчик | WhatsAppMessages, NotificationTemplates |
 | Reporting | KPI, отчёты, экспорт | только чтение (SQL-views/запросы) |
 | Audit | аудит | AuditLogs |
-| Platform | идемпотентность, jobs, файлы | IdempotencyKeys, StoredFiles |
+| Platform | идемпотентность, jobs, файлы, outbox, приём webhook, общий DbContext | IdempotencyKeys, StoredFiles, OutboxMessages, WebhookEvents |
 
 ## 4. Слои (каждый модуль)
 `Domain` (сущности, инварианты, события) → `Application` (use cases, DTO, валидаторы FluentValidation, интерфейсы) → `Infrastructure` (EF Core, адаптеры, jobs) → `Api` (контроллеры/minimal endpoints). Зависимости направлены внутрь. Ссылки между модулями — только на `*.Contracts`.
+
+**Хранение:** один `HmsDbContext` (проект `Hms.Persistence`), одна строка подключения, одна цепочка миграций. Каждый модуль кладёт свои `IEntityTypeConfiguration` в своём `Infrastructure` и использует свою схему PostgreSQL (`identity`, `rooms`, `bookings`, `finance` …); контекст собирает их сканированием сборок. Так операции, затрагивающие несколько модулей (check-in/out, бронь + outbox), выполняются в одной транзакции без распределённых механизмов. Изоляция модулей обеспечивается не отдельными контекстами, а правилом «только через Contracts», которое проверяют архитектурные тесты (`Hms.ArchitectureTests`, NetArchTest).
 
 ## 5. Структура репозитория
 ```
@@ -55,7 +57,8 @@ flowchart LR
 │  ├─ src/
 │  │  ├─ Hms.Api/             (host, composition root, middleware, auth, OpenAPI)
 │  │  ├─ Hms.SharedKernel/    (Result, Money, DateRange, базовые классы, события)
-│  │  ├─ Hms.Platform/        (идемпотентность, jobs, storage, аудит-перехватчик)
+│  │  ├─ Hms.Platform/        (идемпотентность, jobs, storage, outbox, webhook-приём, аудит-перехватчик)
+│  │  ├─ Hms.Persistence/     (HmsDbContext, миграции EF Core)
 │  │  └─ Modules/
 │  │     ├─ Identity/ {Domain,Application,Infrastructure,Contracts}
 │  │     ├─ Hotel/  Rooms/  Pricing/  Bookings/  Guests/
@@ -64,7 +67,8 @@ flowchart LR
 │  └─ tests/
 │     ├─ Hms.UnitTests/
 │     ├─ Hms.IntegrationTests/ (Testcontainers + PostgreSQL)
-│     └─ Hms.ApiTests/
+│     ├─ Hms.ApiTests/
+│     └─ Hms.ArchitectureTests/ (правила зависимостей модулей)
 ├─ frontend/                  (Next.js, App Router)
 │  └─ src/{app,components,features,lib,i18n,hooks}
 │     app: (public)/ (guest)/ (staff)/admin (owner)/owner (housekeeper)/hk
@@ -78,18 +82,20 @@ flowchart LR
 3. **Двойное бронирование:** `BookingRooms` хранит `RoomId`, `StayRange daterange [CheckIn,CheckOut)`, `IsBlocking`; в PostgreSQL `EXCLUDE USING gist (RoomId WITH =, StayRange WITH &&) WHERE (IsBlocking)` (расширение `btree_gist`). Приложение дополнительно проверяет доступность и ловит нарушение ограничения → 409 Conflict.
 4. **Оптимистичная конкурентность:** `xmin`/`RowVersion` на Bookings, Payments, Rooms.
 5. **Идемпотентность:** заголовок `Idempotency-Key` для POST платежей/броней/check-in/out; таблица `IdempotencyKeys` (ключ, хэш запроса, ответ, TTL).
-6. **Outbox:** сообщения WhatsApp и доменные события пишутся в таблицу в той же транзакции, что и бизнес-изменение; фоновый обработчик отправляет с ретраями.
+6. **Outbox:** таблица `OutboxMessages` (модуль Platform). Сообщения WhatsApp/email и интеграционные события пишутся в той же транзакции, что и бизнес-изменение; фоновый обработчик доставляет их с ретраями обработчикам модулей (Messaging и др.). Вебхуки всех источников (банки, WhatsApp) принимаются единым конвейером Platform → `WebhookEvents` → обработчик модуля.
 7. **Фоновые задачи:** `BackgroundService` + advisory lock в PostgreSQL (один исполнитель); задачи: истечение броней, NoShow, напоминания о заезде/выезде, отправка outbox, сверка платежей (P2), очистка идемпотентных ключей. Квартz/Hangfire — при росте.
 8. **Аудит:** перехватчик `SaveChanges` для изменений + явные события бизнес-действий; AuditLogs append-only.
 9. **Ошибки:** единый `ProblemDetails` (RFC 9457), глобальный exception handler, коды ошибок домена.
 10. **Логи:** Serilog, структурированный JSON, correlation id; ПД маскируются.
 11. **Файлы:** фото номеров/чеков/уборки на volume за Nginx с проверкой типа/размера; интерфейс `IFileStorage` для замены на S3.
 12. **Мультиотельность:** `HotelId` во всех бизнес-таблицах, глобальный query filter; UI одного отеля.
-13. **Фронтенд:** Next.js App Router, SSR для публичных страниц, клиентские страницы для кабинетов; TanStack Query, react-hook-form + zod, i18n (next-intl) с ru по умолчанию; типы API генерируются из OpenAPI.
+13. **Фронтенд:** Next.js App Router, React, TypeScript, Tailwind CSS, shadcn/ui, Lucide Icons; SSR для публичных страниц, клиентские страницы для кабинетов; TanStack Query, react-hook-form + zod, i18n (next-intl) с ru по умолчанию; типы API генерируются из OpenAPI.
 14. **Аутентификация:** ASP.NET Core Identity; JWT access (15 мин) + refresh (httpOnly cookie, ротация). Next.js проксирует вызовы (BFF-маршруты) для CSRF-безопасных cookie.
+15. **Email:** `IEmailSender` (SMTP). В разработке — Mailpit в docker compose; в production — SMTP заказчика (настройка в окружении).
+16. **Статус номера `Reserved`:** не хранится, вычисляется при чтении (см. `database/database-design.md` §4).
 
 ## 7. Окружения и деплой
-`docker compose`: `nginx`, `web` (Next.js), `api`, `db` (PostgreSQL), `backup` (pg_dump по расписанию + выгрузка вне сервера). TLS — Let's Encrypt (certbot). Конфигурация и секреты — переменные окружения / файлы секретов, не в git. Миграции применяются отдельной командой при релизе (не автоматически на старте в production).
+`docker compose`: `nginx`, `web` (Next.js), `api`, `db` (PostgreSQL), `backup` (pg_dump по расписанию + выгрузка вне сервера); в разработке дополнительно `mailpit`. TLS — Let's Encrypt (certbot). Конфигурация и секреты — переменные окружения / файлы секретов, не в git. Миграции применяются отдельной командой при релизе (не автоматически на старте в production).
 
 ## 8. Масштабирование
 Начало — один VPS (2 vCPU / 4 ГБ достаточно для 30 номеров). Узкие места не ожидаются; при росте — вынос БД, S3, отдельный воркер, Redis для кэша/limits.

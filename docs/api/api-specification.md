@@ -1,147 +1,287 @@
 # Спецификация API (REST, v1)
 
-Базовый путь: `/api/v1`. JSON, UTF-8. Даты проживания — `YYYY-MM-DD`, время — ISO 8601 UTC. Ошибки — `application/problem+json` с полями `type`, `title`, `status`, `code`, `errors`, `traceId`. Пагинация: `?page=&pageSize=`; сортировка `?sort=field,-field`. Идемпотентные POST принимают `Idempotency-Key`. Доступ: **P**ublic, **G**uest, **H**ousekeeper, **A**dmin(с разрешением), **O**wner.
+Базовый путь: `/api/v1`. JSON, UTF-8. Даты проживания — `YYYY-MM-DD`, время — ISO 8601 UTC. Ошибки — `application/problem+json` с полями `type`, `title`, `status`, `code`, `errors`, `traceId`. Пагинация: `?page=&pageSize=`; сортировка `?sort=field,-field`. Идемпотентные POST (отмечены **IK**) требуют заголовок `Idempotency-Key`.
 
-Статус: ✔ MVP (P0), ◐ P1, ⏳ P2 (после доступов банков/WhatsApp).
+**Доступ:** P — публично; G — гость (только свои данные); H — уборщик (только свои задачи); A — администратор с указанным разрешением; O — владелец (имеет все разрешения). Коды разрешений — `architecture/security-architecture.md` §3.
+**Статус:** ✔ MVP (P0), ◐ P1, ⏳ P2 (после доступов банков/WhatsApp).
+Каждая строка — один метод и путь. Детальные схемы запросов/ответов генерируются в OpenAPI (Swashbuckle/Microsoft.AspNetCore.OpenApi) в ходе разработки.
 
-## Auth / Account
+## 1. Auth / Account
 | Метод | Путь | Доступ | Ст. |
 |---|---|---|---|
 | POST | /auth/register | P | ✔ |
 | POST | /auth/login | P | ✔ |
-| POST | /auth/refresh | P | ✔ |
-| POST | /auth/logout | любой | ✔ |
+| POST | /auth/refresh | P (refresh-cookie) | ✔ |
+| POST | /auth/logout | любой авторизованный | ✔ |
 | POST | /auth/confirm-email | P | ✔ |
-| POST | /auth/forgot-password, /auth/reset-password | P | ◐ |
-| POST | /auth/2fa/enable, /auth/2fa/verify | A,O | ◐ |
-| GET/PUT | /me | любой | ✔ |
-| POST | /me/change-password | любой | ✔ |
+| POST | /auth/resend-confirmation | P | ✔ |
+| POST | /auth/forgot-password | P | ✔ |
+| POST | /auth/reset-password | P | ✔ |
+| POST | /auth/2fa/setup | A, O | ◐ |
+| POST | /auth/2fa/verify | A, O | ◐ |
+| POST | /auth/2fa/disable | A, O | ◐ |
+| GET | /me | любой авторизованный | ✔ |
+| PUT | /me | любой авторизованный | ✔ |
+| POST | /me/change-password | любой авторизованный | ✔ |
+| GET | /me/consents | G | ✔ |
+| PUT | /me/consents | G | ✔ |
 
-## Staff / Permissions
-| Метод | Путь | Доступ |
-|---|---|---|
-| GET/POST | /staff | O |
-| GET/PUT | /staff/{id} | O |
-| POST | /staff/{id}/deactivate, /activate | O |
-| GET/PUT | /staff/{id}/permissions | O |
-| GET | /permissions, /roles | O |
-
-## Hotel / Settings
-| GET/PUT | /hotel | O (GET: A) |
-| GET/PUT | /hotel/settings | O (GET: A) |
-| GET | /public/hotel-info | P |
-
-## Rooms
-| Метод | Путь | Доступ |
-|---|---|---|
-| GET/POST | /room-types | GET: P/A; POST: A |
-| GET/PUT/DELETE(archive) | /room-types/{id} | A |
-| GET/POST | /rooms | A |
-| GET/PUT | /rooms/{id} | A |
-| POST | /rooms/{id}/archive, /restore | A |
-| POST | /rooms/{id}/status | A (причина обязательна) |
-| GET | /rooms/{id}/status-history | A |
-| GET/POST | /amenities | A |
-| POST/DELETE | /room-types/{id}/photos | A |
-
-## Pricing
-| GET/POST/PUT/DELETE | /rates | O |
-| GET/POST/PUT/DELETE | /discounts | O |
-| GET/POST/PUT/DELETE | /services | O/A(GET) |
-
-## Availability (публично и для персонала)
-| GET | /availability?checkIn=&checkOut=&adults=&children= | P — типы/номера и цена |
-| POST | /bookings/quote | P/G/A — расчёт стоимости (без создания) |
-
-## Bookings
-| Метод | Путь | Доступ | Заметки |
+## 2. Staff / Permissions
+| Метод | Путь | Доступ | Ст. |
 |---|---|---|---|
-| POST | /bookings | G/A | Idempotency-Key; 409 при конфликте |
-| GET | /bookings | A,O | фильтры: status, from, to, guest, room, source |
-| GET | /bookings/{id} | A,O; G своё | |
-| PUT | /bookings/{id} | A | изменение гостей/примечаний |
-| POST | /bookings/{id}/change-dates | A | пересчёт цены |
-| POST | /bookings/{id}/change-room | A | |
-| POST | /bookings/{id}/guests | A | |
-| POST | /bookings/{id}/services | A | |
-| POST | /bookings/{id}/confirm | A | |
-| POST | /bookings/{id}/cancel | A; G своё | правила отмены |
-| POST | /bookings/{id}/no-show | A | |
-| GET | /bookings/{id}/history | A,O | |
-| GET | /bookings/{id}/balance | A,O; G своё | |
-| GET | /me/bookings | G | |
-| POST | /me/bookings/{id}/cancel | G | |
+| GET | /staff | O (`staff.manage`) | ✔ |
+| POST | /staff | O | ✔ |
+| GET | /staff/{id} | O | ✔ |
+| PUT | /staff/{id} | O | ✔ |
+| POST | /staff/{id}/deactivate | O | ✔ |
+| POST | /staff/{id}/activate | O | ✔ |
+| POST | /staff/{id}/reset-password | O | ✔ |
+| GET | /staff/{id}/permissions | O | ✔ |
+| PUT | /staff/{id}/permissions | O | ✔ |
+| GET | /roles | O | ✔ |
+| GET | /roles/{id}/permissions | O | ✔ |
+| GET | /permissions | O | ✔ |
 
-## Calendar
-| GET | /calendar?from=&to=&roomTypeId= | A,O |
-| GET | /calendar/arrivals?date= , /departures?date= | A,O |
+## 3. Hotel / Settings / Integrations
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /hotel | A, O | ✔ |
+| PUT | /hotel | O (`settings.manage`) | ✔ |
+| GET | /hotel/settings | A, O | ✔ |
+| PUT | /hotel/settings | O (`settings.manage`) | ✔ |
+| GET | /public/hotel-info | P | ✔ |
+| GET | /settings/integrations | O (`integrations.manage`) | ✔ |
+| GET | /settings/integrations/{provider} | O | ✔ |
+| PUT | /settings/integrations/{provider} | O (несекретные параметры, режим, вкл/выкл) | ✔ |
+| POST | /settings/integrations/{provider}/test | O (проверка соединения; для банков/WhatsApp — ⏳ после доступов) | ✔ |
 
-## Guests
-| GET/POST | /guests | A,O |
-| GET/PUT | /guests/{id} | A,O |
-| GET | /guests/{id}/bookings, /payments, /stays | A,O |
-| GET/POST/DELETE | /guests/{id}/documents | A (право documents) |
-| GET/PUT | /guests/{id}/consents | A |
-| POST | /guests/{id}/merge | O (P1) |
+## 4. Rooms
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /public/room-types | P (каталог: описание, удобства, фото, цена «от») | ✔ |
+| GET | /public/room-types/{id} | P | ✔ |
+| GET | /room-types | A, O | ✔ |
+| POST | /room-types | A (`room.manage`) | ✔ |
+| GET | /room-types/{id} | A, O | ✔ |
+| PUT | /room-types/{id} | A (`room.manage`) | ✔ |
+| POST | /room-types/{id}/archive | A (`room.manage`) | ✔ |
+| POST | /room-types/{id}/restore | A (`room.manage`) | ✔ |
+| PUT | /room-types/{id}/amenities | A (`room.manage`) | ✔ |
+| POST | /room-types/{id}/photos | A (`room.manage`) | ✔ |
+| DELETE | /room-types/{id}/photos/{photoId} | A (`room.manage`) | ✔ |
+| PUT | /room-types/{id}/photos/order | A (`room.manage`) | ✔ |
+| GET | /rooms | A, O | ✔ |
+| POST | /rooms | A (`room.manage`) | ✔ |
+| GET | /rooms/{id} | A, O | ✔ |
+| PUT | /rooms/{id} | A (`room.manage`) | ✔ |
+| DELETE | /rooms/{id} | A (`room.manage`; только без истории, иначе 409 → архив) | ✔ |
+| POST | /rooms/{id}/archive | A (`room.manage`) | ✔ |
+| POST | /rooms/{id}/restore | A (`room.manage`) | ✔ |
+| POST | /rooms/{id}/photos | A (`room.manage`) | ✔ |
+| DELETE | /rooms/{id}/photos/{photoId} | A (`room.manage`) | ✔ |
+| POST | /rooms/{id}/status | A (`room.status.change`; причина обязательна) | ✔ |
+| GET | /rooms/{id}/status-history | A, O | ✔ |
+| GET | /rooms/{id}/cleaning-history | A (`housekeeping.manage`) | ✔ |
+| GET | /rooms/board | A, O (текущие статусы, включая вычисляемый Reserved) | ✔ |
+| GET | /amenities | A, O | ✔ |
+| POST | /amenities | A (`room.manage`) | ✔ |
+| PUT | /amenities/{id} | A (`room.manage`) | ✔ |
+| DELETE | /amenities/{id} | A (`room.manage`; только неиспользуемые) | ✔ |
 
-## Front desk
-| POST | /bookings/{id}/check-in | A (Idempotency-Key) |
-| GET | /bookings/{id}/check-out/preview | A |
-| POST | /bookings/{id}/check-out | A (Idempotency-Key) |
+## 5. Pricing
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /rates | A (`rate.view`), O | ✔ |
+| POST | /rates | O (`rate.manage`) | ✔ |
+| PUT | /rates/{id} | O | ✔ |
+| DELETE | /rates/{id} | O | ✔ |
+| GET | /discounts | A (`rate.view`), O | ✔ |
+| POST | /discounts | O (`rate.manage`) | ✔ |
+| PUT | /discounts/{id} | O | ✔ |
+| POST | /discounts/{id}/deactivate | O | ✔ |
+| GET | /services | A, O | ✔ |
+| POST | /services | O (`rate.manage`) | ✔ |
+| PUT | /services/{id} | O | ✔ |
+| POST | /services/{id}/deactivate | O | ✔ |
+| GET | /public/services | P (услуги, доступные к заказу онлайн) | ✔ |
 
-## Housekeeping
-| GET | /housekeeping/tasks | A (все); H (свои) |
-| POST | /housekeeping/tasks | A |
-| GET | /housekeeping/tasks/{id} | A, H свои |
-| POST | /housekeeping/tasks/{id}/assign | A |
-| POST | /housekeeping/tasks/{id}/start | H |
-| PUT | /housekeeping/tasks/{id}/checklist/{itemId} | H |
-| POST | /housekeeping/tasks/{id}/complete | H |
-| POST | /housekeeping/tasks/{id}/inspect | A (approve/reject) |
-| GET | /housekeeping/my/history | H |
-| GET | /rooms/{id}/cleaning-history | A |
-| GET/POST/PUT | /housekeeping/checklist-templates | A/O |
-| GET/POST | /maintenance-requests | A; H (POST, свои) |
-| PUT | /maintenance-requests/{id} | A |
-| POST | /files | A,H (фото) |
+## 6. Availability / Quote
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /public/availability?checkIn=&checkOut=&adults=&children= | P (категории, свободное количество, цена) | ✔ |
+| POST | /public/bookings/quote | P (расчёт без создания; промокод) | ✔ |
+| GET | /availability?checkIn=&checkOut=&roomTypeId= | A (`booking.create`; конкретные номера) | ✔ |
+| POST | /bookings/quote | A (`booking.create`) | ✔ |
 
-## Finance
-| GET | /payments | A (право), O |
-| POST | /payments/manual | A (право payment.register), Idempotency-Key |
-| GET | /payments/{id} | A,O; G своё |
-| GET | /me/payments | G |
-| POST | /refunds | A (запрос); G (запрос своего) |
-| POST | /refunds/{id}/approve, /reject | O или A с лимитом |
-| GET | /refunds | A,O |
-| GET/POST/PUT | /expenses | A (создание), O |
-| POST | /expenses/{id}/void | O |
-| GET/POST | /expense-categories | O |
+## 7. Bookings
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| POST | /bookings | A (`booking.create`), **IK**; 409 при конфликте | ✔ |
+| GET | /bookings | A (`booking.view`); фильтры status, from, to, guestId, roomId, source | ✔ |
+| GET | /bookings/{id} | A (`booking.view`) | ✔ |
+| PUT | /bookings/{id} | A (`booking.edit`; гости, комментарий, количество) | ✔ |
+| POST | /bookings/{id}/reschedule | A (`booking.edit`; новые даты и/или номер, пересчёт цены, 409 при конфликте; используется формой и drag&drop календаря) | ✔ |
+| POST | /bookings/{id}/guests | A (`booking.edit`) | ✔ |
+| DELETE | /bookings/{id}/guests/{guestId} | A (`booking.edit`) | ✔ |
+| POST | /bookings/{id}/services | A (`booking.edit`) | ✔ |
+| DELETE | /bookings/{id}/services/{itemId} | A (`booking.edit`) | ✔ |
+| PUT | /bookings/{id}/discount | A (`booking.edit`) | ✔ |
+| DELETE | /bookings/{id}/discount | A (`booking.edit`) | ✔ |
+| POST | /bookings/{id}/confirm | A (`booking.edit`) | ✔ |
+| GET | /bookings/{id}/cancel/preview | A (`booking.cancel`; расчёт штрафа) | ✔ |
+| POST | /bookings/{id}/cancel | A (`booking.cancel`; исключение из штрафа — `booking.cancel.penalty_override`) | ✔ |
+| POST | /bookings/{id}/no-show | A (`booking.edit`) | ✔ |
+| GET | /bookings/{id}/history | A (`booking.view`) | ✔ |
+| GET | /bookings/{id}/balance | A (`booking.view`) | ✔ |
+| POST | /me/bookings | G, **IK**; 409 при конфликте | ✔ |
+| GET | /me/bookings | G | ✔ |
+| GET | /me/bookings/{id} | G | ✔ |
+| GET | /me/bookings/{id}/balance | G | ✔ |
+| GET | /me/bookings/{id}/cancel/preview | G | ✔ |
+| POST | /me/bookings/{id}/cancel | G | ✔ |
 
-## Online payments (⏳)
-| POST | /bookings/{id}/pay | G/A — создаёт платёж у провайдера, возвращает redirect URL |
-| GET | /payments/{id}/status | G своё/A |
-| POST | /webhooks/mbank | P (проверка подписи) |
-| POST | /webhooks/optima | P (проверка подписи) |
-| POST | /payments/{id}/refund | O/A (⏳ через банк) |
+## 8. Calendar
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /calendar?from=&to=&roomTypeId= | A (`calendar.view`) | ✔ |
+| GET | /calendar/arrivals?date= | A (`calendar.view`) | ✔ |
+| GET | /calendar/departures?date= | A (`calendar.view`) | ✔ |
 
-## WhatsApp (⏳ отправка; ✔ шаблоны/история)
-| GET | /whatsapp/conversations, /whatsapp/messages?guestId= | A,O |
-| POST | /whatsapp/messages | A (ручная отправка; вне окна 24 ч — только шаблон) |
-| GET/POST/PUT | /whatsapp/templates | O |
-| GET/POST | /webhooks/whatsapp | P (verify + подписанные события) |
+## 9. Guests
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /guests | A (`guest.view`); поиск, фильтры | ✔ |
+| POST | /guests | A (`guest.manage`) | ✔ |
+| GET | /guests/{id} | A (`guest.view`) | ✔ |
+| PUT | /guests/{id} | A (`guest.manage`) | ✔ |
+| DELETE | /guests/{id} | A (`guest.manage`; soft delete) | ✔ |
+| GET | /guests/{id}/bookings | A (`guest.view`) | ✔ |
+| GET | /guests/{id}/payments | A (`guest.view` + `payment.view`) | ✔ |
+| GET | /guests/{id}/stays | A (`guest.view`) | ✔ |
+| GET | /guests/{id}/documents | A (`guest.documents.view`; маскированные номера) | ✔ |
+| GET | /guests/{id}/documents/{docId} | A (`guest.documents.view`; расшифровка, запись в аудит) | ✔ |
+| POST | /guests/{id}/documents | A (`guest.documents.manage`) | ✔ |
+| DELETE | /guests/{id}/documents/{docId} | A (`guest.documents.manage`) | ✔ |
+| GET | /guests/{id}/consents | A (`guest.view`) | ✔ |
+| PUT | /guests/{id}/consents | A (`guest.manage`; источник обязателен) | ✔ |
+| POST | /guests/{id}/merge | O | ◐ |
 
-## Reporting
-| GET | /reports/dashboard?from=&to= | O |
-| GET | /reports/financial?period=day\|week\|month\|year | O, A (право) |
-| GET | /reports/bookings, /guests, /rooms, /staff, /payments, /refunds, /expenses | O |
-| GET | /reports/{type}/export?format=xlsx\|pdf | O ◐ |
+## 10. Front desk
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /bookings/{id}/check-in/preview | A (`checkin.perform`) | ✔ |
+| POST | /bookings/{id}/check-in | A (`checkin.perform`), **IK** | ✔ |
+| GET | /bookings/{id}/check-out/preview | A (`checkout.perform`; долг, услуги, досрочный выезд) | ✔ |
+| POST | /bookings/{id}/check-out | A (`checkout.perform`), **IK** | ✔ |
 
-## Audit / System
-| GET | /audit-logs | O |
-| GET | /health/live, /health/ready | P (внутр.) |
+## 11. Housekeeping / Maintenance / Files
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /housekeeping/tasks | A (`housekeeping.manage`) | ✔ |
+| POST | /housekeeping/tasks | A (`housekeeping.manage`) | ✔ |
+| GET | /housekeeping/tasks/{id} | A; H — свои | ✔ |
+| PUT | /housekeeping/tasks/{id} | A (`housekeeping.manage`; приоритет, заметки) | ✔ |
+| DELETE | /housekeeping/tasks/{id} | A (`housekeeping.manage`; только Pending/Assigned) | ✔ |
+| POST | /housekeeping/tasks/{id}/assign | A (`housekeeping.manage`) | ✔ |
+| POST | /housekeeping/tasks/{id}/start | H (`housekeeping.work`) | ✔ |
+| PUT | /housekeeping/tasks/{id}/checklist/{itemId} | H | ✔ |
+| POST | /housekeeping/tasks/{id}/complete | H | ✔ |
+| POST | /housekeeping/tasks/{id}/photos | H | ◐ |
+| POST | /housekeeping/tasks/{id}/inspect | A (`housekeeping.inspect`; approve/reject + причина) | ✔ |
+| GET | /housekeeping/my/tasks | H | ✔ |
+| GET | /housekeeping/my/history | H | ✔ |
+| GET | /housekeeping/checklist-templates | A | ✔ |
+| POST | /housekeeping/checklist-templates | A (`housekeeping.manage`) | ✔ |
+| PUT | /housekeeping/checklist-templates/{id} | A (`housekeeping.manage`) | ✔ |
+| DELETE | /housekeeping/checklist-templates/{id} | A (`housekeeping.manage`) | ✔ |
+| GET | /maintenance-requests | A (`maintenance.manage`) | ✔ |
+| POST | /maintenance-requests | A, H (`maintenance.create`) | ✔ |
+| GET | /maintenance-requests/{id} | A; H — свои | ✔ |
+| PUT | /maintenance-requests/{id} | A (`maintenance.manage`; статус, номер → Maintenance) | ✔ |
+| GET | /housekeeping/my/maintenance-requests | H | ✔ |
+| POST | /files | A, H (белый список MIME, лимит размера) | ✔ |
+| GET | /files/{id} | по правам на сущность-владельца | ✔ |
 
-## Коды ошибок домена (примеры)
-`booking.room_unavailable` (409), `booking.invalid_transition` (409), `booking.cancel_not_allowed` (422), `payment.duplicate` (409), `payment.amount_mismatch` (422), `room.invalid_status_transition` (409), `auth.forbidden` (403), `validation.failed` (400).
+## 12. Finance
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /payments | A (`payment.view`) | ✔ |
+| GET | /payments/{id} | A (`payment.view`) | ✔ |
+| POST | /payments/manual | A (`payment.register`), **IK** | ✔ |
+| POST | /payments/{id}/reverse | A (`payment.reverse`), **IK**; причина обязательна | ✔ |
+| GET | /me/payments | G | ✔ |
+| GET | /refunds | A (`refund.request` или `refund.approve`) | ✔ |
+| GET | /refunds/{id} | A | ✔ |
+| POST | /refunds | A (`refund.request`), **IK** | ✔ |
+| POST | /refunds/{id}/approve | A (`refund.approve`, в пределах лимита) | ✔ |
+| POST | /refunds/{id}/reject | A (`refund.approve`) | ✔ |
+| POST | /refunds/{id}/mark-paid | A (`refund.approve`), **IK**; фиксация ручной выплаты | ✔ |
+| POST | /me/refunds | G, **IK**; запрос по своей брони | ✔ |
+| GET | /me/refunds | G | ✔ |
+| GET | /expenses | A (`expense.create` — свои; `expense.manage` — все) | ✔ |
+| POST | /expenses | A (`expense.create`) | ✔ |
+| GET | /expenses/{id} | A (свои) / O | ✔ |
+| PUT | /expenses/{id} | O (`expense.manage`) | ✔ |
+| POST | /expenses/{id}/void | O (`expense.manage`) | ✔ |
+| GET | /expense-categories | A, O | ✔ |
+| POST | /expense-categories | O | ✔ |
+| PUT | /expense-categories/{id} | O | ✔ |
+| POST | /expense-categories/{id}/deactivate | O | ✔ |
+
+## 13. Online payments (⏳)
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| POST | /bookings/{id}/pay | A, **IK** — платёжная ссылка для гостя | ⏳ |
+| POST | /me/bookings/{id}/pay | G, **IK** — создаёт платёж у провайдера, возвращает redirect URL | ⏳ |
+| GET | /payments/{id}/status | G — свой; A | ⏳ |
+| POST | /webhooks/mbank | P (проверка подлинности по документации банка) | ⏳ |
+| POST | /webhooks/optima | P (проверка подлинности по документации банка) | ⏳ |
+| POST | /refunds/{id}/refund-online | A (`refund.approve`), **IK** — возврат через банк | ⏳ |
+
+## 14. WhatsApp
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /whatsapp/conversations | A (`whatsapp.send`) | ✔ |
+| GET | /whatsapp/conversations/{guestId}/messages | A (`whatsapp.send`) | ✔ |
+| POST | /whatsapp/conversations/{guestId}/resolve | A (`whatsapp.send`; закрыть передачу оператору) | ✔ |
+| POST | /whatsapp/messages | A (`whatsapp.send`; вне окна — только шаблон); реальная отправка ⏳ | ✔ |
+| POST | /whatsapp/messages/{id}/retry | A (`whatsapp.send`) | ✔ |
+| GET | /whatsapp/templates | A, O | ✔ |
+| POST | /whatsapp/templates | O (`whatsapp.templates.manage`) | ✔ |
+| PUT | /whatsapp/templates/{id} | O | ✔ |
+| POST | /whatsapp/templates/{id}/sync-status | O — статус модерации в Meta | ⏳ |
+| GET | /whatsapp/auto-replies | O | ✔ |
+| PUT | /whatsapp/auto-replies | O (меню, FAQ, тексты) | ✔ |
+| GET | /webhooks/whatsapp | P (verify challenge) | ⏳ |
+| POST | /webhooks/whatsapp | P (проверка подписи) | ⏳ |
+
+## 15. Dashboards / Reporting
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /dashboard/owner?from=&to= | O (`dashboard.owner.view`) | ✔ |
+| GET | /dashboard/operations?date= | A (`dashboard.operations.view`), O | ✔ |
+| GET | /reports/financial?period=day\|week\|month\|year&date= | O; A (`finance.report.view`) | ✔ |
+| GET | /reports/bookings | O; A (`finance.report.view`) | ✔ |
+| GET | /reports/guests | O | ✔ |
+| GET | /reports/rooms | O | ✔ |
+| GET | /reports/staff | O | ✔ |
+| GET | /reports/payments | O; A (`finance.report.view`) | ✔ |
+| GET | /reports/refunds | O; A (`finance.report.view`) | ✔ |
+| GET | /reports/expenses | O | ✔ |
+| GET | /reports/{type}/export?format=xlsx\|pdf | O; A (`report.export` + право на отчёт) | ✔ |
+
+Общие фильтры отчётов: `from`, `to`, `roomTypeId`, `paymentMethod`, `bookingStatus`, `staffId`.
+
+## 16. Audit / System
+| Метод | Путь | Доступ | Ст. |
+|---|---|---|---|
+| GET | /audit-logs | O (`audit.view`) | ✔ |
+| GET | /audit-logs/{id} | O (`audit.view`) | ✔ |
+| GET | /health/live | внутренний (Nginx не публикует) | ✔ |
+| GET | /health/ready | внутренний | ✔ |
+
+## Коды ошибок домена (базовый набор)
+`validation.failed` (400), `auth.invalid_credentials` (401), `auth.locked_out` (423), `auth.forbidden` (403), `not_found` (404), `concurrency.conflict` (409), `idempotency.key_reused` (422), `booking.room_unavailable` (409), `booking.invalid_transition` (409), `booking.cancel_not_allowed` (422), `booking.capacity_exceeded` (422), `room.invalid_status_transition` (409), `room.has_history` (409), `payment.duplicate` (409), `payment.amount_mismatch` (422), `payment.already_reversed` (409), `refund.exceeds_paid` (422), `refund.limit_exceeded` (403), `housekeeping.invalid_transition` (409), `whatsapp.no_consent` (422), `whatsapp.outside_window` (422).
 
 ## Итог по объёму
-≈ 150 endpoints; MVP (✔) ≈ 110.
+Количество endpoints по разделам считается по таблицам выше (строка = endpoint); актуальная цифра — в конце раздела при каждом изменении: **всего 208, из них ✔ 194, ◐ 5, ⏳ 9**.
