@@ -75,12 +75,33 @@ test("владелец создаёт категорию с удобствами
 
 test("владелец сохраняет настройки гостиницы; интеграции банков недоступны до получения доступов", async ({ page }) => {
   await loginOwner(page, "/owner/settings");
-  await page.getByLabel("Предоплата, %", { exact: true }).fill("130");
-  await page.getByRole("button", { name: "Сохранить" }).last().click();
-  await expect(page.getByText("Предоплата — от 0 до 100%.")).toBeVisible();
-  await page.getByLabel("Предоплата, %", { exact: true }).fill("0");
-  await page.getByRole("button", { name: "Сохранить" }).last().click();
-  await expect(page.getByText("Сохранено.").last()).toBeVisible();
+  // Меню разделов: клик подсвечивает пункт и на мгновение выделяет раздел
+  const nav = page.getByRole("navigation", { name: "Разделы настроек" });
+  await nav.getByRole("link", { name: "Оплата", exact: true }).click();
+  await expect(nav.getByRole("link", { name: "Оплата", exact: true })).toHaveAttribute("aria-current", "location");
+  await expect(page.locator("section#section-payment")).toHaveAttribute("data-flash", "");
+
+  // Зеркально: правка поля в разделе подсвечивает его пункт в меню
+  await page.locator("section#section-rooms").getByLabel("Уборка, мин", { exact: true }).focus();
+  await expect(nav.getByRole("link", { name: "Номера и уборка", exact: true })).toHaveAttribute("aria-current", "location");
+
+  // Каждый раздел сохраняется своей кнопкой
+  const payment = page.locator("section#section-payment");
+  await payment.getByLabel("Предоплата, %", { exact: true }).fill("130");
+  await payment.getByRole("button", { name: "Сохранить" }).click();
+  await expect(payment.getByText("Предоплата — от 0 до 100%.")).toBeVisible();
+  await payment.getByLabel("Предоплата, %", { exact: true }).fill("0");
+  await payment.getByRole("button", { name: "Сохранить" }).click();
+  await expect(payment.getByText("Раздел сохранён.")).toBeVisible();
+
+  // Правила броней: описание обычными словами меняется вместе с цифрами, сохранение не трогает другие разделы
+  const rules = page.locator("section#section-rules");
+  await rules.getByLabel("Бесплатная отмена — По часам", { exact: true }).fill("90");
+  await expect(rules.getByText("Бесплатная отмена — не позже чем за 90 минут до начала", { exact: false })).toBeVisible();
+  await rules.getByLabel("Бесплатная отмена — По часам", { exact: true }).fill("120");
+  await rules.getByRole("button", { name: "Сохранить" }).click();
+  await expect(rules.getByText("Раздел сохранён.")).toBeVisible();
+  await expect(payment.getByLabel("Предоплата, %", { exact: true })).toHaveValue("0");
 
   await page.goto("/owner/integrations");
   await expect(page.getByRole("heading", { name: "MBANK — интернет-эквайринг" })).toBeVisible();

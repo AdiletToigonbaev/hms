@@ -2,155 +2,41 @@
 
 import { Send } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import { Field } from "@/components/forms/field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { HelpTip } from "@/components/forms/help-tip";
-import type messages from "../../../../messages/ru.json";
 import { SelectField } from "@/components/forms/native-select";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/api/problem";
 import type { Hotel, HotelSettings, Integration } from "@/lib/api/types";
-import { saveHotelAction, saveIntegrationAction, saveSettingsAction, testIntegrationAction } from "./actions";
+import {
+  describeRules,
+  rulesFromSettings,
+  type BookingRulesValues,
+} from "@/lib/settings/rules";
+import { cn } from "@/lib/utils";
+import type messages from "../../../../messages/ru.json";
+import {
+  saveHotelAction,
+  saveIntegrationAction,
+  saveSettingsSectionAction,
+  testIntegrationAction,
+} from "./actions";
 
 const textarea =
   "min-h-24 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-
-export function HotelForm({ hotel }: { hotel: Hotel }) {
-  const t = useTranslations("Settings");
-  const [state, action, pending] = useActionState<FormState, FormData>(saveHotelAction, {});
-  const e = state.fieldErrors ?? {};
-  const v = state.values ?? {};
-  return (
-    <form action={action} className="grid gap-4" noValidate>
-      <input type="hidden" name="version" value={hotel.version} />
-      <FormAlert state={state} success={t("saved")} />
-      <Field name="name" label={t("name")} help={help("name", t("name"))} hint={t("nameHint")} required defaultValue={v.name ?? hotel.name} error={e.name} />
-      <Field name="address" label={t("address")} help={help("address", t("address"))} defaultValue={v.address ?? hotel.address ?? ""} error={e.address} />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field name="phone" type="tel" label={t("phone")} help={help("phone", t("phone"))} defaultValue={v.phone ?? hotel.phone ?? ""} error={e.phone} />
-        <Field name="email" type="email" label={t("email")} help={help("email", t("email"))} defaultValue={v.email ?? hotel.email ?? ""} error={e.email} />
-      </div>
-      <div className="grid gap-1.5">
-        <div className="flex items-center gap-1">
-          <Label htmlFor="description">{t("aboutHotel")}</Label>
-          {help("aboutHotel", t("aboutHotel"))}
-        </div>
-        <textarea id="description" name="description" className={textarea} defaultValue={v.description ?? hotel.description ?? ""} maxLength={2000} />
-      </div>
-      <div>
-        <SubmitButton pending={pending}>{t("save")}</SubmitButton>
-      </div>
-    </form>
-  );
-}
-
-export function SettingsForm({ settings: s }: { settings: HotelSettings }) {
-  const t = useTranslations("Settings");
-  const [state, action, pending] = useActionState<FormState, FormData>(saveSettingsAction, {});
-  const e = state.fieldErrors ?? {};
-  const v = state.values ?? {};
-  const cp = s.cancellationPolicy;
-  const hp = s.hourlyPolicy;
-  return (
-    <form action={action} className="grid gap-8" noValidate>
-      <input type="hidden" name="version" value={s.version} />
-      <FormAlert state={state} success={t("saved")} />
-
-      <fieldset className="grid gap-4">
-        <legend className="mb-2 font-heading text-lg">{t("rules")}</legend>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field name="checkInTime" type="time" label={t("checkIn")} help={help("checkIn", t("checkIn"))} required defaultValue={v.checkInTime ?? s.checkInTime} error={e.checkInTime} />
-          <Field name="checkOutTime" type="time" label={t("checkOut")} help={help("checkOut", t("checkOut"))} required defaultValue={v.checkOutTime ?? s.checkOutTime} error={e.checkOutTime} />
-          <Field
-            name="noShowCutoffTime"
-            type="time"
-            label={t("noShowCutoff")} help={help("noShowCutoff", t("noShowCutoff"))}
-            hint={t("noShowCutoffHint")}
-            required
-            defaultValue={v.noShowCutoffTime ?? s.noShowCutoffTime}
-            error={e.noShowCutoffTime}
-          />
-        </div>
-        <div className="grid gap-1.5">
-          <div className="flex items-center gap-1">
-            <Label htmlFor="rules">{t("houseRules")}</Label>
-            {help("houseRules", t("houseRules"))}
-          </div>
-          <textarea id="rules" name="rules" className={textarea} defaultValue={v.rules ?? s.rules ?? ""} maxLength={5000} />
-        </div>
-      </fieldset>
-
-      <fieldset className="grid gap-4">
-        <legend className="mb-2 font-heading text-lg">{t("bookings")}</legend>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field name="prepaymentPercent" type="number" min={0} max={100} label={t("prepayment")} help={help("prepayment", t("prepayment"))} hint={t("prepaymentHint")} defaultValue={v.prepaymentPercent ?? s.prepaymentPercent} error={e.prepaymentPercent} />
-          <Field name="pendingHoldHours" type="number" min={1} max={168} label={t("pendingHold")} help={help("pendingHold", t("pendingHold"))} hint={t("pendingHoldHint")} defaultValue={v.pendingHoldHours ?? s.pendingHoldHours} error={e.pendingHoldHours} />
-          <Field name="paymentHoldMinutes" type="number" min={5} max={1440} label={t("paymentHold")} help={help("paymentHold", t("paymentHold"))} hint={t("paymentHoldHint")} defaultValue={v.paymentHoldMinutes ?? s.paymentHoldMinutes} error={e.paymentHoldMinutes} />
-        </div>
-        <Toggle name="autoConfirmWebBookings" label={t("autoConfirm")} help={help("autoConfirm", t("autoConfirm"))} defaultChecked={s.autoConfirmWebBookings} />
-        <Toggle name="requireEmailConfirmation" label={t("requireEmail")} help={help("requireEmail", t("requireEmail"))} defaultChecked={s.requireEmailConfirmation} />
-        <Toggle name="autoReleaseRoomAfterCleaning" label={t("autoRelease")} help={help("autoRelease", t("autoRelease"))} defaultChecked={s.autoReleaseRoomAfterCleaning} />
-        <p className="rounded-xl bg-secondary px-3 py-2 text-sm text-muted-foreground">
-          <strong className="font-medium text-foreground">{t("onlinePayment")}:</strong> {t("onlinePaymentOff")}
-        </p>
-      </fieldset>
-
-      <fieldset className="grid gap-4">
-        <legend className="mb-2 font-heading text-lg">{t("hourly")}</legend>
-        <p className="-mt-2 text-sm text-muted-foreground">{t("hourlyHint")}</p>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Field name="hourlyMinHours" type="number" min={1} max={24} label={t("hourlyMin")} help={help("hourlyMin", t("hourlyMin"))} defaultValue={v.hourlyMinHours ?? s.hourlyMinHours} error={e.hourlyMinHours} />
-          <Field name="hourlyMaxHours" type="number" min={1} max={24} label={t("hourlyMax")} help={help("hourlyMax", t("hourlyMax"))} hint={t("hourlyMaxHint")} defaultValue={v.hourlyMaxHours ?? s.hourlyMaxHours} error={e.hourlyMaxHours} />
-          <Field name="cleaningBufferMinutes" type="number" min={0} max={240} step={5} label={t("cleaningBuffer")} help={help("cleaningBuffer", t("cleaningBuffer"))} hint={t("cleaningBufferHint")} defaultValue={v.cleaningBufferMinutes ?? s.cleaningBufferMinutes} error={e.cleaningBufferMinutes} />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field name="hourlyFreeCancelMinutes" type="number" min={0} max={10080} step={15} label={t("hourlyFreeCancel")} help={help("hourlyFreeCancel", t("hourlyFreeCancel"))} hint={t("hourlyFreeCancelHint")} defaultValue={v.hourlyFreeCancelMinutes ?? hp.freeCancelMinutesBeforeStart} error={e.hourlyFreeCancelMinutes} />
-          <Field name="hourlyLateCancelPenaltyHours" type="number" min={0} max={24} label={t("hourlyLateCancel")} help={help("hourlyLateCancel", t("hourlyLateCancel"))} hint={t("hourlyLateCancelHint")} defaultValue={v.hourlyLateCancelPenaltyHours ?? hp.lateCancelPenaltyHours} error={e.hourlyLateCancelPenaltyHours} />
-          <Field name="hourlyPendingHoldMinutes" type="number" min={5} max={1440} step={5} label={t("hourlyPendingHold")} help={help("hourlyPendingHold", t("hourlyPendingHold"))} hint={t("hourlyPendingHoldHint")} defaultValue={v.hourlyPendingHoldMinutes ?? hp.pendingHoldMinutes} error={e.hourlyPendingHoldMinutes} />
-          <Field name="hourlyNoShowAfterMinutes" type="number" min={5} max={720} step={5} label={t("hourlyNoShowAfter")} help={help("hourlyNoShowAfter", t("hourlyNoShowAfter"))} hint={t("hourlyNoShowAfterHint")} defaultValue={v.hourlyNoShowAfterMinutes ?? hp.noShowAfterMinutes} error={e.hourlyNoShowAfterMinutes} />
-          <Field name="hourlyNoShowPenaltyHours" type="number" min={0} max={24} label={t("hourlyNoShowPenalty")} help={help("hourlyNoShowPenalty", t("hourlyNoShowPenalty"))} hint={t("hourlyNoShowPenaltyHint")} defaultValue={v.hourlyNoShowPenaltyHours ?? hp.noShowPenaltyHours} error={e.hourlyNoShowPenaltyHours} />
-        </div>
-        <Toggle name="hourlyRefundUnused" label={t("hourlyRefundUnused")} help={help("hourlyRefundUnused", t("hourlyRefundUnused"))} defaultChecked={hp.refundUnusedOnEarlyDeparture} />
-      </fieldset>
-
-      <fieldset className="grid gap-4">
-        <legend className="mb-2 font-heading text-lg">{t("cancellation")}</legend>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field name="freeCancelHoursBeforeCheckIn" type="number" min={0} max={720} label={t("freeCancel")} help={help("freeCancel", t("freeCancel"))} hint={t("freeCancelHint")} defaultValue={v.freeCancelHoursBeforeCheckIn ?? cp.freeCancelHoursBeforeCheckIn} error={e.freeCancelHoursBeforeCheckIn} />
-          <Field name="lateCancelPenaltyNights" type="number" min={0} max={30} label={t("lateCancel")} help={help("lateCancel", t("lateCancel"))} hint={t("lateCancelHint")} defaultValue={v.lateCancelPenaltyNights ?? cp.lateCancelPenaltyNights} error={e.lateCancelPenaltyNights} />
-          <Field name="noShowPenaltyNights" type="number" min={0} max={30} label={t("noShowPenalty")} help={help("noShowPenalty", t("noShowPenalty"))} hint={t("noShowPenaltyHint")} defaultValue={v.noShowPenaltyNights ?? cp.noShowPenaltyNights} error={e.noShowPenaltyNights} />
-          <Field name="earlyDeparturePenaltyNights" type="number" min={0} max={30} label={t("earlyDeparture")} help={help("earlyDeparture", t("earlyDeparture"))} hint={t("earlyDepartureHint")} defaultValue={v.earlyDeparturePenaltyNights ?? cp.earlyDeparturePenaltyNights} error={e.earlyDeparturePenaltyNights} />
-        </div>
-      </fieldset>
-
-      <div>
-        <SubmitButton pending={pending}>{t("save")}</SubmitButton>
-      </div>
-    </form>
-  );
-}
-
-function Toggle({ name, label, defaultChecked, help }: { name: string; label: string; defaultChecked: boolean; help?: ReactNode }) {
-  return (
-    <div className="flex min-h-11 items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm">
-      <label className="flex flex-1 items-start gap-3">
-        <Checkbox name={name} value="true" defaultChecked={defaultChecked} className="mt-0.5" />
-        {label}
-      </label>
-      {help}
-    </div>
-  );
-}
 
 type HelpKey = keyof (typeof messages)["SettingsHelp"];
 
 /** Подсказка «?» к настройке: что делает, пример, когда заработает (если ещё не применяется). */
 function SettingHelp({ helpKey, title }: { helpKey: HelpKey; title: string }) {
   const h = useTranslations("SettingsHelp");
-  const key = (suffix: "text" | "example" | "pending") => `${helpKey}.${suffix}` as Parameters<typeof h>[0];
+  const key = (suffix: "text" | "example" | "pending") =>
+    `${helpKey}.${suffix}` as Parameters<typeof h>[0];
   return (
     <HelpTip
       title={title}
@@ -165,10 +51,749 @@ function help(helpKey: HelpKey, title: string) {
   return <SettingHelp helpKey={helpKey} title={title} />;
 }
 
-export function IntegrationForm({ integration: i }: { integration: Integration }) {
+function Toggle({
+  name,
+  label,
+  defaultChecked,
+  help: tip,
+}: {
+  name: string;
+  label: string;
+  defaultChecked: boolean;
+  help?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-11 items-start gap-2 rounded-xl border bg-card px-3 py-2.5 text-sm">
+      <label className="flex flex-1 items-start gap-3">
+        <Checkbox
+          name={name}
+          value="true"
+          defaultChecked={defaultChecked}
+          className="mt-0.5"
+        />
+        {label}
+      </label>
+      {tip}
+    </div>
+  );
+}
+
+/** Подвал раздела: своя кнопка «Сохранить» у каждого раздела. */
+function SectionFooter({ pending }: { pending: boolean }) {
+  const t = useTranslations("Settings");
+  return (
+    <div className="flex justify-end border-t pt-4">
+      <SubmitButton pending={pending}>{t("save")}</SubmitButton>
+    </div>
+  );
+}
+
+// ---------- Гостиница ----------
+
+export function HotelForm({
+  hotel,
+  rules,
+}: {
+  hotel: Hotel;
+  rules: string | null;
+}) {
+  const t = useTranslations("Settings");
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    saveHotelAction,
+    {},
+  );
+  const e = state.fieldErrors ?? {};
+  const v = state.values ?? {};
+  return (
+    <form action={action} className="grid gap-4" noValidate>
+      <input type="hidden" name="version" value={hotel.version} />
+      <FormAlert state={state} success={t("savedSection")} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          name="name"
+          label={t("name")}
+          help={help("name", t("name"))}
+          hint={t("nameHint")}
+          required
+          defaultValue={v.name ?? hotel.name}
+          error={e.name}
+        />
+        <Field
+          name="address"
+          label={t("address")}
+          help={help("address", t("address"))}
+          defaultValue={v.address ?? hotel.address ?? ""}
+          error={e.address}
+        />
+        <Field
+          name="phone"
+          type="tel"
+          label={t("phone")}
+          help={help("phone", t("phone"))}
+          defaultValue={v.phone ?? hotel.phone ?? ""}
+          error={e.phone}
+        />
+        <Field
+          name="email"
+          type="email"
+          label={t("email")}
+          help={help("email", t("email"))}
+          defaultValue={v.email ?? hotel.email ?? ""}
+          error={e.email}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex items-center gap-1">
+          <Label htmlFor="description">{t("aboutHotel")}</Label>
+          {help("aboutHotel", t("aboutHotel"))}
+        </div>
+        <textarea
+          id="description"
+          name="description"
+          className={textarea}
+          defaultValue={v.description ?? hotel.description ?? ""}
+          maxLength={2000}
+        />
+      </div>
+      <div className="grid gap-1.5">
+        <div className="flex items-center gap-1">
+          <Label htmlFor="rules">{t("houseRules")}</Label>
+          {help("houseRules", t("houseRules"))}
+        </div>
+        <textarea
+          id="rules"
+          name="rules"
+          className={textarea}
+          defaultValue={v.rules ?? rules ?? ""}
+          maxLength={5000}
+        />
+      </div>
+      <SectionFooter pending={pending} />
+    </form>
+  );
+}
+
+// ---------- Правила броней: таблица «по часам / по суткам» ----------
+
+const numberInput = "h-9 w-16 tabular text-right";
+
+/** Число с единицей измерения в ячейке таблицы правил. */
+function NumberCell({
+  name,
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  error,
+}: {
+  name: string;
+  label: string;
+  value: string | number;
+  min: number;
+  max: number;
+  step?: number;
+  unit: string;
+  error?: string;
+}) {
+  return (
+    <div className="grid gap-1">
+      <div className="flex items-center gap-2">
+        <Input
+          id={name}
+          name={name}
+          type="number"
+          inputMode="numeric"
+          min={min}
+          max={max}
+          step={step}
+          defaultValue={value}
+          aria-label={label}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${name}-error` : undefined}
+          className={numberInput}
+        />
+        <span className="text-sm text-muted-foreground">{unit}</span>
+      </div>
+      {error && (
+        <p id={`${name}-error`} className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TimeCell({
+  name,
+  label,
+  value,
+  prefix,
+  suffix,
+  error,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  prefix?: string;
+  suffix?: string;
+  error?: string;
+}) {
+  return (
+    <div className="grid gap-1">
+      <div className="flex flex-wrap items-center gap-2">
+        {prefix && (
+          <span className="text-sm text-muted-foreground">{prefix}</span>
+        )}
+        <Input
+          id={name}
+          name={name}
+          type="time"
+          defaultValue={value}
+          aria-label={label}
+          aria-invalid={error ? true : undefined}
+          className="h-9 w-32 tabular"
+        />
+        {suffix && (
+          <span className="text-sm text-muted-foreground">{suffix}</span>
+        )}
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** Строка таблицы: название с подсказкой, ячейка «по часам», ячейка «по суткам». На телефоне ячейки идут друг под другом с подписью. */
+function RuleRow({
+  title,
+  tip,
+  hourly,
+  nightly,
+}: {
+  title: string;
+  tip: ReactNode;
+  hourly: ReactNode;
+  nightly: ReactNode;
+}) {
+  const t = useTranslations("Settings");
+  return (
+    <div
+      role="row"
+      className="-mx-2 grid gap-3 rounded-lg border-t px-2 py-3 transition-colors focus-within:bg-primary/[0.06] hover:bg-secondary/40 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-start md:gap-4"
+    >
+      <div
+        role="rowheader"
+        className="flex items-center gap-1 pt-1.5 text-sm font-medium"
+      >
+        {title}
+        {tip}
+      </div>
+      <div role="cell" className="grid gap-1">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden">
+          {t("colHourly")}
+        </span>
+        {hourly}
+      </div>
+      <div role="cell" className="grid gap-1">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase md:hidden">
+          {t("colNightly")}
+        </span>
+        {nightly}
+      </div>
+    </div>
+  );
+}
+
+function readRules(
+  form: HTMLFormElement,
+  previous: BookingRulesValues,
+): BookingRulesValues {
+  const data = new FormData(form);
+  const num = (name: keyof BookingRulesValues) => {
+    const value = Number(data.get(name));
+    return Number.isFinite(value) && data.get(name) !== ""
+      ? value
+      : (previous[name] as number);
+  };
+  const str = (name: keyof BookingRulesValues) =>
+    String(data.get(name) || previous[name]);
+  return {
+    hourlyMinHours: num("hourlyMinHours"),
+    hourlyMaxHours: num("hourlyMaxHours"),
+    hourlyFreeCancelMinutes: num("hourlyFreeCancelMinutes"),
+    hourlyLateCancelPenaltyHours: num("hourlyLateCancelPenaltyHours"),
+    hourlyNoShowAfterMinutes: num("hourlyNoShowAfterMinutes"),
+    hourlyNoShowPenaltyHours: num("hourlyNoShowPenaltyHours"),
+    hourlyPendingHoldMinutes: num("hourlyPendingHoldMinutes"),
+    hourlyRefundUnused: data.get("hourlyRefundUnused") !== null,
+    checkInTime: str("checkInTime"),
+    checkOutTime: str("checkOutTime"),
+    noShowCutoffTime: str("noShowCutoffTime"),
+    freeCancelHoursBeforeCheckIn: num("freeCancelHoursBeforeCheckIn"),
+    lateCancelPenaltyNights: num("lateCancelPenaltyNights"),
+    noShowPenaltyNights: num("noShowPenaltyNights"),
+    pendingHoldHours: num("pendingHoldHours"),
+    earlyDeparturePenaltyNights: num("earlyDeparturePenaltyNights"),
+  };
+}
+
+export function BookingRulesForm({ settings }: { settings: HotelSettings }) {
+  const t = useTranslations("Settings");
+  const summary = useTranslations("SettingsSummary");
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    saveSettingsSectionAction,
+    {},
+  );
+  const initial = rulesFromSettings(settings);
+  const [values, setValues] = useState<BookingRulesValues>(initial);
+  const e = state.fieldErrors ?? {};
+  const v = state.values ?? {};
+  const val = (name: keyof BookingRulesValues) =>
+    v[name] ?? String(initial[name]);
+  const text = describeRules(
+    values,
+    summary as unknown as Parameters<typeof describeRules>[1],
+  );
+
+  return (
+    <form
+      action={action}
+      className="grid gap-4"
+      noValidate
+      onInput={(ev) => setValues(readRules(ev.currentTarget, values))}
+    >
+      <input type="hidden" name="section" value="rules" />
+      <input type="hidden" name="version" value={settings.version} />
+      <FormAlert state={state} success={t("savedSection")} />
+
+      <div role="table" aria-label={t("secRules")} className="grid">
+        <div
+          role="row"
+          className="hidden gap-4 pb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase md:grid md:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]"
+        >
+          <span role="columnheader">{t("colRule")}</span>
+          <span role="columnheader">{t("colHourly")}</span>
+          <span role="columnheader">{t("colNightly")}</span>
+        </div>
+
+        <RuleRow
+          title={t("rowDuration")}
+          tip={help("hourlyMin", t("rowDuration"))}
+          hourly={
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm text-muted-foreground">{t("from")}</span>
+              <NumberCell
+                name="hourlyMinHours"
+                label={`${t("hourlyMin")}`}
+                value={val("hourlyMinHours")}
+                min={1}
+                max={24}
+                unit=""
+                error={e.hourlyMinHours}
+              />
+              <span className="text-sm text-muted-foreground">{t("to")}</span>
+              <NumberCell
+                name="hourlyMaxHours"
+                label={`${t("hourlyMax")}`}
+                value={val("hourlyMaxHours")}
+                min={1}
+                max={24}
+                unit={t("hoursUnit")}
+                error={e.hourlyMaxHours}
+              />
+            </div>
+          }
+          nightly={
+            <span className="pt-1.5 text-sm text-muted-foreground">—</span>
+          }
+        />
+        <RuleRow
+          title={t("rowTime")}
+          tip={help("checkIn", t("rowTime"))}
+          hourly={
+            <span className="pt-1.5 text-sm text-muted-foreground">
+              {t("startInBooking")}
+            </span>
+          }
+          nightly={
+            <div className="grid gap-2">
+              <TimeCell
+                name="checkInTime"
+                label={t("checkIn")}
+                value={val("checkInTime")}
+                prefix={t("checkInShort")}
+                error={e.checkInTime}
+              />
+              <TimeCell
+                name="checkOutTime"
+                label={t("checkOut")}
+                value={val("checkOutTime")}
+                prefix={t("checkOutShort")}
+                error={e.checkOutTime}
+              />
+            </div>
+          }
+        />
+        <RuleRow
+          title={t("rowFreeCancel")}
+          tip={help("hourlyFreeCancel", t("rowFreeCancel"))}
+          hourly={
+            <NumberCell
+              name="hourlyFreeCancelMinutes"
+              label={`${t("rowFreeCancel")} — ${t("colHourly")}`}
+              value={val("hourlyFreeCancelMinutes")}
+              min={0}
+              max={10080}
+              step={15}
+              unit={t("beforeStart")}
+              error={e.hourlyFreeCancelMinutes}
+            />
+          }
+          nightly={
+            <NumberCell
+              name="freeCancelHoursBeforeCheckIn"
+              label={`${t("rowFreeCancel")} — ${t("colNightly")}`}
+              value={val("freeCancelHoursBeforeCheckIn")}
+              min={0}
+              max={720}
+              unit={t("beforeCheckIn")}
+              error={e.freeCancelHoursBeforeCheckIn}
+            />
+          }
+        />
+        <RuleRow
+          title={t("rowLateCancel")}
+          tip={help("hourlyLateCancel", t("rowLateCancel"))}
+          hourly={
+            <NumberCell
+              name="hourlyLateCancelPenaltyHours"
+              label={`${t("rowLateCancel")} — ${t("colHourly")}`}
+              value={val("hourlyLateCancelPenaltyHours")}
+              min={0}
+              max={24}
+              unit={t("hoursUnit")}
+              error={e.hourlyLateCancelPenaltyHours}
+            />
+          }
+          nightly={
+            <NumberCell
+              name="lateCancelPenaltyNights"
+              label={`${t("rowLateCancel")} — ${t("colNightly")}`}
+              value={val("lateCancelPenaltyNights")}
+              min={0}
+              max={30}
+              unit={t("nightsUnit")}
+              error={e.lateCancelPenaltyNights}
+            />
+          }
+        />
+        <RuleRow
+          title={t("rowNoShow")}
+          tip={help("hourlyNoShowAfter", t("rowNoShow"))}
+          hourly={
+            <NumberCell
+              name="hourlyNoShowAfterMinutes"
+              label={`${t("rowNoShow")} — ${t("colHourly")}`}
+              value={val("hourlyNoShowAfterMinutes")}
+              min={5}
+              max={720}
+              step={5}
+              unit={t("afterStart")}
+              error={e.hourlyNoShowAfterMinutes}
+            />
+          }
+          nightly={
+            <TimeCell
+              name="noShowCutoffTime"
+              label={`${t("rowNoShow")} — ${t("colNightly")}`}
+              value={val("noShowCutoffTime")}
+              prefix={t("to")}
+              suffix={t("nextDay")}
+              error={e.noShowCutoffTime}
+            />
+          }
+        />
+        <RuleRow
+          title={t("rowNoShowPenalty")}
+          tip={help("hourlyNoShowPenalty", t("rowNoShowPenalty"))}
+          hourly={
+            <NumberCell
+              name="hourlyNoShowPenaltyHours"
+              label={`${t("rowNoShowPenalty")} — ${t("colHourly")}`}
+              value={val("hourlyNoShowPenaltyHours")}
+              min={0}
+              max={24}
+              unit={t("hoursUnit")}
+              error={e.hourlyNoShowPenaltyHours}
+            />
+          }
+          nightly={
+            <NumberCell
+              name="noShowPenaltyNights"
+              label={`${t("rowNoShowPenalty")} — ${t("colNightly")}`}
+              value={val("noShowPenaltyNights")}
+              min={0}
+              max={30}
+              unit={t("nightsUnit")}
+              error={e.noShowPenaltyNights}
+            />
+          }
+        />
+        <RuleRow
+          title={t("rowHold")}
+          tip={help("hourlyPendingHold", t("rowHold"))}
+          hourly={
+            <NumberCell
+              name="hourlyPendingHoldMinutes"
+              label={`${t("rowHold")} — ${t("colHourly")}`}
+              value={val("hourlyPendingHoldMinutes")}
+              min={5}
+              max={1440}
+              step={5}
+              unit={t("minutesUnit")}
+              error={e.hourlyPendingHoldMinutes}
+            />
+          }
+          nightly={
+            <NumberCell
+              name="pendingHoldHours"
+              label={`${t("rowHold")} — ${t("colNightly")}`}
+              value={val("pendingHoldHours")}
+              min={1}
+              max={168}
+              unit={t("hoursUnit")}
+              error={e.pendingHoldHours}
+            />
+          }
+        />
+        <RuleRow
+          title={t("rowEarly")}
+          tip={help("hourlyRefundUnused", t("rowEarly"))}
+          hourly={
+            <label className="flex items-center gap-2 pt-1.5 text-sm">
+              <Checkbox
+                name="hourlyRefundUnused"
+                value="true"
+                defaultChecked={
+                  settings.hourlyPolicy.refundUnusedOnEarlyDeparture
+                }
+                onCheckedChange={(checked) =>
+                  setValues((prev) => ({
+                    ...prev,
+                    hourlyRefundUnused: checked,
+                  }))
+                }
+              />
+              {t("refundHours")}
+            </label>
+          }
+          nightly={
+            <NumberCell
+              name="earlyDeparturePenaltyNights"
+              label={`${t("rowEarly")} — ${t("colNightly")}`}
+              value={val("earlyDeparturePenaltyNights")}
+              min={0}
+              max={30}
+              unit={t("penaltyNights")}
+              error={e.earlyDeparturePenaltyNights}
+            />
+          }
+        />
+      </div>
+
+      <section
+        aria-live="polite"
+        className="grid gap-3 rounded-xl bg-secondary/60 p-4 text-sm"
+        aria-labelledby="rules-summary"
+      >
+        <h3 id="rules-summary" className="font-heading text-base">
+          {t("summary")}
+        </h3>
+        <div className="grid gap-4 md:grid-cols-2">
+          {[
+            { title: t("colHourly"), lines: text.hourly },
+            { title: t("colNightly"), lines: text.nightly },
+          ].map((group) => (
+            <div key={group.title} className="grid content-start gap-1.5">
+              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                {group.title}
+              </p>
+              <ul className="grid gap-1 pl-4 [&>li]:list-disc">
+                {group.lines.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <SectionFooter pending={pending} />
+    </form>
+  );
+}
+
+// ---------- Номера и уборка, оплата, сайт ----------
+
+function SectionForm({
+  section,
+  settings,
+  children,
+}: {
+  section: "rooms" | "payment" | "site";
+  settings: HotelSettings;
+  children: (e: Record<string, string>, v: Record<string, string>) => ReactNode;
+}) {
+  const t = useTranslations("Settings");
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    saveSettingsSectionAction,
+    {},
+  );
+  return (
+    <form action={action} className="grid gap-4" noValidate>
+      <input type="hidden" name="section" value={section} />
+      <input type="hidden" name="version" value={settings.version} />
+      <FormAlert state={state} success={t("savedSection")} />
+      {children(state.fieldErrors ?? {}, state.values ?? {})}
+      <SectionFooter pending={pending} />
+    </form>
+  );
+}
+
+export function RoomsCleaningForm({
+  settings: s,
+}: {
+  settings: HotelSettings;
+}) {
+  const t = useTranslations("Settings");
+  return (
+    <SectionForm section="rooms" settings={s}>
+      {(e, v) => (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              name="cleaningBufferMinutes"
+              type="number"
+              min={0}
+              max={240}
+              step={5}
+              label={t("cleaningBuffer")}
+              help={help("cleaningBuffer", t("cleaningBuffer"))}
+              hint={t("cleaningBufferHint")}
+              defaultValue={v.cleaningBufferMinutes ?? s.cleaningBufferMinutes}
+              error={e.cleaningBufferMinutes}
+            />
+          </div>
+          <Toggle
+            name="autoReleaseRoomAfterCleaning"
+            label={t("autoRelease")}
+            defaultChecked={s.autoReleaseRoomAfterCleaning}
+            help={help("autoRelease", t("autoRelease"))}
+          />
+        </>
+      )}
+    </SectionForm>
+  );
+}
+
+export function PaymentForm({ settings: s }: { settings: HotelSettings }) {
+  const t = useTranslations("Settings");
+  return (
+    <SectionForm section="payment" settings={s}>
+      {(e, v) => (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              name="prepaymentPercent"
+              type="number"
+              min={0}
+              max={100}
+              label={t("prepayment")}
+              help={help("prepayment", t("prepayment"))}
+              hint={t("prepaymentHint")}
+              defaultValue={v.prepaymentPercent ?? s.prepaymentPercent}
+              error={e.prepaymentPercent}
+            />
+            <Field
+              name="paymentHoldMinutes"
+              type="number"
+              min={5}
+              max={1440}
+              label={t("paymentHold")}
+              help={help("paymentHold", t("paymentHold"))}
+              hint={t("paymentHoldHint")}
+              defaultValue={v.paymentHoldMinutes ?? s.paymentHoldMinutes}
+              error={e.paymentHoldMinutes}
+            />
+          </div>
+          <p className="rounded-xl bg-secondary px-3 py-2 text-sm text-muted-foreground">
+            <strong className="font-medium text-foreground">
+              {t("onlinePayment")}:
+            </strong>{" "}
+            {t("onlinePaymentOff")}
+          </p>
+        </>
+      )}
+    </SectionForm>
+  );
+}
+
+export function SiteGuestsForm({ settings: s }: { settings: HotelSettings }) {
+  const t = useTranslations("Settings");
+  return (
+    <SectionForm section="site" settings={s}>
+      {() => (
+        <>
+          <Toggle
+            name="autoConfirmWebBookings"
+            label={t("autoConfirm")}
+            defaultChecked={s.autoConfirmWebBookings}
+            help={help("autoConfirm", t("autoConfirm"))}
+          />
+          <Toggle
+            name="requireEmailConfirmation"
+            label={t("requireEmail")}
+            defaultChecked={s.requireEmailConfirmation}
+            help={help("requireEmail", t("requireEmail"))}
+          />
+        </>
+      )}
+    </SectionForm>
+  );
+}
+
+/** Метка «Заработает позже» у разделов, которые пока не применяются полностью. */
+export function SoonBadge({ className }: { className?: string }) {
+  const t = useTranslations("Settings");
+  return (
+    <span
+      className={cn(
+        "rounded-full bg-status-cleaning/12 px-2.5 py-0.5 text-xs font-medium text-status-cleaning",
+        className,
+      )}
+    >
+      {t("soonBadge")}
+    </span>
+  );
+}
+
+// ---------- Интеграции ----------
+
+export function IntegrationForm({
+  integration: i,
+}: {
+  integration: Integration;
+}) {
   const t = useTranslations("Integrations");
-  const [state, action, pending] = useActionState<FormState, FormData>(saveIntegrationAction, {});
-  const [testState, test, testing] = useActionState<FormState, FormData>(testIntegrationAction, {});
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    saveIntegrationAction,
+    {},
+  );
+  const [testState, test, testing] = useActionState<FormState, FormData>(
+    testIntegrationAction,
+    {},
+  );
   const canEnable = i.adapterAvailable && i.secretsConfigured;
   return (
     <div className="grid gap-4">
@@ -190,12 +815,23 @@ export function IntegrationForm({ integration: i }: { integration: Integration }
           </div>
         )}
         <div className="flex flex-wrap items-end gap-4">
-          <SelectField name="mode" id={`${i.provider}-mode`} label={t("mode")} defaultValue={i.mode} className="w-auto">
+          <SelectField
+            name="mode"
+            id={`${i.provider}-mode`}
+            label={t("mode")}
+            defaultValue={i.mode}
+            className="w-auto"
+          >
             <option value="Sandbox">{t("Sandbox")}</option>
             <option value="Production">{t("Production")}</option>
           </SelectField>
           <label className="flex min-h-9 items-center gap-2 text-sm">
-            <Checkbox name="isEnabled" value="true" defaultChecked={i.isEnabled} disabled={!canEnable && !i.isEnabled} />
+            <Checkbox
+              name="isEnabled"
+              value="true"
+              defaultChecked={i.isEnabled}
+              disabled={!canEnable && !i.isEnabled}
+            />
             {t("enabled")}
           </label>
           <SubmitButton pending={pending} variant="outline">
@@ -218,5 +854,3 @@ export function IntegrationForm({ integration: i }: { integration: Integration }
     </div>
   );
 }
-
-
