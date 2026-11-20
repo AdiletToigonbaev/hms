@@ -2,6 +2,7 @@ using Hms.Api.Infrastructure;
 using Hms.Modules.Audit.Infrastructure;
 using Hms.Modules.Hotel.Infrastructure;
 using Hms.Modules.Identity.Infrastructure;
+using Hms.Modules.Rooms.Infrastructure;
 using Hms.Platform.Files;
 using Hms.Platform.Persistence;
 using Hms.Platform.Time;
@@ -41,6 +42,7 @@ try
     // Модули
     builder.Services.AddAuditModule();
     builder.Services.AddHotelModule();
+    builder.Services.AddRoomsModule();
     builder.Services.AddIdentityModule(builder.Configuration);
 
     var app = builder.Build();
@@ -82,6 +84,7 @@ try
     api.MapIdentityEndpoints();
     api.MapAuditEndpoints();
     api.MapHotelEndpoints();
+    api.MapRoomsEndpoints();
     api.MapFileEndpoints();
 
     await app.RunAsync();

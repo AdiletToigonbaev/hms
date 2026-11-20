@@ -29,6 +29,9 @@ public sealed partial class PostgresFixture : IAsyncLifetime
     public const string OwnerInitialPassword = "owner-initial-password";
     public const string OwnerPassword = "owner-changed-password-1";
     // Ключ подписи генерируется на запуск тестов — в репозитории нет строк, похожих на секреты.
+    /// <summary>Временный каталог для загруженных файлов (удаляется после тестов).</summary>
+    public static readonly string FilesRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"hms-test-files-{Guid.NewGuid():N}");
+
     public static readonly string JwtKey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
 
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder(PostgresImage)
@@ -66,6 +69,7 @@ public sealed partial class PostgresFixture : IAsyncLifetime
             builder.UseSetting("Jwt:SigningKey", JwtKey);
             builder.UseSetting("Outbox:Enabled", "false");
             builder.UseSetting("Identity:PublicWebUrl", "https://hotel.test");
+            builder.UseSetting("Storage:RootPath", FilesRoot);
             builder.UseSetting("RateLimiting:AuthStrictPerMinute", "100000");
             builder.UseSetting("RateLimiting:AuthRefreshPerMinute", "100000");
             builder.UseSetting("Bootstrap:Owner:FullName", "Тестовый владелец");
@@ -130,6 +134,10 @@ public sealed partial class PostgresFixture : IAsyncLifetime
         }
 
         await _container.DisposeAsync();
+        if (Directory.Exists(FilesRoot))
+        {
+            Directory.Delete(FilesRoot, recursive: true);
+        }
     }
 
     [GeneratedRegex(@"https://hotel\.test(?<path>/[a-z-]+)\?userId=(?<userId>[0-9a-f-]{36})&token=(?<token>[^\s]+)")]

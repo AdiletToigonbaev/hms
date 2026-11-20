@@ -13,6 +13,8 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_RUNNING_IN_CONTAINER=true \
     TZ=UTC
 COPY --from=build /app/publish .
+# Каталог загруженных файлов (в compose — volume); пишет только пользователь приложения.
+RUN mkdir -p /app/data/files && chown -R $APP_UID /app/data
 USER $APP_UID
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "Hms.Api.dll"]
