@@ -14,6 +14,9 @@ public sealed class RateLimitingOptions
 
     /// <summary>Обновление токенов и выход: запросов в минуту с одного IP.</summary>
     public int AuthRefreshPerMinute { get; set; } = 60;
+
+    /// <summary>Публичный подбор номеров и расчёт цены: запросов в минуту с одного IP.</summary>
+    public int PublicSearchPerMinute { get; set; } = 60;
 }
 
 internal static class RateLimitingSetup
@@ -27,6 +30,7 @@ internal static class RateLimitingSetup
             limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             limiter.AddPolicy(IdentityEndpoints.AuthStrictRateLimit, http => PerIp(http, options.AuthStrictPerMinute));
             limiter.AddPolicy(IdentityEndpoints.AuthRefreshRateLimit, http => PerIp(http, options.AuthRefreshPerMinute));
+            limiter.AddPolicy(Hms.Modules.Bookings.Infrastructure.BookingsModule.PublicSearchRateLimit, http => PerIp(http, options.PublicSearchPerMinute));
             limiter.OnRejected = async (context, ct) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))

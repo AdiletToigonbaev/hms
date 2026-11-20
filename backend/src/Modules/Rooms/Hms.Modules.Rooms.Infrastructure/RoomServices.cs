@@ -1,4 +1,5 @@
 using Hms.Modules.Audit.Contracts;
+using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Rooms.Application;
@@ -17,6 +18,8 @@ internal sealed class RoomService(
     ICurrentUser currentUser,
     IUserDirectory users,
     RoomsStore store,
+    IRoomBookingQueries bookings,
+    Hms.Platform.Time.IHotelClock clock,
     TimeProvider time) : IRoomService
 {
     public async Task<IReadOnlyList<RoomDto>> ListAsync(RoomQuery q, CancellationToken ct)
@@ -51,7 +54,8 @@ internal sealed class RoomService(
 
         var rooms = await query.OrderBy(r => r.Floor).ThenBy(r => r.Number).ToListAsync(ct);
         var types = await TypesAsync(rooms.Select(r => r.RoomTypeId), ct);
-        return rooms.Select(r => ToDto(r, types[r.RoomTypeId], [])).ToList();
+        var arrivals = await bookings.RoomsWithArrivalOnAsync(clock.Today, ct);
+        return rooms.Select(r => ToDto(r, types[r.RoomTypeId], [], arrivals.Contains(r.Id))).ToList();
     }
 
     public async Task<Result<RoomDto>> GetAsync(Guid id, CancellationToken ct)
@@ -120,7 +124,12 @@ internal sealed class RoomService(
             return RoomErrors.RoomNotFound;
         }
 
-        // ROOM-1: номер с историей (смены статусов, позже — брони) только архивируется.
+        // ROOM-1: номер с историей (брони, смены статусов) только архивируется.
+        if (await bookings.HasAnyBookingAsync(id, ct))
+        {
+            return RoomErrors.HasBookings;
+        }
+
         if (await db.Set<RoomStatusChange>().AnyAsync(h => h.RoomId == id, ct))
         {
             return RoomErrors.HasHistory;
@@ -148,6 +157,11 @@ internal sealed class RoomService(
         var now = time.GetUtcNow();
         if (archived)
         {
+            if (await bookings.HasUpcomingBookingsAsync(id, clock.Today, ct))
+            {
+                return RoomErrors.HasUpcomingBookings;
+            }
+
             var result = room.Archive(now);
             if (result.IsFailure)
             {
@@ -179,6 +193,11 @@ internal sealed class RoomService(
         if (room is null)
         {
             return RoomErrors.RoomNotFound;
+        }
+
+        if (target == RoomStatus.OutOfService && await bookings.HasUpcomingBookingsAsync(id, clock.Today, ct))
+        {
+            return RoomErrors.HasUpcomingBookings;
         }
 
         var from = room.Status;
@@ -266,10 +285,12 @@ internal sealed class RoomService(
     private async Task<RoomDto> ToDtoAsync(Room room, CancellationToken ct)
     {
         var type = await db.Set<RoomType>().AsNoTracking().FirstAsync(t => t.Id == room.RoomTypeId, ct);
-        return ToDto(room, type, await store.PhotosAsync(null, room.Id, ct));
+        var arrivals = await bookings.RoomsWithArrivalOnAsync(clock.Today, ct);
+        return ToDto(room, type, await store.PhotosAsync(null, room.Id, ct), arrivals.Contains(room.Id));
     }
 
-    private static RoomDto ToDto(Room r, RoomType t, IReadOnlyList<PhotoDto> photos) => new(
+    /// <param name="arrivalToday">Сегодня заезд по действующей брони — для свободного номера показывается «Бронь сегодня».</param>
+    private static RoomDto ToDto(Room r, RoomType t, IReadOnlyList<PhotoDto> photos, bool arrivalToday) => new(
         r.Id,
         r.Number,
         r.Floor,
@@ -285,8 +306,7 @@ internal sealed class RoomService(
         r.PriceOverride ?? t.BasePrice,
         r.Description,
         r.Status.ToString(),
-        // Reserved (бронь с заездом сегодня) — с модулем Bookings, Sprint 3.
-        r.Status.ToString(),
+        r.Status == RoomStatus.Available && arrivalToday ? "Reserved" : r.Status.ToString(),
         r.IsArchived ? [] : RoomStatusMachine.ManualTargets(r.Status).Select(s => s.ToString()).ToList(),
         r.IsArchived,
         photos,

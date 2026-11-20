@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Pricing.Contracts\Hms.Modules.Pricing.Contracts.csproj" />
+    <ProjectReference Include="..\..\..\Hms.SharedKernel\Hms.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

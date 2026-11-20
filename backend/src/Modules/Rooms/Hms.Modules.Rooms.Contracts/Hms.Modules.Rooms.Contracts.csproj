@@ -1,3 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Публичный контракт модуля для других модулей. Без инфраструктурных зависимостей. -->
+  <!-- Публичный контракт: расчёт стоимости проживания для модуля Bookings. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Hms.SharedKernel\Hms.SharedKernel.csproj" />
+  </ItemGroup>
 </Project>

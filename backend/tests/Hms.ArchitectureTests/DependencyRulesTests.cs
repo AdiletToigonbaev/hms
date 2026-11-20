@@ -92,7 +92,9 @@ public partial class DependencyRulesTests
         var found = LoadModuleAssemblies().Select(m => $"{m.Module}.{m.Layer}").ToList();
 
         found.Should().Contain(["Identity.Domain", "Identity.Application", "Identity.Infrastructure", "Identity.Contracts", "Audit.Contracts", "Audit.Infrastructure",
-            "Hotel.Domain", "Hotel.Application", "Hotel.Infrastructure", "Hotel.Contracts", "Rooms.Domain", "Rooms.Application", "Rooms.Infrastructure", "Rooms.Contracts"]);
+            "Hotel.Domain", "Hotel.Application", "Hotel.Infrastructure", "Hotel.Contracts", "Rooms.Domain", "Rooms.Application", "Rooms.Infrastructure", "Rooms.Contracts",
+            "Pricing.Domain", "Pricing.Application", "Pricing.Infrastructure", "Pricing.Contracts",
+            "Bookings.Domain", "Bookings.Application", "Bookings.Infrastructure", "Bookings.Contracts"]);
     }
 
     [Fact]

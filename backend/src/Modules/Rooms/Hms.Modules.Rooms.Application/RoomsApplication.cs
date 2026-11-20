@@ -184,6 +184,8 @@ public static class RoomErrors
     public static readonly Error PhotoOrderMismatch = Error.Validation("photo.order_mismatch", "Список фото не совпадает с текущим.");
     public static readonly Error ConcurrencyConflict = Error.Conflict("concurrency.conflict", "Данные изменил другой пользователь. Обновите страницу и повторите.");
     public static readonly Error UnknownStatus = Error.Validation("room.unknown_status", "Неизвестный статус номера.");
+    public static readonly Error HasBookings = Error.Conflict("room.has_bookings", "У номера есть брони — его можно только архивировать.");
+    public static readonly Error HasUpcomingBookings = Error.Conflict("room.has_upcoming_bookings", "На номер есть действующие брони на будущие даты — сначала перенесите или отмените их.");
 }
 
 // ---- Валидация ----

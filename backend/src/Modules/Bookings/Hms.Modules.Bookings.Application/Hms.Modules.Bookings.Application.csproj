@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Bookings.Domain\Hms.Modules.Bookings.Domain.csproj" />
+    <ProjectReference Include="..\..\Pricing\Hms.Modules.Pricing.Contracts\Hms.Modules.Pricing.Contracts.csproj" />
+  </ItemGroup>
+</Project>

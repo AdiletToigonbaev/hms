@@ -1,7 +1,7 @@
-import { ArrowRight, BedDouble, DoorOpen, PlugZap, Settings, Users, type LucideIcon } from "lucide-react";
+import { ArrowRight, BedDouble, CalendarRange, DoorOpen, PlugZap, Settings, Tags, Users, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 
-const icons = { rooms: DoorOpen, roomTypes: BedDouble, staff: Users, settings: Settings, integrations: PlugZap } satisfies Record<string, LucideIcon>;
+const icons = { bookings: CalendarRange, pricing: Tags, rooms: DoorOpen, roomTypes: BedDouble, staff: Users, settings: Settings, integrations: PlugZap } satisfies Record<string, LucideIcon>;
 
 export interface QuickLink {
   href: string;

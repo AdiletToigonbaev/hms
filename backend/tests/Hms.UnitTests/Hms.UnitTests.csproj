@@ -4,5 +4,7 @@
     <ProjectReference Include="..\..\src\Hms.Platform\Hms.Platform.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\Hms.Modules.Identity.Infrastructure\Hms.Modules.Identity.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Rooms\Hms.Modules.Rooms.Infrastructure\Hms.Modules.Rooms.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Pricing\Hms.Modules.Pricing.Infrastructure\Hms.Modules.Pricing.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Bookings\Hms.Modules.Bookings.Infrastructure\Hms.Modules.Bookings.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

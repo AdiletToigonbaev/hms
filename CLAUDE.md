@@ -5,8 +5,9 @@
 ## Статус
 - Этап 1 (документация), Sprint 0 (каркас) — завершены и подтверждены.
 - Sprint 1 (Identity, аудит, outbox/email) — завершён, в `main`.
-- **Sprint 2 (настройки гостиницы, интеграции без адаптеров, номерной фонд, дизайн-основа) — завершён**, ожидает подтверждения заказчика.
-- Следующий: Sprint 3 (тарифы, доступность, бронирования) — только после подтверждения заказчика.
+- Sprint 2 (настройки гостиницы, интеграции без адаптеров, номерной фонд, дизайн-основа) — завершён, в `main`.
+- **Sprint 3 (тарифы, скидки, услуги, подбор номеров, расчёт цены, бронирования администратором) — завершён** в ветке `sprint/3-bookings`, ожидает подтверждения заказчика.
+- Следующий: Sprint 4 (гости / CRM) — только после подтверждения заказчика; юридические вопросы 1–2 блокируют его.
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -116,7 +117,10 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Гостиница одна: `HotelId` и настройки — только через `IHotelContext` (Hotel.Contracts); имена пользователей для показа — `IUserDirectory` (Identity.Contracts).
 - Чтение несколькими ролями — `.RequireAnyPermission(...)`; изменение — `.RequirePermission(...)`. Конкурентные правки — `version` (xmin) в запросе, конфликт → `409 concurrency.conflict`.
 - Файлы: загрузка только через `IFileService` (проверка сигнатуры, лимит); браузер получает их через маршрут Next.js `/media/{id}`, а не напрямую из API.
-- UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли).
+- UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
+- Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.
+- Модули читают номерной фонд через `IRoomDirectory` (Rooms.Contracts), цену — через `IPriceCalculator` (Pricing.Contracts); Rooms узнаёт о бронях через `IRoomBookingQueries` (Bookings.Contracts).
+- Сырой SQL в миграциях (exclusion constraint, generated columns) — с комментарием и симметричным `Down`. Дочерние сущности с Id из домена — `ValueGeneratedNever()`, иначе EF сделает UPDATE вместо INSERT.
 
 ## Открытые вопросы
 См. `docs/development/development-roadmap.md` §6. Бизнес-правила (3–7) приняты как настраиваемые значения по умолчанию и ждут подтверждения заказчика; юридические вопросы 1–2 открыты и блокируют спринты 4, 6, 11. ER-диаграмма ждёт согласования.
