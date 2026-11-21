@@ -128,10 +128,10 @@ public sealed class HotelSettings
     public TimeOnly NoShowCutoffTime { get; private set; } = new(12, 0);
 
     /// <summary>
-    /// Отмечать неявку автоматически (фоновая задача). По умолчанию выключено: пока нет заселения (Sprint 7),
-    /// система не знает, пришёл ли гость, и отметила бы неявку всем подтверждённым броням.
+    /// Отмечать неявку автоматически (фоновая задача): подтверждённая бронь без заселения после времени неявки.
+    /// С Sprint 7 (заселение) включено по умолчанию для новых гостиниц; владелец может выключить.
     /// </summary>
-    public bool AutoNoShowEnabled { get; private set; }
+    public bool AutoNoShowEnabled { get; private set; } = true;
 
     /// <summary>Почасовые брони: минимум часов.</summary>
     public int HourlyMinHours { get; private set; } = 2;

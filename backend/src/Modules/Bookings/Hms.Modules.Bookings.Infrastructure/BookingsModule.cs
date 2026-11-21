@@ -27,6 +27,7 @@ public static class BookingsModule
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IBookingService, BookingService>();
         services.AddScoped<ICalendarService, CalendarService>();
+        services.AddScoped<IFrontDeskService, FrontDeskService>();
         services.AddScoped<IBookingLifecycle, BookingLifecycle>();
         services.AddOptions<BookingJobsOptions>().BindConfiguration(BookingJobsOptions.Section);
         services.AddHostedService<BookingLifecycleBackgroundService>();
@@ -93,6 +94,15 @@ public static class BookingsModule
         g.MapPost("/{id:guid}/reschedule", async (Guid id, RescheduleBookingRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.RescheduleAsync(id, r, ct)).ToHttpResult())
             .WithValidation<RescheduleBookingRequest>().RequirePermission(Permissions.BookingEdit);
+
+        g.MapGet("/{id:guid}/check-in/preview", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.CheckInPreviewAsync(id, ct)).ToHttpResult())
+            .RequirePermission(Permissions.CheckInPerform);
+        g.MapPost("/{id:guid}/check-in", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.CheckInAsync(id, ct)).ToHttpResult())
+            .WithIdempotency("booking.check_in").RequirePermission(Permissions.CheckInPerform);
+        g.MapGet("/{id:guid}/check-out/preview", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutPreviewAsync(id, ct)).ToHttpResult())
+            .RequirePermission(Permissions.CheckOutPerform);
+        g.MapPost("/{id:guid}/check-out", async (Guid id, CheckOutRequest r, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutAsync(id, r, ct)).ToHttpResult())
+            .WithIdempotency("booking.check_out").RequirePermission(Permissions.CheckOutPerform);
 
         api.MapGet("/calendar", async ([AsParameters] CalendarQuery q, ICalendarService s, CancellationToken ct) => (await s.GetAsync(q, ct)).ToHttpResult())
             .WithTags("Bookings").RequirePermission(Permissions.CalendarView);

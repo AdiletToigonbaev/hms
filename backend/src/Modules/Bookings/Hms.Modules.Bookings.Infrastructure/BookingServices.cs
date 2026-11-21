@@ -822,6 +822,17 @@ internal sealed class BookingService(
             actions.Add("noShow");
         }
 
+        // Заселить — подтверждённую бронь (окно и готовность номера проверит превью); выселить — заселённого гостя.
+        if (b.Status == BookingStatus.Confirmed && clock.UtcNow < b.EndsAt)
+        {
+            actions.Add("checkIn");
+        }
+
+        if (b.Status == BookingStatus.CheckedIn)
+        {
+            actions.Add("checkOut");
+        }
+
         var authors = await users.GetNamesAsync(b.Extensions.Where(e => e.CreatedBy != null).Select(e => e.CreatedBy!.Value), ct);
         var extensions = b.ActiveExtensions
             .OrderBy(e => e.CreatedAt)
@@ -838,7 +849,8 @@ internal sealed class BookingService(
             b.Services.Select(s => new BookingServiceDto(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
             actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version,
             b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions, b.GuestId,
-            b.HoldUntil is { } hold ? stays.Format(hold) : null, b.PenaltyAmount, b.PenaltyKind?.ToString(), b.PenaltyWaived);
+            b.HoldUntil is { } hold ? stays.Format(hold) : null, b.PenaltyAmount, b.PenaltyKind?.ToString(), b.PenaltyWaived,
+            b.ActualCheckInAt is { } checkedIn ? stays.Format(checkedIn) : null, b.ActualCheckOutAt is { } checkedOut ? stays.Format(checkedOut) : null, b.EarlyDepartureCredit);
     }
 
     private static JsonElement? Parse(string? json) => json is null ? null : JsonDocument.Parse(json).RootElement.Clone();

@@ -11,7 +11,8 @@
 - **Sprint 4 (гости / CRM) — завершён**, в `main`.
 - **Sprint 5 (календарь по часам, перенос броней, правила отмены и неявки, фоновое истечение) — завершён**, в `main`.
 - **Sprint 6 (Finance: ручные платежи, сторно, долги и штрафы, возвраты с лимитом, расходы) — завершён**, в `main`.
-- Следующий: Sprint 7 (заселение, выселение, уборка) — только после «подтверждаю».
+- **Sprint 7 (заселение, выселение, досрочный выезд, уборка, заявки о неисправностях) — реализован** на ветке `sprint/7-frontdesk`, ждёт проверки.
+- Следующий: Sprint 8 (публичный сайт и кабинет гостя) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -127,6 +128,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Правила брони из настроек — `BookingRules` (удержание, штрафы, момент неявки); штраф — `BookingPenalties` (домен). Фоновые задачи брони — `IBookingLifecycle` + `BookingLifecycleBackgroundService` (`BookingJobs:Enabled`; в интеграционных тестах выключена, тесты вызывают `RunAsync` сами). Календарь — `GET /calendar`, геометрия шкалы на frontend — `lib/bookings/timeline.ts`.
 - Финансы: модуль Finance (`IPaymentQueries` в Finance.Contracts); баланс брони — из платежей и `IBookingCharges` (Bookings.Contracts), лимит прав — `IPermissionLimits` (Identity.Contracts). Платежи не меняются и не удаляются (триггеры БД): ошибку исправляет сторно, деньги гостю — возврат. Конкурентные платежи/возвраты по одной брони/платежу — `pg_advisory_xact_lock` в транзакции.
 - Номер брони «Ч-2111-07» — `BookingNumbers.Format` (домен) + счётчик за день `booking_number_counters` (атомарный upsert); уникален вместе с `NumberYear`.
+- Стойка: `IFrontDeskService` (Bookings) — заселение/выселение одной транзакцией: статус номера через `IRoomStatusChanger` (Rooms.Contracts), задача уборки через `IHousekeepingTasks` (Housekeeping.Contracts), получено по брони — `IPaymentQueries.ReceivedForBookingAsync`. Уборка — модуль Housekeeping (задачи с чек-листом, шаблон, заявки); уборщик видит только свои и свободные задачи, без ПД гостя; экран уборщика — `/hk` (мобильный).
 - Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.

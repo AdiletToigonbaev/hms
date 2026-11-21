@@ -9,12 +9,23 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api/server";
 import { hotelTimeZone } from "@/i18n/config";
-import type { Booking, BookingBalance, BookingHistoryItem, BookingStatus, CalendarData, CancellationQuote, ExtensionQuote } from "@/lib/api/types";
+import type {
+  Booking,
+  BookingBalance,
+  BookingHistoryItem,
+  BookingStatus,
+  CalendarData,
+  CancellationQuote,
+  CheckInPreview,
+  CheckOutPreview,
+  ExtensionQuote,
+} from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { bookingStatusLabel, hotelNowLocal, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { BookingActions, BookingDetailsForm, ExtendBookingForm, RescheduleForm } from "../booking-forms";
+import { CheckInForm, CheckOutForm } from "./front-desk-card";
 import { PaymentCard } from "./payment-card";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -44,17 +55,22 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const editable = can("booking.edit") && !["Cancelled", "CheckedOut", "NoShow", "Expired"].includes(b.status);
   const showActions = can("booking.edit") || can("booking.cancel");
   const evKey = (e: string) =>
-    ["created", "status_changed", "details_changed", "extended", "rescheduled", "penalty_charged", "penalty_waived"].includes(e) ? (`ev_${e}` as "ev_created") : null;
+    ["created", "status_changed", "details_changed", "extended", "rescheduled", "penalty_charged", "penalty_waived", "early_departure"].includes(e) ? (`ev_${e}` as "ev_created") : null;
   const hourly = b.kind === "Hourly";
   const today = hotelToday(hotelTimeZone);
 
   // Условия отмены и штраф за неявку — на сейчас (считает API); номера для переноса — из календаря.
   const needsTerms = b.allowedActions.includes("cancel") || b.allowedActions.includes("noShow");
   const canReschedule = can("booking.edit") && can("calendar.view") && b.allowedActions.includes("reschedule");
-  const [terms, roomsData, balance] = await Promise.all([
+  // Стойка: можно ли заселить / что будет при выселении сейчас (считает API).
+  const canCheckIn = can("checkin.perform") && b.allowedActions.includes("checkIn");
+  const canCheckOut = can("checkout.perform") && b.allowedActions.includes("checkOut");
+  const [terms, roomsData, balance, checkIn, checkOut] = await Promise.all([
     needsTerms && showActions ? api<CancellationQuote>(`/bookings/${id}/cancel/preview`) : null,
     canReschedule ? api<CalendarData>(`/calendar?from=${today}&to=${today}`) : null,
     can("payment.view") ? api<BookingBalance>(`/bookings/${id}/balance`) : null,
+    canCheckIn ? api<CheckInPreview>(`/bookings/${id}/check-in/preview`) : null,
+    canCheckOut ? api<CheckOutPreview>(`/bookings/${id}/check-out/preview`) : null,
   ]);
 
   // Продление: предел по правилам и по следующей брони номера (считает API).
@@ -97,6 +113,15 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           {b.children > 0 ? `, ${b.children} ${t("childrenShort")}` : ""}
         </p>
       </div>
+
+      {(b.actualCheckInAt || b.actualCheckOutAt) && (
+        <p className="-mt-3 text-sm text-muted-foreground">
+          {b.actualCheckInAt && t("actualCheckIn", { time: formatHotelLocal(b.actualCheckInAt) })}
+          {b.actualCheckInAt && b.actualCheckOutAt && " · "}
+          {b.actualCheckOutAt && t("actualCheckOut", { time: formatHotelLocal(b.actualCheckOutAt) })}
+          {b.earlyDepartureCredit > 0 && ` · ${t("earlyCredit", { amount: formatMoney(b.earlyDepartureCredit) })}`}
+        </p>
+      )}
 
       {b.holdUntil && (
         <Alert role="status" className="border-status-cleaning/40 text-status-cleaning">
@@ -179,6 +204,19 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
         </div>
 
         <div className="grid content-start gap-6">
+          {(checkIn?.ok || checkOut?.ok) && (
+            <Card className="border-primary/30">
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="text-xl">{t("frontDesk")}</h2>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {checkIn?.ok && <CheckInForm booking={b} preview={checkIn.data} />}
+                {checkOut?.ok && <CheckOutForm booking={b} preview={checkOut.data} />}
+              </CardContent>
+            </Card>
+          )}
           {showActions && (
             <Card>
               <CardHeader>

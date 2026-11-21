@@ -190,7 +190,10 @@ public sealed record BookingDto(
     string? HoldUntil = null,
     decimal PenaltyAmount = 0m,
     string? PenaltyKind = null,
-    bool PenaltyWaived = false);
+    bool PenaltyWaived = false,
+    string? ActualCheckInAt = null,
+    string? ActualCheckOutAt = null,
+    decimal EarlyDepartureCredit = 0m);
 
 public sealed record BookingListItemDto(
     Guid Id,
@@ -474,4 +477,52 @@ public sealed class ExtendBookingRequestValidator : AbstractValidator<ExtendBook
 {
     public ExtendBookingRequestValidator() =>
         RuleFor(x => x.Units).InclusiveBetween(1, BookingErrors.MaxExtendNights).WithMessage($"Продление — от 1 до {BookingErrors.MaxExtendNights}.");
+}
+
+// ---- Стойка: заселение и выселение (Sprint 7) ----
+
+/// <summary>Можно ли заселить сейчас; если нет — понятная причина. Время — по гостинице.</summary>
+/// <param name="Early">Гость приехал раньше начала брони (в пределах допустимого окна).</param>
+public sealed record CheckInPreviewDto(
+    bool Allowed,
+    string? BlockCode,
+    string? BlockMessage,
+    string RoomNumber,
+    string RoomStatus,
+    bool Early,
+    string StartsAt,
+    string EndsAt,
+    decimal Due,
+    decimal Received,
+    decimal Balance);
+
+/// <summary>Что будет при выселении сейчас: досрочный выезд (перерасчёт), опоздание, долг, срок уборки.</summary>
+/// <param name="UnusedUnits">Неиспользованные часы/ночи при досрочном выезде.</param>
+/// <param name="Credit">Сколько вычитается из стоимости по правилам гостиницы.</param>
+/// <param name="LateMinutes">На сколько гость задержался после окончания брони.</param>
+public sealed record CheckOutPreviewDto(
+    bool Early,
+    int LateMinutes,
+    int UnusedUnits,
+    string Unit,
+    decimal Credit,
+    decimal TotalBefore,
+    decimal TotalAfter,
+    decimal Received,
+    decimal BalanceAfter,
+    string PlannedEndsAt,
+    string CleaningDueAt);
+
+/// <param name="AllowDebt">Выселить, хотя гость не оплатил всё (долг останется в «Долгах»).</param>
+public sealed record CheckOutRequest(bool AllowDebt = false);
+
+public interface IFrontDeskService
+{
+    Task<Result<CheckInPreviewDto>> CheckInPreviewAsync(Guid bookingId, CancellationToken ct);
+
+    Task<Result<BookingDto>> CheckInAsync(Guid bookingId, CancellationToken ct);
+
+    Task<Result<CheckOutPreviewDto>> CheckOutPreviewAsync(Guid bookingId, CancellationToken ct);
+
+    Task<Result<BookingDto>> CheckOutAsync(Guid bookingId, CheckOutRequest request, CancellationToken ct);
 }

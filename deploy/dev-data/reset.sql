@@ -12,6 +12,9 @@ TRUNCATE guests.guest_consents, guests.guests;
 -- Финансы: платежи и журнал операций приложение не удаляет (защита в БД), TRUNCATE — только для этого сброса.
 TRUNCATE finance.refunds, finance.payment_transactions, finance.payments, finance.expenses;
 
+-- Уборка: задачи и заявки (шаблон чек-листа остаётся — это настройка гостиницы).
+TRUNCATE housekeeping.task_checklist_items, housekeeping.tasks, housekeeping.maintenance_requests;
+
 TRUNCATE pricing.room_rates, pricing.discounts, pricing.services;
 
 -- Фото номеров: строки в platform.stored_files удаляются здесь, сами файлы — скриптом seed.mjs в контейнере api.

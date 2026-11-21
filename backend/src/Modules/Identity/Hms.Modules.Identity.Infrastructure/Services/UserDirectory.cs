@@ -4,8 +4,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Hms.Modules.Identity.Infrastructure.Services;
 
-internal sealed class UserDirectory(DbContext db) : IUserDirectory
+internal sealed class UserDirectory(DbContext db, Microsoft.AspNetCore.Identity.UserManager<HmsUser> users) : IUserDirectory
 {
+    public async Task<IReadOnlyDictionary<Guid, string>> ListActiveInRoleAsync(string role, CancellationToken ct) =>
+        (await users.GetUsersInRoleAsync(role)).Where(u => u.IsActive).OrderBy(u => u.FullName).ToDictionary(u => u.Id, u => u.FullName);
+
     public async Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(IEnumerable<Guid> userIds, CancellationToken ct)
     {
         var ids = userIds.Distinct().ToList();

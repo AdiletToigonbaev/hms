@@ -104,6 +104,7 @@ const staff = [
   { fullName: "Айжан Токтосунова", email: "admin@hms.local", phone: "+996555100201", role: "Administrator", initialPassword: "admin-dev-password" },
   { fullName: "Нурлан Бейшеналиев", email: "admin2@hms.local", phone: "+996700100202", role: "Administrator", initialPassword: "admin-dev-password" },
   { fullName: "Гульнара Асанова", email: "maid@hms.local", phone: "+996770100203", role: "Housekeeper", initialPassword: "maid-dev-password" },
+  { fullName: "Айгуль Маматова", email: "maid2@hms.local", phone: "+996770100204", role: "Housekeeper", initialPassword: "maid-dev-password" },
 ];
 for (const s of staff) await call("POST", "/staff", s);
 
@@ -398,8 +399,15 @@ for (const x of shifts) {
   const hist = (from, to, at) =>
     `INSERT INTO bookings.booking_history (id, booking_id, event_type, old_values, new_values, changed_by, changed_at, comment)
        VALUES (gen_random_uuid(), '${x.id}', 'status_changed', '{"status":"${from}"}', '{"status":"${to}"}', NULL, ${sqlLocal(at)}, NULL);`;
-  if (x.status === "CheckedIn" || x.status === "CheckedOut") stmts.push(hist("Confirmed", "CheckedIn", x.start + Math.floor(rnd() * 20)));
-  if (x.status === "CheckedOut") stmts.push(hist("CheckedIn", "CheckedOut", x.end - Math.floor(rnd() * 25)));
+  // Фактическое заселение и выселение (Sprint 7): гость приходит в первые 20 минут, уезжает чуть раньше конца.
+  if (x.status === "CheckedIn" || x.status === "CheckedOut") {
+    const inAt = x.start + Math.floor(rnd() * 20);
+    stmts.push(hist("Confirmed", "CheckedIn", inAt), `UPDATE bookings.bookings SET actual_check_in_at = ${sqlLocal(inAt)} WHERE id = '${x.id}';`);
+  }
+  if (x.status === "CheckedOut") {
+    const outAt = x.end - Math.floor(rnd() * 25);
+    stmts.push(hist("CheckedIn", "CheckedOut", outAt), `UPDATE bookings.bookings SET actual_check_out_at = ${sqlLocal(outAt)} WHERE id = '${x.id}';`);
+  }
   // Штрафы — только если владелец включил их в настройках (по умолчанию штрафов нет).
   const unit = x.kind === "Hourly" ? x.hours : x.nights;
   const perUnit = Math.round((x.total / Math.max(1, unit)) * 100) / 100;
@@ -429,7 +437,34 @@ stmts.push(
   `UPDATE rooms.rooms r SET status = 'Occupied' WHERE EXISTS (SELECT 1 FROM bookings.booking_rooms br JOIN bookings.bookings b ON b.id = br.booking_id
      WHERE br.room_id = r.id AND b.status = 'CheckedIn');`,
   `UPDATE rooms.rooms r SET status = 'Cleaning' WHERE status = 'Available' AND EXISTS (SELECT 1 FROM bookings.booking_rooms br JOIN bookings.bookings b ON b.id = br.booking_id
-     WHERE br.room_id = r.id AND b.status = 'CheckedOut' AND br.ends_at > now() - interval '60 minutes');`,
+     WHERE br.room_id = r.id AND b.status = 'CheckedOut' AND b.actual_check_out_at > now() - interval '60 minutes');`,
+  // Уборка (Sprint 7): после каждого выезда — задача. Давние приняты (уборщицы по очереди, проверил администратор),
+  // выезды последнего часа — номер на уборке, задача ждёт уборщика.
+  `CREATE TEMP TABLE hk_staff AS SELECT
+     (SELECT id FROM identity.users WHERE normalized_email = 'MAID@HMS.LOCAL') AS maid1,
+     (SELECT id FROM identity.users WHERE normalized_email = 'MAID2@HMS.LOCAL') AS maid2,
+     (SELECT id FROM identity.users WHERE normalized_email = 'ADMIN@HMS.LOCAL') AS admin;`,
+  `INSERT INTO housekeeping.tasks (id, hotel_id, room_id, booking_id, origin, status, priority, assigned_to, due_at, created_at, started_at, completed_at, inspected_by, inspected_at, is_deleted)
+   SELECT gen_random_uuid(), b.hotel_id, br.room_id, b.id, 'CheckOut', CASE WHEN fresh THEN 'Pending' ELSE 'Inspected' END, 'Normal',
+     CASE WHEN fresh THEN NULL WHEN (hashtext(b.id::text) & 1) = 0 THEN s.maid1 ELSE s.maid2 END,
+     b.actual_check_out_at + interval '30 minutes', b.actual_check_out_at,
+     CASE WHEN fresh THEN NULL ELSE b.actual_check_out_at + interval '5 minutes' END,
+     CASE WHEN fresh THEN NULL ELSE b.actual_check_out_at + interval '28 minutes' END,
+     CASE WHEN fresh THEN NULL ELSE s.admin END,
+     CASE WHEN fresh THEN NULL ELSE b.actual_check_out_at + interval '35 minutes' END, false
+   FROM bookings.bookings b JOIN bookings.booking_rooms br ON br.booking_id = b.id JOIN rooms.rooms rm ON rm.id = br.room_id CROSS JOIN hk_staff s
+   CROSS JOIN LATERAL (SELECT b.actual_check_out_at > now() - interval '60 minutes' AND rm.status = 'Cleaning' AS fresh) f
+   WHERE b.status = 'CheckedOut' AND b.actual_check_out_at IS NOT NULL;`,
+  `INSERT INTO housekeeping.task_checklist_items (id, task_id, position, text, is_done, done_at)
+   SELECT gen_random_uuid(), t.id, i.pos, i.text, t.status = 'Inspected', CASE WHEN t.status = 'Inspected' THEN t.completed_at END
+   FROM housekeeping.tasks t
+   CROSS JOIN LATERAL unnest((SELECT items FROM housekeeping.checklist_templates WHERE is_default LIMIT 1)) WITH ORDINALITY AS i(text, pos);`,
+  `INSERT INTO housekeeping.maintenance_requests (id, hotel_id, room_id, type, severity, description, status, reported_by, created_at)
+   SELECT gen_random_uuid(), r.hotel_id, r.id, x.type, x.severity, x.description, 'New', (SELECT maid1 FROM hk_staff), now() - x.ago
+   FROM (SELECT id, hotel_id, row_number() OVER (ORDER BY number) AS n FROM rooms.rooms) r
+   JOIN (VALUES (2, 'Defect', 'Normal', 'Капает кран в душе', interval '5 hours'),
+                (5, 'Damage', 'Low', 'Пятно на ковре у кровати', interval '1 day')) AS x(n, type, severity, description, ago) ON x.n = r.n;`,
+  `DROP TABLE hk_staff;`,
   // Гости появились в базе раньше своих первых броней.
   `UPDATE guests.guests g SET created_at = LEAST(g.created_at, (SELECT min(b.created_at) - interval '1 day' FROM bookings.bookings b WHERE b.guest_id = g.id))
      WHERE EXISTS (SELECT 1 FROM bookings.bookings b WHERE b.guest_id = g.id);`,

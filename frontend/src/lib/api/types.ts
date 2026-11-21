@@ -377,7 +377,7 @@ export interface Booking {
   promoCode: string | null;
   price: PriceQuote | null;
   services: { serviceId: string; name: string; quantity: number; unitPrice: number; perNight: boolean; total: number }[];
-  allowedActions: ("confirm" | "cancel" | "extend" | "reschedule" | "noShow")[];
+  allowedActions: ("confirm" | "cancel" | "extend" | "reschedule" | "noShow" | "checkIn" | "checkOut")[];
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
@@ -397,6 +397,11 @@ export interface Booking {
   penaltyAmount: number;
   penaltyKind: "LateCancel" | "NoShow" | null;
   penaltyWaived: boolean;
+  /** Фактическое заселение и выселение (время гостиницы). */
+  actualCheckInAt: string | null;
+  actualCheckOutAt: string | null;
+  /** Перерасчёт при досрочном выезде — уже вычтен из стоимости. */
+  earlyDepartureCredit: number;
 }
 
 /** Условия отмены сейчас (считает API по правилам гостиницы). */
@@ -720,4 +725,106 @@ export interface ExpenseCategory {
   name: string;
   sortOrder: number;
   isActive: boolean;
+}
+
+/** Можно ли заселить сейчас (считает API): окно заселения, готовность номера, оплата. */
+export interface CheckInPreview {
+  allowed: boolean;
+  blockCode: string | null;
+  blockMessage: string | null;
+  roomNumber: string;
+  roomStatus: RoomStatus;
+  early: boolean;
+  startsAt: string;
+  endsAt: string;
+  due: number;
+  received: number;
+  balance: number;
+}
+
+/** Что будет при выселении сейчас: досрочный выезд и перерасчёт, опоздание, долг, срок уборки. */
+export interface CheckOutPreview {
+  early: boolean;
+  lateMinutes: number;
+  unusedUnits: number;
+  unit: "Hour" | "Night";
+  credit: number;
+  totalBefore: number;
+  totalAfter: number;
+  received: number;
+  balanceAfter: number;
+  plannedEndsAt: string;
+  cleaningDueAt: string;
+}
+
+export type HousekeepingTaskStatus = "Pending" | "Assigned" | "InProgress" | "Completed" | "Inspected" | "Rejected";
+export type TaskAction = "assign" | "delete" | "edit" | "inspect" | "take" | "start" | "complete";
+
+export interface ChecklistItem {
+  id: string;
+  position: number;
+  text: string;
+  isDone: boolean;
+}
+
+/** Задача уборки — без персональных данных гостя. */
+export interface HousekeepingTask {
+  id: string;
+  roomId: string;
+  roomNumber: string;
+  roomTypeName: string;
+  roomStatus: RoomStatus;
+  status: HousekeepingTaskStatus;
+  priority: "Normal" | "High";
+  origin: "CheckOut" | "Manual";
+  assignedTo: string | null;
+  assignedToName: string | null;
+  dueAt: string | null;
+  isOverdue: boolean;
+  nextArrivalAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+  inspectedAt: string | null;
+  inspectedByName: string | null;
+  rejectReason: string | null;
+  checklist: ChecklistItem[];
+  allowedActions: TaskAction[];
+  version: number;
+}
+
+export interface HousekeepingStaff {
+  id: string;
+  name: string;
+  openTasks: number;
+}
+
+export interface ChecklistTemplate {
+  id: string;
+  name: string;
+  items: string[];
+  version: number;
+}
+
+export type MaintenanceType = "Defect" | "Damage";
+export type MaintenanceSeverity = "Low" | "Normal" | "High" | "Critical";
+export type MaintenanceStatus = "New" | "InProgress" | "Resolved" | "Rejected";
+
+export interface MaintenanceRequest {
+  id: string;
+  roomId: string;
+  roomNumber: string;
+  taskId: string | null;
+  type: MaintenanceType;
+  severity: MaintenanceSeverity;
+  description: string;
+  status: MaintenanceStatus;
+  reportedByName: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedByName: string | null;
+  resolutionNote: string | null;
+  roomStatus: RoomStatus;
+  version: number;
 }

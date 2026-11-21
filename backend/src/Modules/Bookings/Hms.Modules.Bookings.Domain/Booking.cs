@@ -254,6 +254,15 @@ public sealed class Booking
     /// <summary>До какого момента неподтверждённая бронь держит номер; потом фоновая задача переводит её в Expired.</summary>
     public DateTimeOffset? HoldUntil { get; private set; }
 
+    /// <summary>Фактическое время заселения.</summary>
+    public DateTimeOffset? ActualCheckInAt { get; private set; }
+
+    /// <summary>Фактическое время выселения.</summary>
+    public DateTimeOffset? ActualCheckOutAt { get; private set; }
+
+    /// <summary>Перерасчёт при досрочном выезде (вычтен из стоимости): неиспользованные ночи/часы по правилам гостиницы.</summary>
+    public decimal EarlyDepartureCredit { get; private set; }
+
     /// <summary>Когда бронь последний раз переносили: продления до этого момента уже вошли в новую цену.</summary>
     public DateTimeOffset? RescheduledAt { get; private set; }
 
@@ -411,6 +420,71 @@ public sealed class Booking
         }
 
         return result;
+    }
+
+    /// <summary>Заселение: гость приехал. Можно немного раньше начала (окно проверяет сервис), не позже выезда.</summary>
+    public Result CheckInGuest(Guid? by, DateTimeOffset now)
+    {
+        if (Status != BookingStatus.Confirmed)
+        {
+            return Status is BookingStatus.Pending or BookingStatus.AwaitingPayment
+                ? Error.BusinessRule("booking.checkin_not_confirmed", "Сначала подтвердите бронь.")
+                : Error.Conflict("booking.invalid_transition", $"Нельзя заселить: бронь в статусе «{Status}».");
+        }
+
+        if (now >= EndsAt)
+        {
+            return Error.BusinessRule("booking.checkin_too_late", "Время брони уже закончилось — заселить нельзя. Создайте новую бронь.");
+        }
+
+        var result = ChangeStatus(BookingStatus.CheckedIn, by, now, null);
+        if (result.IsSuccess)
+        {
+            ActualCheckInAt = now;
+            HoldUntil = null;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Выселение. При досрочном выезде (<paramref name="shortened"/>) время брони сокращается до фактического,
+    /// а неиспользованное время вычитается из стоимости (<paramref name="credit"/>) — по правилам гостиницы.
+    /// </summary>
+    public Result CheckOutGuest(Guid? by, DateTimeOffset now, StayPeriod? shortened, decimal credit)
+    {
+        if (Status != BookingStatus.CheckedIn)
+        {
+            return Error.Conflict("booking.invalid_transition", $"Нельзя выселить: бронь в статусе «{Status}».");
+        }
+
+        var plannedEnd = EndsAt;
+        var result = ChangeStatus(BookingStatus.CheckedOut, by, now, null);
+        if (result.IsFailure)
+        {
+            return result;
+        }
+
+        ActualCheckOutAt = now;
+        if (shortened is not null && shortened.EndsAt < EndsAt)
+        {
+            EndsAt = shortened.EndsAt;
+            CheckOut = shortened.CheckOut;
+            foreach (var room in _rooms)
+            {
+                room.Extend(shortened);
+            }
+        }
+
+        if (credit > 0)
+        {
+            var applied = Math.Min(credit, AccommodationAmount - DiscountAmount + ExtensionsAmount);
+            EarlyDepartureCredit = applied;
+            TotalAmount -= applied;
+            AddHistory("early_departure", new { EndsAt = plannedEnd }, new { EndsAt, Credit = applied }, by, now, null);
+        }
+
+        return Result.Success();
     }
 
     /// <summary>Неподтверждённая бронь не подтверждена вовремя — номер освобождается.</summary>
