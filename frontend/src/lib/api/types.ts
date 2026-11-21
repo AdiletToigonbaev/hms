@@ -127,6 +127,8 @@ export interface HotelSettings {
   rules: string | null;
   version: number;
   hourlyPolicy: HourlyPolicy;
+  /** Отмечать неявку автоматически (фоновая задача). */
+  autoNoShowEnabled: boolean;
 }
 
 /** Правила почасовых броней (настраивает владелец). */
@@ -370,7 +372,7 @@ export interface Booking {
   promoCode: string | null;
   price: PriceQuote | null;
   services: { serviceId: string; name: string; quantity: number; unitPrice: number; perNight: boolean; total: number }[];
-  allowedActions: ("confirm" | "cancel" | "extend")[];
+  allowedActions: ("confirm" | "cancel" | "extend" | "reschedule" | "noShow")[];
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
@@ -384,6 +386,83 @@ export interface Booking {
   extensionsAmount: number;
   extensions: BookingExtension[];
   guestId: string | null;
+  /** Неподтверждённая бронь держит номер до этого времени (время гостиницы), потом истекает. */
+  holdUntil: string | null;
+  /** Начисленный штраф (к оплате; приём оплат — модуль оплат). */
+  penaltyAmount: number;
+  penaltyKind: "LateCancel" | "NoShow" | null;
+  penaltyWaived: boolean;
+}
+
+/** Условия отмены сейчас (считает API по правилам гостиницы). */
+export interface CancellationQuote {
+  isFree: boolean;
+  /** До какого момента отмена бесплатна (время гостиницы). */
+  freeUntil: string | null;
+  penalty: number;
+  units: number;
+  unit: "Hour" | "Night";
+  canWaive: boolean;
+  noShowPenalty: number;
+}
+
+export interface RescheduleQuote {
+  startsAt: string;
+  endsAt: string;
+  roomId: string;
+  roomNumber: string;
+  oldTotal: number;
+  newTotal: number;
+  price: PriceQuote;
+}
+
+export interface CalendarRoom {
+  id: string;
+  number: string;
+  floor: number | null;
+  roomTypeId: string;
+  roomTypeName: string;
+  capacity: number;
+  status: RoomStatus;
+  sellsHourly: boolean;
+  isSellable: boolean;
+}
+
+/** Бронь на шкале календаря; время — гостиницы, «yyyy-MM-ddTHH:mm». */
+export interface CalendarBooking {
+  id: string;
+  number: string;
+  roomId: string;
+  status: BookingStatus;
+  kind: BookingKind;
+  startsAt: string;
+  endsAt: string;
+  /** Конец уборки после выезда. */
+  blockedUntil: string;
+  guestName: string;
+  guestPhone: string | null;
+  adults: number;
+  children: number;
+  hours: number | null;
+  nights: number;
+  totalAmount: number;
+  holdUntil: string | null;
+  noShowDue: boolean;
+  canReschedule: boolean;
+  version: number;
+}
+
+export interface CalendarData {
+  from: string;
+  to: string;
+  now: string;
+  cleaningBufferMinutes: number;
+  hourlyMinHours: number;
+  hourlyMaxHours: number;
+  checkInTime: string;
+  checkOutTime: string;
+  rooms: CalendarRoom[];
+  bookings: CalendarBooking[];
 }
 
 export interface BookingExtension {

@@ -203,6 +203,8 @@ export function DateRangePicker({
   const display = (day: IsoDate | null) =>
     day ? `${formatDayShort(day)}, ${formatWeekdayShort(day)}` : null;
   const compact = size === "compact";
+  // Очистить можно только фильтр периода; дата брони или календаря обязательна.
+  const clearable = compact && mode === "period" && range.start !== null;
 
   return (
     <div className={cn("relative", className)}>
@@ -221,6 +223,7 @@ export function DateRangePicker({
             "group flex w-full items-center gap-2.5 rounded-xl border border-input bg-card px-3 text-left text-sm shadow-xs transition outline-none",
             "hover:border-ring/60 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:border-ring data-[popup-open]:ring-3 data-[popup-open]:ring-ring/30",
             compact ? "h-9" : "min-h-14 py-2",
+            clearable && "pr-9",
           )}
         >
           <CalendarDays className="size-4 shrink-0 text-primary" aria-hidden />
@@ -281,7 +284,7 @@ export function DateRangePicker({
             </>
           )}
         </Popover.Trigger>
-        {compact && range.start && (
+        {clearable && (
           <button
             type="button"
             onClick={() => setRange({ start: null, end: null })}

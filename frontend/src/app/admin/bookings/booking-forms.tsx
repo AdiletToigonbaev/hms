@@ -1,10 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DateRangePicker } from "@/components/forms/date-range-picker";
 import { Field } from "@/components/forms/field";
-import { SelectField } from "@/components/forms/native-select";
+import { NativeSelect, SelectField } from "@/components/forms/native-select";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,10 +15,21 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/api/problem";
 import { nightsLabel } from "@/lib/bookings/status";
-import type { Booking, ExtensionQuote, ExtraService, GuestLookup } from "@/lib/api/types";
+import type { Booking, CalendarRoom, CancellationQuote, ExtensionQuote, ExtraService, GuestLookup, RescheduleQuote } from "@/lib/api/types";
+import type { RescheduleInput } from "@/lib/validation/bookings";
 import { lookupGuestsAction } from "../guests/actions";
-import { formatHotelLocal, formatMoney } from "@/lib/format";
-import { cancelBookingAction, confirmBookingAction, createBookingAction, extendBookingAction, quoteExtensionAction, updateBookingAction } from "./actions";
+import { formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
+import {
+  cancelBookingAction,
+  confirmBookingAction,
+  createBookingAction,
+  extendBookingAction,
+  noShowBookingAction,
+  quoteExtensionAction,
+  quoteRescheduleAction,
+  rescheduleBookingAction,
+  updateBookingAction,
+} from "./actions";
 
 const textarea =
   "min-h-20 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive";
@@ -173,13 +186,25 @@ export function BookingDetailsForm({ booking: b }: { booking: Booking }) {
 }
 
 /** Действия по статусу брони и правам сотрудника: подтверждение — `booking.edit`, отмена — `booking.cancel` (права проверяет и API). */
-export function BookingActions({ booking: b, canConfirm, canCancel }: { booking: Booking; canConfirm: boolean; canCancel: boolean }) {
+export function BookingActions({
+  booking: b,
+  canConfirm,
+  canCancel,
+  terms,
+}: {
+  booking: Booking;
+  canConfirm: boolean;
+  canCancel: boolean;
+  /** Условия отмены и штраф за неявку на сейчас (считает API). */
+  terms: CancellationQuote | null;
+}) {
   const t = useTranslations("Bookings");
   const [confirmState, confirm, confirming] = useActionState<FormState, FormData>(confirmBookingAction, {});
   const [cancelState, cancel, cancelling] = useActionState<FormState, FormData>(cancelBookingAction, {});
   const showConfirm = canConfirm && b.allowedActions.includes("confirm");
   const showCancel = canCancel && b.allowedActions.includes("cancel");
-  if (!showConfirm && !showCancel) return <p className="text-sm text-muted-foreground">{t("noActions")}</p>;
+  const showNoShow = canConfirm && b.allowedActions.includes("noShow");
+  if (!showConfirm && !showCancel && !showNoShow) return <p className="text-sm text-muted-foreground">{t("noActions")}</p>;
   return (
     <div className="grid gap-6">
       {showConfirm && (
@@ -191,8 +216,65 @@ export function BookingActions({ booking: b, canConfirm, canCancel }: { booking:
           </div>
         </form>
       )}
-      {showCancel && <CancelBookingForm booking={b} state={cancelState} action={cancel} pending={cancelling} />}
+      {showNoShow && <NoShowForm booking={b} terms={terms} />}
+      {showCancel && <CancelBookingForm booking={b} terms={terms} state={cancelState} action={cancel} pending={cancelling} />}
     </div>
+  );
+}
+
+/** Сколько и за что штраф — «1 ч», «1 ночь». */
+function unitsLabel(unit: CancellationQuote["unit"], n: number) {
+  return unit === "Hour" ? `${n} ч` : nightsLabel(n);
+}
+
+/**
+ * Неявка: гость не пришёл к началу. Номер освобождается, начисляется штраф по правилам.
+ * Снять штраф может только сотрудник с правом «Отмена без штрафа» (проверяет и API).
+ */
+function NoShowForm({ booking: b, terms }: { booking: Booking; terms: CancellationQuote | null }) {
+  const t = useTranslations("Bookings");
+  const [state, action, pending] = useActionState<FormState, FormData>(noShowBookingAction, {});
+  const formRef = useRef<HTMLFormElement>(null);
+  const [asking, setAsking] = useState(false);
+  const penalty = terms?.noShowPenalty ?? 0;
+  return (
+    <form ref={formRef} action={action} className="grid gap-3" noValidate>
+      <input type="hidden" name="id" value={b.id} />
+      <input type="hidden" name="version" value={b.version} />
+      <h3 className="font-heading text-base">{t("noShowTitle")}</h3>
+      <FormAlert state={state} />
+      <p className="text-sm text-muted-foreground">
+        {penalty > 0 ? t("noShowText", { amount: formatMoney(penalty) }) : t("noShowTextFree")}
+      </p>
+      {terms?.canWaive && penalty > 0 && (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox name="waivePenalty" value="true" className="mt-0.5" />
+          <span>{t("waivePenalty")}</span>
+        </label>
+      )}
+      <div>
+        <SubmitButton
+          pending={pending}
+          variant="outline"
+          onClick={(e) => {
+            e.preventDefault();
+            setAsking(true);
+          }}
+        >
+          {t("noShow")}
+        </SubmitButton>
+      </div>
+      <ConfirmDialog
+        open={asking}
+        onOpenChange={setAsking}
+        title={t("noShowConfirmTitle", { number: b.number })}
+        description={t("noShowConfirmText")}
+        confirmLabel={t("noShowConfirmYes")}
+        cancelLabel={t("cancelConfirmNo")}
+        destructive
+        onConfirm={() => formRef.current?.requestSubmit()}
+      />
+    </form>
   );
 }
 
@@ -202,11 +284,13 @@ export function BookingActions({ booking: b, canConfirm, canCancel }: { booking:
  */
 function CancelBookingForm({
   booking: b,
+  terms,
   state,
   action,
   pending,
 }: {
   booking: Booking;
+  terms: CancellationQuote | null;
   state: FormState;
   action: (form: FormData) => void;
   pending: boolean;
@@ -214,10 +298,28 @@ function CancelBookingForm({
   const t = useTranslations("Bookings");
   const formRef = useRef<HTMLFormElement>(null);
   const [asking, setAsking] = useState(false);
+  const late = terms !== null && !terms.isFree;
+  const termsText = !terms
+    ? null
+    : !terms.isFree
+      ? t("cancelLate", { time: terms.freeUntil ? formatHotelLocal(terms.freeUntil) : "—", amount: formatMoney(terms.penalty), units: unitsLabel(terms.unit, terms.units) })
+      : terms.freeUntil
+        ? t("cancelFreeUntil", { time: formatHotelLocal(terms.freeUntil) })
+        : t("cancelFreeUnconfirmed");
   return (
     <form ref={formRef} action={action} className="grid gap-3" noValidate>
       <input type="hidden" name="id" value={b.id} />
+      <h3 className="font-heading text-base">{t("cancelTitle")}</h3>
       <FormAlert state={state} />
+      {termsText && (
+        <p className={late ? "rounded-xl bg-destructive/8 px-3 py-2 text-sm text-destructive" : "text-sm text-muted-foreground"}>{termsText}</p>
+      )}
+      {late && terms?.canWaive && (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox name="waivePenalty" value="true" className="mt-0.5" />
+          <span>{t("waivePenalty")}</span>
+        </label>
+      )}
       <Field
         name="reason"
         label={t("cancelReason")}
@@ -245,7 +347,7 @@ function CancelBookingForm({
         open={asking}
         onOpenChange={setAsking}
         title={t("cancelConfirmTitle", { number: b.number })}
-        description={t("cancelConfirmText")}
+        description={late ? t("cancelConfirmTextPenalty", { amount: formatMoney(terms!.penalty) }) : t("cancelConfirmText")}
         confirmLabel={t("cancelConfirmYes")}
         cancelLabel={t("cancelConfirmNo")}
         destructive
@@ -388,5 +490,157 @@ function GuestSearch({ onChoose }: { onChoose: (guest: GuestLookup) => void }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Перенос брони без календаря (доступно с клавиатуры): новое время и номер → расчёт API → окно подтверждения.
+ * Вид брони (часы/сутки) не меняется. Цена — по текущим ценам, разницу показываем до переноса.
+ */
+export function RescheduleForm({
+  booking: b,
+  rooms,
+  today,
+  minHours,
+  maxHours,
+}: {
+  booking: Booking;
+  rooms: CalendarRoom[];
+  today: string;
+  minHours: number;
+  maxHours: number;
+}) {
+  const t = useTranslations("Bookings");
+  const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [state, setState] = useState<FormState>({});
+  const [plan, setPlan] = useState<{ input: RescheduleInput; quote: RescheduleQuote } | null>(null);
+  const [busy, startBusy] = useTransition();
+  const hourly = b.kind === "Hourly";
+  const suitable = rooms.filter((r) => r.isSellable && (!hourly || r.sellsHourly) && r.capacity >= b.adults + b.children);
+  const startHour = Number(b.startsAt.slice(11, 13));
+  const hoursOptions = Array.from({ length: Math.max(0, maxHours - minHours + 1) }, (_, i) => minHours + i);
+
+  function read(): RescheduleInput {
+    const f = new FormData(formRef.current!);
+    const roomId = String(f.get("roomId") ?? "");
+    return hourly
+      ? { kind: "Hourly", roomId, date: String(f.get("date") ?? ""), startHour: Number(f.get("startHour")), hours: Number(f.get("hours")) }
+      : { kind: "Nightly", roomId, checkIn: String(f.get("checkIn") ?? ""), checkOut: String(f.get("checkOut") ?? "") };
+  }
+
+  const e = state.fieldErrors ?? {};
+  return (
+    <form ref={formRef} className="grid gap-3" noValidate onSubmit={(ev) => ev.preventDefault()}>
+      <FormAlert state={state} success={t("rescheduled")} />
+      {hourly ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          <DateRangePicker mode="single" size="compact" startName="date" defaultStart={b.startsAt.slice(0, 10)} today={today} min={today} startLabel={t("date")} />
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-1.5">
+              <Label htmlFor="rs-start">{t("startTime")}</Label>
+              <NativeSelect id="rs-start" name="startHour" defaultValue={String(startHour)}>
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="rs-hours">{t("hoursLabel")}</Label>
+              <NativeSelect id="rs-hours" name="hours" defaultValue={String(b.hours ?? minHours)}>
+                {hoursOptions.map((h) => (
+                  <option key={h} value={h}>
+                    {h} ч
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <DateRangePicker
+          mode="stay"
+          size="compact"
+          startName="checkIn"
+          endName="checkOut"
+          defaultStart={b.checkIn}
+          defaultEnd={b.checkOut}
+          today={today}
+          min={today}
+          startLabel={t("checkIn")}
+          endLabel={t("checkOut")}
+        />
+      )}
+      {(e.date || e.checkIn || e.checkOut || e.startHour || e.hours) && (
+        <p className="text-sm text-destructive" role="alert">
+          {e.date ?? e.checkIn ?? e.checkOut ?? e.startHour ?? e.hours}
+        </p>
+      )}
+      <SelectField name="roomId" id="rs-room" label={t("room")} defaultValue={b.room.roomId} error={e.roomId}>
+        {suitable.map((r) => (
+          <option key={r.id} value={r.id}>
+            № {r.number} · {r.roomTypeName}
+          </option>
+        ))}
+      </SelectField>
+      <div>
+        <SubmitButton
+          pending={busy}
+          variant="outline"
+          onClick={(ev) => {
+            ev.preventDefault();
+            const input = read();
+            startBusy(async () => {
+              const result = await quoteRescheduleAction(b.id, input);
+              if (result.ok) {
+                setState({});
+                setPlan({ input, quote: result.data });
+              } else {
+                setPlan(null);
+                setState(result.state);
+              }
+            });
+          }}
+        >
+          {t("reschedule")}
+        </SubmitButton>
+      </div>
+      <p className="text-xs text-muted-foreground">{t("rescheduleHint")}</p>
+      <ConfirmDialog
+        open={plan !== null}
+        onOpenChange={(open) => !open && setPlan(null)}
+        title={t("rescheduleConfirmTitle", { number: b.number })}
+        description={
+          plan
+            ? t("rescheduleConfirmText", {
+                when: hourly
+                  ? `${formatHotelLocal(plan.quote.startsAt)}–${formatHotelTime(plan.quote.endsAt)}`
+                  : `${formatHotelLocal(plan.quote.startsAt)} — ${formatHotelLocal(plan.quote.endsAt)}`,
+                room: plan.quote.roomNumber,
+                from: formatMoney(plan.quote.oldTotal),
+                to: formatMoney(plan.quote.newTotal),
+              })
+            : ""
+        }
+        confirmLabel={t("rescheduleYes")}
+        cancelLabel={t("extendConfirmNo")}
+        onConfirm={() => {
+          if (!plan) return;
+          const { input } = plan;
+          setPlan(null);
+          startBusy(async () => {
+            const result = await rescheduleBookingAction(b.id, input, b.version);
+            if (result.ok) {
+              setState({ ok: true });
+              router.refresh();
+            } else {
+              setState(result.state);
+            }
+          });
+        }}
+      />
+    </form>
   );
 }

@@ -122,7 +122,8 @@ internal sealed class BookingService(
     IGuestDirectory guests,
     ICurrentUser currentUser,
     IAuditTrail audit,
-    IHotelClock clock) : IBookingService
+    IHotelClock clock,
+    IUserAccessProvider access) : IBookingService
 {
     public async Task<PagedResult<BookingListItemDto>> ListAsync(BookingQuery q, CancellationToken ct)
     {
@@ -241,15 +242,7 @@ internal sealed class BookingService(
         }
 
         var q = quote.Value;
-        var price = new BookingPrice(
-            q.AccommodationTotal,
-            q.DiscountAmount,
-            q.ServicesTotal,
-            q.Total,
-            q.DiscountId,
-            q.DiscountId is null ? null : r.PromoCode?.Trim().ToUpperInvariant(),
-            q.Services.Select(s => new BookingPriceServiceLine(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
-            JsonSerializer.Serialize(q, JsonSerializerOptions.Web));
+        var price = ToBookingPrice(q, r.PromoCode);
 
         var guest = await ResolveGuestAsync(r, ct);
         if (guest.IsFailure)
@@ -260,11 +253,13 @@ internal sealed class BookingService(
         var hotelId = await hotel.GetHotelIdAsync(ct);
         var now = clock.UtcNow;
         var number = await NextNumberAsync(now, ct);
+        var settings = await stays.SettingsAsync(ct);
 
         // В брони — снимок контакта на момент брони; карточка гостя (GuestId) живёт в модуле Guests.
         var contact = guest.Value.Contact;
         var booking = Booking.Create(hotelId, number, BookingSource.Admin, stay, r.Adults, r.Children,
-            contact, guest.Value.GuestId, r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now);
+            contact, guest.Value.GuestId, r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now,
+            BookingRules.HoldUntil(settings, stay.Kind, stay.StartsAt, now));
         db.Set<Booking>().Add(booking);
         audit.Record(new AuditEntry("booking.created", "Booking", booking.Id.ToString(),
             After: new { booking.Number, Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), room = room.Number, stay.StartsAt, stay.EndsAt, booking.TotalAmount }));
@@ -348,15 +343,227 @@ internal sealed class BookingService(
             return BookingErrors.NotFound;
         }
 
-        var result = booking.Cancel(r.Reason, currentUser.UserId, clock.UtcNow);
+        var now = clock.UtcNow;
+        var settings = await stays.SettingsAsync(ct);
+        var terms = BookingPenalties.ForCancel(booking, BookingRules.Penalties(settings, booking.Kind), now);
+        var waive = r.WaivePenalty && !terms.IsFree;
+        if (waive && !await CanWaiveAsync(ct))
+        {
+            return BookingErrors.PenaltyWaiveForbidden;
+        }
+
+        var result = booking.Cancel(r.Reason, terms.Penalty, waive, currentUser.UserId, now);
         if (result.IsFailure)
         {
             return result.Error;
         }
 
-        audit.Record(new AuditEntry("booking.cancelled", "Booking", id.ToString(), After: new { r.Reason }));
+        audit.Record(new AuditEntry("booking.cancelled", "Booking", id.ToString(),
+            After: new { r.Reason, terms.Penalty, Waived = waive }));
         return await SaveAsync(booking, ct);
     }
+
+    public async Task<Result<CancellationQuoteDto>> QuoteCancellationAsync(Guid id, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: false, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        var rules = BookingRules.Penalties(await stays.SettingsAsync(ct), booking.Kind);
+        var terms = BookingPenalties.ForCancel(booking, rules, clock.UtcNow);
+        return new CancellationQuoteDto(
+            terms.IsFree,
+            terms.FreeUntil is { } free ? stays.Format(free) : null,
+            terms.Penalty,
+            terms.Units,
+            booking.Kind == BookingKind.Hourly ? "Hour" : "Night",
+            await CanWaiveAsync(ct),
+            BookingPenalties.ForNoShow(booking, rules));
+    }
+
+    public async Task<Result<BookingDto>> MarkNoShowAsync(Guid id, NoShowRequest r, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: true, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        if (r.Version is { } version)
+        {
+            db.Entry(booking).Property(b => b.Version).OriginalValue = version;
+        }
+
+        var penalty = BookingPenalties.ForNoShow(booking, BookingRules.Penalties(await stays.SettingsAsync(ct), booking.Kind));
+        var waive = r.WaivePenalty && penalty > 0;
+        if (waive && !await CanWaiveAsync(ct))
+        {
+            return BookingErrors.PenaltyWaiveForbidden;
+        }
+
+        var result = booking.MarkNoShow(penalty, waive, currentUser.UserId, clock.UtcNow);
+        if (result.IsFailure)
+        {
+            return result.Error;
+        }
+
+        audit.Record(new AuditEntry("booking.no_show", "Booking", id.ToString(), After: new { booking.Number, Penalty = penalty, Waived = waive, Auto = false }));
+        return await SaveAsync(booking, ct);
+    }
+
+    public async Task<Result<RescheduleQuoteDto>> QuoteRescheduleAsync(Guid id, RescheduleBookingRequest r, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: false, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        var plan = await PlanRescheduleAsync(booking, r, ct);
+        if (plan.IsFailure)
+        {
+            return plan.Error;
+        }
+
+        var p = plan.Value;
+        return new RescheduleQuoteDto(stays.Format(p.Stay.StartsAt), stays.Format(p.Stay.EndsAt), p.Room.Id, p.Room.Number, booking.TotalAmount, p.Quote.Total, p.Quote);
+    }
+
+    public async Task<Result<BookingDto>> RescheduleAsync(Guid id, RescheduleBookingRequest r, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: true, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        if (r.Version is { } version)
+        {
+            db.Entry(booking).Property(b => b.Version).OriginalValue = version;
+        }
+
+        var plan = await PlanRescheduleAsync(booking, r, ct);
+        if (plan.IsFailure)
+        {
+            return plan.Error;
+        }
+
+        var p = plan.Value;
+        var before = new { booking.StartsAt, booking.EndsAt, booking.Rooms[0].RoomId, booking.TotalAmount };
+        var result = booking.Reschedule(p.Stay, p.Room.Id, p.Room.RoomTypeId, ToBookingPrice(p.Quote, p.PromoCode), currentUser.UserId, clock.UtcNow);
+        if (result.IsFailure)
+        {
+            return result.Error;
+        }
+
+        audit.Record(new AuditEntry("booking.rescheduled", "Booking", id.ToString(),
+            Before: before, After: new { booking.StartsAt, booking.EndsAt, RoomId = p.Room.Id, booking.TotalAmount }));
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return BookingErrors.ConcurrencyConflict;
+        }
+        catch (Exception ex) when (SqlState(ex) == ExclusionViolation)
+        {
+            db.ChangeTracker.Clear();
+            return BookingErrors.RoomUnavailable;
+        }
+        catch (Exception ex) when (SqlState(ex) == DeadlockDetected)
+        {
+            db.ChangeTracker.Clear();
+            return BookingErrors.ConcurrencyConflict;
+        }
+
+        return await ToDtoAsync(booking, ct);
+    }
+
+    /// <summary>
+    /// План переноса: номер подходит (продаётся, вмещает, по часам — если почасовая), время свободно (кроме самой брони),
+    /// цена — по текущим ценам с тем же промокодом и услугами; если промокод на новое время не действует — без него.
+    /// </summary>
+    private async Task<Result<ReschedulePlan>> PlanRescheduleAsync(Booking booking, RescheduleBookingRequest r, CancellationToken ct)
+    {
+        if (!BookingStatusMachine.CanReschedule(booking.Status))
+        {
+            return Error.Conflict("booking.reschedule_not_allowed", "Перенести можно только бронь до заселения.");
+        }
+
+        if (booking.Extensions.Count > 0)
+        {
+            return Error.BusinessRule("booking.reschedule_extended", "Бронь уже продлевали — перенос недоступен. Отмените её и создайте новую.");
+        }
+
+        if (r.IsHourly() != (booking.Kind == BookingKind.Hourly))
+        {
+            return Error.Validation("booking.reschedule_kind", "Нельзя сменить вид брони (часы/сутки) — отмените и создайте новую.");
+        }
+
+        var room = await rooms.GetAsync(r.RoomId, ct);
+        if (room is null)
+        {
+            return BookingErrors.RoomNotFound;
+        }
+
+        if (!room.IsSellable)
+        {
+            return BookingErrors.RoomNotSellable;
+        }
+
+        if (booking.Kind == BookingKind.Hourly && !room.SellsHourly)
+        {
+            return BookingErrors.RoomNotHourly;
+        }
+
+        if (booking.Adults + booking.Children > room.Capacity)
+        {
+            return BookingErrors.CapacityExceeded(room.Capacity);
+        }
+
+        var resolved = await stays.ResolveAsync(r, ct);
+        if (resolved.IsFailure)
+        {
+            return resolved.Error;
+        }
+
+        var stay = resolved.Value;
+        if ((await stays.BusyRoomsAsync([room.Id], stay, booking.Id, ct)).Count > 0)
+        {
+            return BookingErrors.RoomUnavailable;
+        }
+
+        var services = booking.Services.Select(x => new ServiceLine(x.ServiceId, x.Quantity)).ToList();
+        var promo = booking.PromoCode;
+        var quote = await stays.PriceAsync(room, stay, promo, services, ct);
+        if (quote.IsFailure && promo is not null && quote.Error.Code.StartsWith("pricing.promo", StringComparison.Ordinal))
+        {
+            promo = null;
+            quote = await stays.PriceAsync(room, stay, null, services, ct);
+        }
+
+        return quote.IsFailure ? quote.Error : new ReschedulePlan(stay, room, quote.Value, quote.Value.DiscountId is null ? null : promo);
+    }
+
+    private static BookingPrice ToBookingPrice(PriceQuote q, string? promoCode) => new(
+        q.AccommodationTotal,
+        q.DiscountAmount,
+        q.ServicesTotal,
+        q.Total,
+        q.DiscountId,
+        q.DiscountId is null ? null : promoCode?.Trim().ToUpperInvariant(),
+        q.Services.Select(x => new BookingPriceServiceLine(x.ServiceId, x.Name, x.Quantity, x.UnitPrice, x.PerNight, x.Total)).ToList(),
+        JsonSerializer.Serialize(q, JsonSerializerOptions.Web));
+
+    /// <summary>Есть ли у текущего сотрудника право отменять без штрафа.</summary>
+    private async Task<bool> CanWaiveAsync(CancellationToken ct) =>
+        currentUser.UserId is { } userId
+        && await access.GetAsync(userId, ct) is { } user
+        && user.Permissions.Contains(Permissions.BookingCancelPenaltyOverride);
 
     public async Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct)
     {
@@ -591,6 +798,16 @@ internal sealed class BookingService(
             actions.Add("cancel");
         }
 
+        if (BookingStatusMachine.CanReschedule(b.Status) && b.Extensions.Count == 0)
+        {
+            actions.Add("reschedule");
+        }
+
+        if (b.Status == BookingStatus.Confirmed && clock.UtcNow >= b.StartsAt)
+        {
+            actions.Add("noShow");
+        }
+
         var authors = await users.GetNamesAsync(b.Extensions.Where(e => e.CreatedBy != null).Select(e => e.CreatedBy!.Value), ct);
         var extensions = b.Extensions
             .OrderBy(e => e.CreatedAt)
@@ -606,7 +823,8 @@ internal sealed class BookingService(
             JsonSerializer.Deserialize<PriceQuote>(b.PriceSnapshot, JsonSerializerOptions.Web),
             b.Services.Select(s => new BookingServiceDto(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
             actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version,
-            b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions, b.GuestId);
+            b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions, b.GuestId,
+            b.HoldUntil is { } hold ? stays.Format(hold) : null, b.PenaltyAmount, b.PenaltyKind?.ToString(), b.PenaltyWaived);
     }
 
     private static JsonElement? Parse(string? json) => json is null ? null : JsonDocument.Parse(json).RootElement.Clone();
@@ -662,6 +880,8 @@ internal sealed class BookingService(
 
         return null;
     }
+
+    private sealed record ReschedulePlan(StayPeriod Stay, RoomInfo Room, PriceQuote Quote, string? PromoCode);
 
     private sealed record ExtensionPlan(StayPeriod Stay, PriceQuote Price, int? MaxUnits, DateTimeOffset? NextStart);
 }

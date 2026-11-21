@@ -49,7 +49,8 @@ public sealed record HotelSettingsDto(
     CancellationPolicyDto CancellationPolicy,
     string? Rules,
     uint Version,
-    HourlyPolicyDto HourlyPolicy);
+    HourlyPolicyDto HourlyPolicy,
+    bool AutoNoShowEnabled = false);
 
 public sealed record UpdateHotelSettingsRequest(
     string CheckInTime,
@@ -67,7 +68,8 @@ public sealed record UpdateHotelSettingsRequest(
     CancellationPolicyDto CancellationPolicy,
     string? Rules,
     uint Version,
-    HourlyPolicyDto? HourlyPolicy = null);
+    HourlyPolicyDto? HourlyPolicy = null,
+    bool? AutoNoShowEnabled = null);
 
 /// <summary>Публичные сведения для сайта (без внутренних настроек).</summary>
 public sealed record PublicHotelInfoDto(

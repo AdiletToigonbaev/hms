@@ -68,6 +68,7 @@ public sealed partial class PostgresFixture : IAsyncLifetime
             builder.UseSetting("ConnectionStrings:Hms", ConnectionString);
             builder.UseSetting("Jwt:SigningKey", JwtKey);
             builder.UseSetting("Outbox:Enabled", "false");
+            builder.UseSetting("BookingJobs:Enabled", "false");
             builder.UseSetting("Identity:PublicWebUrl", "https://hotel.test");
             builder.UseSetting("Storage:RootPath", FilesRoot);
             builder.UseSetting("RateLimiting:AuthStrictPerMinute", "100000");

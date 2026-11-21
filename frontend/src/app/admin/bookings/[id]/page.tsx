@@ -1,4 +1,4 @@
-import { ArrowLeft, CircleCheck } from "lucide-react";
+import { AlarmClock, ArrowLeft, CircleCheck, Receipt } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,12 +8,13 @@ import { PriceBreakdown } from "@/components/price-breakdown";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api/server";
-import type { Booking, BookingHistoryItem, BookingStatus, ExtensionQuote } from "@/lib/api/types";
+import { hotelTimeZone } from "@/i18n/config";
+import type { Booking, BookingHistoryItem, BookingStatus, CalendarData, CancellationQuote, ExtensionQuote } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
-import { bookingStatusLabel, nightsLabel } from "@/lib/bookings/status";
-import { formatHotelDateTime, formatHotelLocal, formatHotelTime } from "@/lib/format";
+import { bookingStatusLabel, hotelToday, nightsLabel } from "@/lib/bookings/status";
+import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
-import { BookingActions, BookingDetailsForm, ExtendBookingForm } from "../booking-forms";
+import { BookingActions, BookingDetailsForm, ExtendBookingForm, RescheduleForm } from "../booking-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Bookings"))("title") };
@@ -41,8 +42,18 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const can = (p: string) => user?.permissions.includes(p) ?? false;
   const editable = can("booking.edit") && !["Cancelled", "CheckedOut", "NoShow", "Expired"].includes(b.status);
   const showActions = can("booking.edit") || can("booking.cancel");
-  const evKey = (e: string) => (["created", "status_changed", "details_changed", "extended"].includes(e) ? (`ev_${e}` as "ev_created") : null);
+  const evKey = (e: string) =>
+    ["created", "status_changed", "details_changed", "extended", "rescheduled", "penalty_charged", "penalty_waived"].includes(e) ? (`ev_${e}` as "ev_created") : null;
   const hourly = b.kind === "Hourly";
+  const today = hotelToday(hotelTimeZone);
+
+  // Условия отмены и штраф за неявку — на сейчас (считает API); номера для переноса — из календаря.
+  const needsTerms = b.allowedActions.includes("cancel") || b.allowedActions.includes("noShow");
+  const canReschedule = can("booking.edit") && can("calendar.view") && b.allowedActions.includes("reschedule");
+  const [terms, roomsData] = await Promise.all([
+    needsTerms && showActions ? api<CancellationQuote>(`/bookings/${id}/cancel/preview`) : null,
+    canReschedule ? api<CalendarData>(`/calendar?from=${today}&to=${today}`) : null,
+  ]);
 
   // Продление: предел по правилам и по следующей брони номера (считает API).
   let extendMax = 0;
@@ -84,6 +95,24 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
           {b.children > 0 ? `, ${b.children} ${t("childrenShort")}` : ""}
         </p>
       </div>
+
+      {b.holdUntil && (
+        <Alert role="status" className="border-status-cleaning/40 text-status-cleaning">
+          <AlarmClock aria-hidden />
+          <AlertDescription>{t("holdUntil", { time: formatHotelLocal(b.holdUntil) })}</AlertDescription>
+        </Alert>
+      )}
+
+      {(b.penaltyAmount > 0 || b.penaltyWaived) && (
+        <Alert role="status">
+          <Receipt aria-hidden />
+          <AlertDescription>
+            {b.penaltyWaived
+              ? t("penaltyWaivedNote", { kind: b.penaltyKind === "NoShow" ? t("penaltyNoShow") : t("penaltyLateCancel") })
+              : t("penaltyNote", { kind: b.penaltyKind === "NoShow" ? t("penaltyNoShow") : t("penaltyLateCancel"), amount: formatMoney(b.penaltyAmount) })}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {created && (
         <Alert role="status">
@@ -162,7 +191,21 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
                       <ExtendBookingForm booking={b} maxUnits={extendMax} />
                     </section>
                   )}
-                  <BookingActions booking={b} canConfirm={can("booking.edit")} canCancel={can("booking.cancel")} />
+                  {canReschedule && roomsData?.ok && (
+                    <section className="grid gap-2" aria-labelledby="reschedule-title">
+                      <h3 id="reschedule-title" className="font-heading text-base">
+                        {t("rescheduleTitle")}
+                      </h3>
+                      <RescheduleForm
+                        booking={b}
+                        rooms={roomsData.data.rooms}
+                        today={today}
+                        minHours={roomsData.data.hourlyMinHours}
+                        maxHours={roomsData.data.hourlyMaxHours}
+                      />
+                    </section>
+                  )}
+                  <BookingActions booking={b} canConfirm={can("booking.edit")} canCancel={can("booking.cancel")} terms={terms?.ok ? terms.data : null} />
                 </div>
                 {b.cancelReason && (
                   <p className="mt-2 text-sm">

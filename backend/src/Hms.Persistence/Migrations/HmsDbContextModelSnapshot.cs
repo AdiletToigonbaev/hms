@@ -186,6 +186,10 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("guest_phone");
 
+                    b.Property<DateTimeOffset?>("HoldUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("hold_until");
+
                     b.Property<Guid>("HotelId")
                         .HasColumnType("uuid")
                         .HasColumnName("hotel_id");
@@ -207,6 +211,20 @@ namespace Hms.Persistence.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("number");
+
+                    b.Property<decimal>("PenaltyAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("penalty_amount");
+
+                    b.Property<string>("PenaltyKind")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("penalty_kind");
+
+                    b.Property<bool>("PenaltyWaived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("penalty_waived");
 
                     b.Property<string>("PriceSnapshot")
                         .IsRequired()
@@ -260,6 +278,10 @@ namespace Hms.Persistence.Migrations
                     b.HasIndex("GuestId")
                         .HasDatabaseName("ix_bookings_guest_id");
 
+                    b.HasIndex("HoldUntil")
+                        .HasDatabaseName("ix_bookings_hold_until")
+                        .HasFilter("hold_until IS NOT NULL");
+
                     b.HasIndex("HotelId", "Number")
                         .IsUnique()
                         .HasDatabaseName("ix_bookings_hotel_id_number");
@@ -276,6 +298,8 @@ namespace Hms.Persistence.Migrations
                             t.HasCheckConstraint("ck_bookings_dates", "check_out >= check_in AND ends_at > starts_at");
 
                             t.HasCheckConstraint("ck_bookings_hours", "hours IS NULL OR hours BETWEEN 1 AND 24");
+
+                            t.HasCheckConstraint("ck_bookings_penalty", "penalty_amount >= 0");
                         });
                 });
 
@@ -705,6 +729,10 @@ namespace Hms.Persistence.Migrations
                     b.Property<bool>("AutoConfirmWebBookings")
                         .HasColumnType("boolean")
                         .HasColumnName("auto_confirm_web_bookings");
+
+                    b.Property<bool>("AutoNoShowEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_no_show_enabled");
 
                     b.Property<bool>("AutoReleaseRoomAfterCleaning")
                         .HasColumnType("boolean")

@@ -155,3 +155,12 @@
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }
+
+/* Штриховка: уборка после выезда и номера «вне продажи» в календаре */
+@utility bg-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--color-muted-foreground) 14%, transparent) 0 4px,
+    transparent 4px 9px
+  );
+}

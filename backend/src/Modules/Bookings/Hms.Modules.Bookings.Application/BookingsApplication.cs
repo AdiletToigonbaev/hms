@@ -101,7 +101,34 @@ public sealed record CreateBookingRequest(
 
 public sealed record UpdateBookingRequest(string GuestName, string? GuestPhone, string? GuestEmail, int Adults, int Children, string? Comment, uint? Version);
 
-public sealed record CancelBookingRequest(string Reason);
+/// <param name="WaivePenalty">Отменить без штрафа — только с правом booking.cancel.penalty_override.</param>
+public sealed record CancelBookingRequest(string Reason, bool WaivePenalty = false);
+
+/// <summary>Неявка гостя. WaivePenalty — без штрафа (право booking.cancel.penalty_override).</summary>
+public sealed record NoShowRequest(bool WaivePenalty = false, uint? Version = null);
+
+/// <summary>Условия отмены сейчас: бесплатно ли, до какого времени, какой штраф.</summary>
+/// <param name="FreeUntil">До какого момента отмена бесплатна (время гостиницы), если бронь подтверждена.</param>
+/// <param name="Unit">Hour или Night — в чём считается штраф.</param>
+/// <param name="CanWaive">Может ли текущий сотрудник отменить без штрафа.</param>
+/// <param name="NoShowPenalty">Штраф за неявку по правилам (для кнопки «Неявка»).</param>
+public sealed record CancellationQuoteDto(bool IsFree, string? FreeUntil, decimal Penalty, int Units, string Unit, bool CanWaive, decimal NoShowPenalty);
+
+/// <summary>
+/// Перенос брони: новое время (вид брони тот же) и номер. Посуточно — CheckIn/CheckOut; почасово — Date, StartHour, Hours.
+/// </summary>
+public sealed record RescheduleBookingRequest(
+    Guid RoomId,
+    string? Kind,
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
+    DateOnly? Date,
+    int? StartHour,
+    int? Hours,
+    uint? Version = null) : IStayInput;
+
+/// <summary>Что получится после переноса: новое время, номер и цена по текущим ценам.</summary>
+public sealed record RescheduleQuoteDto(string StartsAt, string EndsAt, Guid RoomId, string RoomNumber, decimal OldTotal, decimal NewTotal, PriceQuote Price);
 
 /// <summary>Продление: на сколько часов (почасовая) или ночей (посуточная). Version — защита от двойного нажатия.</summary>
 public sealed record ExtendBookingRequest(int Units, uint? Version);
@@ -159,7 +186,11 @@ public sealed record BookingDto(
     int? Hours,
     decimal ExtensionsAmount,
     IReadOnlyList<BookingExtensionDto> Extensions,
-    Guid? GuestId = null);
+    Guid? GuestId = null,
+    string? HoldUntil = null,
+    decimal PenaltyAmount = 0m,
+    string? PenaltyKind = null,
+    bool PenaltyWaived = false);
 
 public sealed record BookingListItemDto(
     Guid Id,
@@ -179,6 +210,66 @@ public sealed record BookingListItemDto(
     string EndsAt,
     int? Hours,
     Guid? GuestId = null);
+
+// ---- Календарь ----
+
+/// <summary>Период календаря (даты гостиницы, включительно), не длиннее 31 дня.</summary>
+public sealed record CalendarQuery(DateOnly? From, DateOnly? To);
+
+public sealed record CalendarRoomDto(Guid Id, string Number, int? Floor, Guid RoomTypeId, string RoomTypeName, int Capacity, string Status, bool SellsHourly, bool IsSellable);
+
+/// <summary>Бронь на шкале. Время — по гостинице, «yyyy-MM-ddTHH:mm»; BlockedUntil — конец уборки после выезда.</summary>
+/// <param name="NoShowDue">Гость опаздывает: время неявки по правилам прошло, а бронь всё ещё ждёт заселения.</param>
+public sealed record CalendarBookingDto(
+    Guid Id,
+    string Number,
+    Guid RoomId,
+    string Status,
+    string Kind,
+    string StartsAt,
+    string EndsAt,
+    string BlockedUntil,
+    string GuestName,
+    string? GuestPhone,
+    int Adults,
+    int Children,
+    int? Hours,
+    int Nights,
+    decimal TotalAmount,
+    string? HoldUntil,
+    bool NoShowDue,
+    bool CanReschedule,
+    uint Version);
+
+/// <param name="Now">Текущее время гостиницы — для линии «сейчас».</param>
+public sealed record CalendarDto(
+    DateOnly From,
+    DateOnly To,
+    string Now,
+    int CleaningBufferMinutes,
+    int HourlyMinHours,
+    int HourlyMaxHours,
+    string CheckInTime,
+    string CheckOutTime,
+    IReadOnlyList<CalendarRoomDto> Rooms,
+    IReadOnlyList<CalendarBookingDto> Bookings);
+
+public interface ICalendarService
+{
+    Task<Result<CalendarDto>> GetAsync(CalendarQuery query, CancellationToken ct);
+}
+
+/// <summary>Итог прохода фоновой задачи.</summary>
+public sealed record LifecycleRun(int Expired, int NoShows);
+
+/// <summary>
+/// Фоновые правила брони: истечение неподтверждённых (HoldUntil) и автоматическая неявка (если включена владельцем).
+/// Вызывается фоновой службой раз в минуту; <paramref name="now"/> — для тестов.
+/// </summary>
+public interface IBookingLifecycle
+{
+    Task<LifecycleRun> RunAsync(DateTimeOffset now, CancellationToken ct);
+}
 
 public sealed record BookingQuery(string? Status, DateOnly? From, DateOnly? To, Guid? RoomId, string? Search, int? Page, int? PageSize, string? Kind = null);
 
@@ -217,6 +308,14 @@ public interface IBookingService
 
     Task<Result<BookingDto>> CancelAsync(Guid id, CancelBookingRequest request, CancellationToken ct);
 
+    Task<Result<CancellationQuoteDto>> QuoteCancellationAsync(Guid id, CancellationToken ct);
+
+    Task<Result<BookingDto>> MarkNoShowAsync(Guid id, NoShowRequest request, CancellationToken ct);
+
+    Task<Result<RescheduleQuoteDto>> QuoteRescheduleAsync(Guid id, RescheduleBookingRequest request, CancellationToken ct);
+
+    Task<Result<BookingDto>> RescheduleAsync(Guid id, RescheduleBookingRequest request, CancellationToken ct);
+
     Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct);
 
     Task<Result<BookingDto>> ExtendAsync(Guid id, ExtendBookingRequest request, CancellationToken ct);
@@ -247,6 +346,11 @@ public static class BookingErrors
 
     public static Error ExtensionConflict(string until) =>
         Error.Conflict("booking.extension_conflict", $"Номер дальше занят — продлить можно не позже чем до {until}.");
+
+    public static readonly Error PenaltyWaiveForbidden =
+        Error.Forbidden("booking.penalty_waive_forbidden", "Отменить без штрафа может только сотрудник с правом «Отмена без штрафа».");
+
+    public static readonly Error CalendarRange = Error.Validation("calendar.range", "Период календаря — от 1 до 31 дня.");
 
     public static Error ExtensionTooLong(int max) =>
         Error.BusinessRule("booking.extension_too_long", $"Почасовая бронь не может быть длиннее {max} ч. Продлите посуточно новой бронью.");
@@ -354,6 +458,15 @@ public sealed class UpdateBookingRequestValidator : AbstractValidator<UpdateBook
 public sealed class CancelBookingRequestValidator : AbstractValidator<CancelBookingRequest>
 {
     public CancelBookingRequestValidator() => RuleFor(x => x.Reason).NotEmpty().WithMessage("Укажите причину отмены.").MaximumLength(500);
+}
+
+public sealed class RescheduleBookingRequestValidator : AbstractValidator<RescheduleBookingRequest>
+{
+    public RescheduleBookingRequestValidator()
+    {
+        RuleFor(x => x.RoomId).NotEmpty().WithMessage("Выберите номер.");
+        StayRules.Apply(this);
+    }
 }
 
 public sealed class ExtendBookingRequestValidator : AbstractValidator<ExtendBookingRequest>

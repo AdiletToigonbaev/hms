@@ -64,7 +64,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
                 r.Rules,
                 r.HourlyPolicy is { } h
                     ? new HourlyPolicy(h.FreeCancelMinutesBeforeStart, h.LateCancelPenaltyHours, h.NoShowAfterMinutes, h.NoShowPenaltyHours, h.PendingHoldMinutes, h.RefundUnusedOnEarlyDeparture)
-                    : null),
+                    : null,
+                r.AutoNoShowEnabled),
             time.GetUtcNow());
         audit.Record(new AuditEntry("hotel.settings.updated", "HotelSettings", settings.HotelId.ToString(), before, ToDto(settings)));
 
@@ -147,7 +148,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
             s.HourlyPolicy.NoShowAfterMinutes,
             s.HourlyPolicy.NoShowPenaltyHours,
             s.HourlyPolicy.PendingHoldMinutes,
-            s.HourlyPolicy.RefundUnusedOnEarlyDeparture));
+            s.HourlyPolicy.RefundUnusedOnEarlyDeparture),
+        s.AutoNoShowEnabled);
 }
 
 internal sealed class IntegrationService(

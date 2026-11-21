@@ -9,7 +9,8 @@
 - **Sprint 3 (тарифы, скидки, услуги, подбор номеров, расчёт цены, бронирования администратором) — завершён**, в `main`.
 - Почасовые брони учтены в плане спринтов 5, 7, 8, 9, 10 (roadmap §2): календарь по часам, уборка после каждого выезда, сайт по часам, KPI по часам, напоминание за N мин.
 - **Sprint 4 (гости / CRM) — завершён**, в `main`.
-- Следующий: Sprint 5 (календарь по часам, перенос броней, правила отмены и неявки) — только после «подтверждаю».
+- **Sprint 5 (календарь по часам, перенос броней, правила отмены и неявки, фоновое истечение) — завершён**, в `main`.
+- Следующий: Sprint 6 (Finance: ручные платежи, сторно, задолженность и штрафы по брони, возвраты, расходы) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -93,10 +94,11 @@ npm run test:e2e                                  # E2E против запущ�
 # окружение (из корня)
 docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web
 docker compose -f deploy/docker-compose.yml up -d db mailpit   # только инфраструктура
+node deploy/dev-data/seed.mjs                                  # ЛОКАЛЬНО: сброс тестовых данных и правдоподобный набор (неделя назад, 2 недели вперёд)
 ```
 Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up`, `/health/ready` = Healthy и `npm run test:e2e`.
 Dev-владелец (только локально): `owner@hms.local` / `owner-dev-password` → при первом входе смена пароля. Письма — http://localhost:8025.
-E2E меняют пароль dev-владельца на `owner-new-password-1` (первый вход на чистой БД) — предупреждать пользователя, если E2E запускались на его стеке.
+E2E меняют пароль dev-владельца на `owner-new-password-1` (первый вход на чистой БД) — предупреждать пользователя, если E2E запускались на его стеке. После E2E тестовые данные можно пересоздать: `node deploy/dev-data/seed.mjs` (владелец, гостиница и настройки сохраняются; сотрудники admin@hms.local / admin-dev-password, maid@hms.local / maid-dev-password).
 
 ## Дизайн
 Тёплый «гостиничный» стиль — `docs/design/design-direction.md` (палитра, шрифты Lora + Manrope, статусные цвета). Название гостиницы не зашивать в интерфейс — брать из настроек отеля; логотип — один компонент `Brand`.
@@ -121,6 +123,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Гостиница одна: `HotelId` и настройки — только через `IHotelContext` (Hotel.Contracts); имена пользователей для показа — `IUserDirectory` (Identity.Contracts).
 - Чтение несколькими ролями — `.RequireAnyPermission(...)`; изменение — `.RequirePermission(...)`. Конкурентные правки — `version` (xmin) в запросе, конфликт → `409 concurrency.conflict`.
 - Файлы: загрузка только через `IFileService` (проверка сигнатуры, лимит); браузер получает их через маршрут Next.js `/media/{id}`, а не напрямую из API.
+- Правила брони из настроек — `BookingRules` (удержание, штрафы, момент неявки); штраф — `BookingPenalties` (домен). Фоновые задачи брони — `IBookingLifecycle` + `BookingLifecycleBackgroundService` (`BookingJobs:Enabled`; в интеграционных тестах выключена, тесты вызывают `RunAsync` сами). Календарь — `GET /calendar`, геометрия шкалы на frontend — `lib/bookings/timeline.ts`.
 - Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.

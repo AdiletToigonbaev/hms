@@ -127,6 +127,12 @@ public sealed class HotelSettings
     /// <summary>Время дня после даты заезда, после которого неявка фиксируется как No-Show.</summary>
     public TimeOnly NoShowCutoffTime { get; private set; } = new(12, 0);
 
+    /// <summary>
+    /// Отмечать неявку автоматически (фоновая задача). По умолчанию выключено: пока нет заселения (Sprint 7),
+    /// система не знает, пришёл ли гость, и отметила бы неявку всем подтверждённым броням.
+    /// </summary>
+    public bool AutoNoShowEnabled { get; private set; }
+
     /// <summary>Почасовые брони: минимум часов.</summary>
     public int HourlyMinHours { get; private set; } = 2;
 
@@ -165,6 +171,7 @@ public sealed class HotelSettings
         CleaningBufferMinutes = change.CleaningBufferMinutes;
         CancellationPolicy = change.CancellationPolicy;
         HourlyPolicy = change.HourlyPolicy ?? HourlyPolicy;
+        AutoNoShowEnabled = change.AutoNoShowEnabled ?? AutoNoShowEnabled;
         Rules = string.IsNullOrWhiteSpace(change.Rules) ? null : change.Rules.Trim();
         UpdatedAt = now;
     }
@@ -186,4 +193,5 @@ public sealed record HotelSettingsChange(
     int CleaningBufferMinutes,
     CancellationPolicy CancellationPolicy,
     string? Rules,
-    HourlyPolicy? HourlyPolicy = null);
+    HourlyPolicy? HourlyPolicy = null,
+    bool? AutoNoShowEnabled = null);

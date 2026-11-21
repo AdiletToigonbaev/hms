@@ -240,7 +240,7 @@ public class BookingsTests(PostgresFixture db)
 
         var booking = await CreateBookingAsync(admin, Request(room.Id, Today.AddDays(110), 1, confirm: false));
         booking.Status.Should().Be("Pending");
-        booking.AllowedActions.Should().BeEquivalentTo(["confirm", "cancel"]);
+        booking.AllowedActions.Should().BeEquivalentTo(["confirm", "cancel", "reschedule"]);
         (await admin.PostAsync(new Uri($"/api/v1/bookings/{booking.Id}/confirm", UriKind.Relative), null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         (await admin.PostAsJsonAsync("/api/v1/rates", new SaveRateRequest(type.Id, "X", Today, Today, 127, 1m, 0, true), Ct))
