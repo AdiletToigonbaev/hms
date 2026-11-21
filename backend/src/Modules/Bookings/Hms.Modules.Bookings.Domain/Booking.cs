@@ -75,7 +75,8 @@ public static class BookingPenalties
     {
         ArgumentNullException.ThrowIfNull(booking);
         ArgumentNullException.ThrowIfNull(rules);
-        if (booking.Status != BookingStatus.Confirmed)
+        // Неподтверждённая бронь номер не гарантировала; штраф 0 — штрафов нет (по умолчанию у гостиницы штрафы выключены).
+        if (booking.Status != BookingStatus.Confirmed || rules.LateCancelUnits <= 0)
         {
             return new CancellationTerms(true, null, 0m, 0);
         }
@@ -125,6 +126,39 @@ public sealed record StayPeriod(
     public bool Overlaps(DateTimeOffset otherStart, DateTimeOffset otherBlockedUntil) => StartsAt < otherBlockedUntil && otherStart < BlockedUntil;
 }
 
+/// <summary>
+/// Номер брони для людей (решение заказчика 2026-11-21): вид + день создания + номер за день — «Ч-2111-07»
+/// (Ч — почасовая, С — посуточная; создана 21.11; седьмая за день). Номер не меняется: вид брони и дата создания
+/// при переносе не меняются. Год в номере не пишется — хранится отдельно (<see cref="Booking.NumberYear"/>),
+/// уникальность — по году и номеру. Номер за день — от 01, с сотой брони — трёхзначный.
+/// </summary>
+public static class BookingNumbers
+{
+    public const string HourlyPrefix = "Ч";
+    public const string NightlyPrefix = "С";
+
+    public static string Format(BookingKind kind, DateOnly createdOn, int sequence)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(sequence, 1);
+        var prefix = kind == BookingKind.Hourly ? HourlyPrefix : NightlyPrefix;
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{prefix}-{createdOn:ddMM}-{sequence:00}");
+    }
+}
+
+/// <summary>Счётчик номеров броней за день гостиницы (выдаётся атомарно в БД).</summary>
+public sealed class BookingNumberCounter
+{
+    private BookingNumberCounter()
+    {
+    }
+
+    public Guid HotelId { get; private set; }
+
+    public DateOnly Day { get; private set; }
+
+    public int Last { get; private set; }
+}
+
 /// <summary>Контакт гостя в брони. Карточка гостя в CRM и связь с ней — Sprint 4 (модуль Guests).</summary>
 public sealed record GuestContact(string FullName, string? Phone, string? Email);
 
@@ -151,8 +185,11 @@ public sealed class Booking
 
     public Guid HotelId { get; private set; }
 
-    /// <summary>Номер для людей: «26-000042» (год + порядковый номер).</summary>
+    /// <summary>Номер для людей: «Ч-2111-07» (<see cref="BookingNumbers"/>). У броней до 2026-11-21 — «26-000042».</summary>
     public string Number { get; private set; }
+
+    /// <summary>Год создания по времени гостиницы: номер уникален в пределах года.</summary>
+    public int NumberYear { get; private set; }
 
     public BookingStatus Status { get; private set; }
 
@@ -217,6 +254,12 @@ public sealed class Booking
     /// <summary>До какого момента неподтверждённая бронь держит номер; потом фоновая задача переводит её в Expired.</summary>
     public DateTimeOffset? HoldUntil { get; private set; }
 
+    /// <summary>Когда бронь последний раз переносили: продления до этого момента уже вошли в новую цену.</summary>
+    public DateTimeOffset? RescheduledAt { get; private set; }
+
+    /// <summary>Продления, которые входят в текущую стоимость (после последнего переноса).</summary>
+    public IEnumerable<BookingExtension> ActiveExtensions => _extensions.Where(e => RescheduledAt is null || e.CreatedAt > RescheduledAt);
+
     /// <summary>
     /// Начисленный штраф (поздняя отмена, неявка). Только начислен: принимается и учитывается модулем оплат (Sprint 6).
     /// </summary>
@@ -264,7 +307,8 @@ public sealed class Booking
         bool confirm,
         Guid? createdBy,
         DateTimeOffset now,
-        DateTimeOffset? holdUntil = null)
+        DateTimeOffset? holdUntil = null,
+        int? numberYear = null)
     {
         ArgumentNullException.ThrowIfNull(stay);
         ArgumentNullException.ThrowIfNull(guest);
@@ -274,6 +318,7 @@ public sealed class Booking
             Id = Guid.CreateVersion7(),
             HotelId = hotelId,
             Number = number,
+            NumberYear = numberYear ?? now.Year,
             Source = source,
             Kind = stay.Kind,
             Status = confirm ? BookingStatus.Confirmed : BookingStatus.Pending,
@@ -387,7 +432,8 @@ public sealed class Booking
 
     /// <summary>
     /// Перенос до заселения: новое время (и длительность) и/или другой номер. Цена — по текущим ценам на новое время.
-    /// Бронь с продлениями не переносится: её стоимость сложена из разных расчётов.
+    /// Если бронь продлевали, её время (с продлениями) пересчитывается целиком одной ценой: прежние продления остаются в истории,
+    /// но в стоимость больше не входят (<see cref="RescheduledAt"/>).
     /// </summary>
     public Result Reschedule(StayPeriod stay, Guid roomId, Guid roomTypeId, BookingPrice price, Guid? by, DateTimeOffset now)
     {
@@ -403,11 +449,6 @@ public sealed class Booking
             return Error.Validation("booking.reschedule_kind", "Нельзя сменить вид брони (часы/сутки) — отмените и создайте новую.");
         }
 
-        if (_extensions.Count > 0)
-        {
-            return Error.BusinessRule("booking.reschedule_extended", "Бронь уже продлевали — перенос недоступен. Отмените её и создайте новую.");
-        }
-
         var line = _rooms[0];
         var before = new { StartsAt, EndsAt, RoomId = line.RoomId, TotalAmount };
         CheckIn = stay.CheckIn;
@@ -420,6 +461,8 @@ public sealed class Booking
         AccommodationAmount = price.Accommodation;
         DiscountAmount = price.Discount;
         ServicesAmount = price.Services;
+        ExtensionsAmount = 0m;
+        RescheduledAt = now;
         TotalAmount = price.Total;
         DiscountId = price.DiscountId;
         PromoCode = price.PromoCode;

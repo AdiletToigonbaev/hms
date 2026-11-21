@@ -25,6 +25,7 @@ function booking(over: Partial<CalendarBooking>): CalendarBooking {
     noShowDue: false,
     canReschedule: true,
     version: 1,
+    canExtend: true,
     ...over,
   };
 }

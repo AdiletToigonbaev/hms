@@ -1,7 +1,7 @@
 import type { NavItem } from "@/components/layout/nav-links";
 import type { Role } from "@/lib/api/types";
 
-type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome") => string;
+type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "payments" | "refunds" | "expenses" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome") => string;
 
 /** Меню персонала по ролям: владелец видит и свои разделы, и разделы администратора. */
 export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
@@ -13,6 +13,9 @@ export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
     { href: "/admin/calendar", label: t("calendar"), icon: "calendar" },
     { href: "/admin/bookings", label: t("bookings"), icon: "bookings" },
     { href: "/admin/guests", label: t("guests"), icon: "guests" },
+    { href: "/admin/payments", label: t("payments"), icon: "payments" },
+    { href: "/admin/refunds", label: t("refunds"), icon: "refunds" },
+    { href: "/admin/expenses", label: t("expenses"), icon: "expenses" },
     { href: "/admin/rooms", label: t("rooms"), icon: "rooms" },
     { href: "/admin/room-types", label: t("roomTypes"), icon: "roomTypes" },
   ];

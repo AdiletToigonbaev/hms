@@ -22,6 +22,7 @@ public static class BookingsModule
         services.AddSingleton<IModelConfigurator, BookingsModelConfigurator>();
         services.AddScoped<IRoomBookingQueries, RoomBookingQueries>();
         services.AddScoped<IGuestBookingQueries, GuestBookingQueries>();
+        services.AddScoped<IBookingCharges, BookingCharges>();
         services.AddScoped<Stays>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IBookingService, BookingService>();

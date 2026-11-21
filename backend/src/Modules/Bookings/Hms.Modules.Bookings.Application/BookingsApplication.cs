@@ -239,7 +239,8 @@ public sealed record CalendarBookingDto(
     string? HoldUntil,
     bool NoShowDue,
     bool CanReschedule,
-    uint Version);
+    uint Version,
+    bool CanExtend = false);
 
 /// <param name="Now">Текущее время гостиницы — для линии «сейчас».</param>
 public sealed record CalendarDto(

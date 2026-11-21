@@ -691,7 +691,20 @@ export function RoomsCleaningForm({
               defaultValue={v.cleaningBufferMinutes ?? s.cleaningBufferMinutes}
               error={e.cleaningBufferMinutes}
             />
+            <Field
+              name="cleaningBufferNightlyMinutes"
+              type="number"
+              min={0}
+              max={240}
+              step={5}
+              label={t("cleaningBufferNightly")}
+              help={help("cleaningBufferNightly", t("cleaningBufferNightly"))}
+              hint={t("cleaningBufferNightlyHint")}
+              defaultValue={v.cleaningBufferNightlyMinutes ?? s.cleaningBufferNightlyMinutes}
+              error={e.cleaningBufferNightlyMinutes}
+            />
           </div>
+          <p className="text-xs text-muted-foreground">{t("cleaningPerCategory")}</p>
           <Toggle
             name="autoReleaseRoomAfterCleaning"
             label={t("autoRelease")}

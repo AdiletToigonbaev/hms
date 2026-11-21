@@ -111,6 +111,24 @@ export async function extendBookingAction(_: FormState, form: FormData): Promise
   return { ok: true };
 }
 
+/** Продление из календаря (правый край брони): на сколько часов/ночей; версия защищает от одновременной правки. */
+export async function extendFromCalendarAction(id: string, units: number, version: number): Promise<{ ok: true } | { ok: false; state: FormState }> {
+  const bookingId = uuid.parse(id);
+  const parsed = extendSchema.safeParse({ units });
+  if (!parsed.success) return { ok: false, state: { ok: false, fieldErrors: fieldErrors(parsed.error) } };
+  const result = await api<Booking>(`/bookings/${bookingId}/extend`, {
+    method: "POST",
+    body: { units: parsed.data.units, version: Number.isFinite(version) ? version : null },
+  });
+  if (!result.ok) {
+    authGuard(result.status);
+    return { ok: false, state: toFormState(result.problem) };
+  }
+  revalidatePath(`/admin/bookings/${bookingId}`);
+  revalidatePath("/admin/calendar");
+  return { ok: true };
+}
+
 export async function cancelBookingAction(_: FormState, form: FormData): Promise<FormState> {
   const id = uuid.parse(form.get("id"));
   const parsed = cancelSchema.safeParse(Object.fromEntries(form));

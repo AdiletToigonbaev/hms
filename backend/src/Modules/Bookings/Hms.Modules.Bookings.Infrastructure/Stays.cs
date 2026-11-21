@@ -50,14 +50,38 @@ internal sealed class Stays(DbContext db, IHotelContext hotel, IHotelClock clock
         return Hourly(settings, startLocal, hours);
     }
 
-    /// <summary>Посуточно: с часа заезда до часа выезда; уборка — не дольше промежутка между выездом и заездом.</summary>
+    /// <summary>
+    /// Посуточно: с часа заезда до часа выезда; уборка (по умолчанию гостиницы) — не дольше промежутка между выездом и заездом.
+    /// Уборку конкретного номера уточняет <see cref="ForRoom"/>.
+    /// </summary>
     public StayPeriod Nightly(HotelSettingsSnapshot settings, DateOnly checkIn, DateOnly checkOut)
     {
         var startsAt = clock.ToUtc(checkIn, settings.CheckInTime);
         var endsAt = clock.ToUtc(checkOut, settings.CheckOutTime);
+        return new StayPeriod(BookingKind.Nightly, checkIn, checkOut, startsAt, endsAt, endsAt.AddMinutes(NightlyBuffer(settings, settings.CleaningBufferNightlyMinutes)),
+            checkOut.DayNumber - checkIn.DayNumber);
+    }
+
+    /// <summary>
+    /// Время уборки номера после брони: своё у категории (после почасовой / после посуточной) или из настроек гостиницы.
+    /// Возвращает период с уточнённым концом занятости.
+    /// </summary>
+    public static StayPeriod ForRoom(StayPeriod stay, HotelSettingsSnapshot settings, RoomInfo room)
+    {
+        ArgumentNullException.ThrowIfNull(stay);
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(room);
+        var minutes = stay.Kind == BookingKind.Hourly
+            ? room.CleaningHourlyMinutes ?? settings.CleaningBufferMinutes
+            : NightlyBuffer(settings, room.CleaningNightlyMinutes ?? settings.CleaningBufferNightlyMinutes);
+        return stay with { BlockedUntil = stay.EndsAt.AddMinutes(minutes) };
+    }
+
+    /// <summary>После посуточной брони уборка не дольше промежутка между часом выезда и часом заезда (иначе номер нельзя продать на следующую ночь).</summary>
+    private static int NightlyBuffer(HotelSettingsSnapshot settings, int minutes)
+    {
         var gap = Math.Max(0, (int)(settings.CheckInTime - settings.CheckOutTime).TotalMinutes);
-        var buffer = TimeSpan.FromMinutes(Math.Min(settings.CleaningBufferMinutes, gap));
-        return new StayPeriod(BookingKind.Nightly, checkIn, checkOut, startsAt, endsAt, endsAt + buffer, checkOut.DayNumber - checkIn.DayNumber);
+        return Math.Min(minutes, gap);
     }
 
     /// <summary>Почасово: с начала на N часов, плюс уборка после.</summary>

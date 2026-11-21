@@ -305,7 +305,9 @@ function CancelBookingForm({
       ? t("cancelLate", { time: terms.freeUntil ? formatHotelLocal(terms.freeUntil) : "—", amount: formatMoney(terms.penalty), units: unitsLabel(terms.unit, terms.units) })
       : terms.freeUntil
         ? t("cancelFreeUntil", { time: formatHotelLocal(terms.freeUntil) })
-        : t("cancelFreeUnconfirmed");
+        : b.status === "Confirmed"
+          ? t("cancelFreeNoPenalties")
+          : t("cancelFreeUnconfirmed");
   return (
     <form ref={formRef} action={action} className="grid gap-3" noValidate>
       <input type="hidden" name="id" value={b.id} />

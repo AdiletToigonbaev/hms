@@ -61,6 +61,7 @@ export function settingsUpdateBody(s: HotelSettings) {
     version: s.version,
     hourlyPolicy: { ...s.hourlyPolicy },
     autoNoShowEnabled: s.autoNoShowEnabled,
+    cleaningBufferNightlyMinutes: s.cleaningBufferNightlyMinutes,
   };
 }
 
@@ -81,7 +82,7 @@ export function describeRules(v: BookingRulesValues, t: Translate): { hourly: st
     t("hourlyDuration", { min: t("hoursGen", { n: v.hourlyMinHours }), max: t("hoursGen", { n: v.hourlyMaxHours }) }),
     v.hourlyLateCancelPenaltyHours > 0
       ? t("hourlyCancel", { free: minutes(v.hourlyFreeCancelMinutes), penalty: hours(v.hourlyLateCancelPenaltyHours) })
-      : t("hourlyCancelNoPenalty", { free: minutes(v.hourlyFreeCancelMinutes) }),
+      : t("hourlyCancelNoPenalty"),
     t("hourlyNoShow", { after: minutes(v.hourlyNoShowAfterMinutes), penalty: penalty(v.hourlyNoShowPenaltyHours, hours) }),
     t("hourlyHold", { hold: minutes(v.hourlyPendingHoldMinutes) }),
     v.hourlyRefundUnused ? t("hourlyEarlyRefund") : t("hourlyEarlyNoRefund"),
@@ -90,7 +91,7 @@ export function describeRules(v: BookingRulesValues, t: Translate): { hourly: st
     t("nightlyTimes", { in: v.checkInTime, out: v.checkOutTime }),
     v.lateCancelPenaltyNights > 0
       ? t("nightlyCancel", { free: t("hours", { n: v.freeCancelHoursBeforeCheckIn }), penalty: nights(v.lateCancelPenaltyNights) })
-      : t("nightlyCancelNoPenalty", { free: t("hours", { n: v.freeCancelHoursBeforeCheckIn }) }),
+      : t("nightlyCancelNoPenalty"),
     t("nightlyNoShow", { cutoff: v.noShowCutoffTime, penalty: penalty(v.noShowPenaltyNights, nights) }),
     t("nightlyHold", { hold: t("hours", { n: v.pendingHoldHours }) }),
     v.earlyDeparturePenaltyNights > 0 ? t("nightlyEarlyPenalty", { penalty: nights(v.earlyDeparturePenaltyNights) }) : t("nightlyEarlyNoPenalty"),

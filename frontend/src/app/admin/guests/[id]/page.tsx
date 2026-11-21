@@ -41,6 +41,7 @@ export default async function GuestPage({ params }: PageProps<"/admin/guests/[id
     { label: t("statBookings"), value: String(g.stats.bookingsCount) },
     { label: t("statVisits"), value: String(g.stats.visitsCount), hint: t("statVisitsHint") },
     { label: t("statAmount"), value: formatMoney(g.stats.bookedAmount), hint: t("statAmountHint") },
+    { label: t("statPaid"), value: formatMoney(g.stats.paidAmount), hint: t("statPaidHint") },
     { label: t("statLast"), value: g.stats.lastStayAt ? formatHotelDateTime(g.stats.lastStayAt) : t("never") },
   ];
 
@@ -71,7 +72,7 @@ export default async function GuestPage({ params }: PageProps<"/admin/guests/[id
         </div>
       </div>
 
-      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {stats.map((s) => (
           <div key={s.label} className="grid gap-1 rounded-2xl border bg-card p-4 shadow-xs">
             <dt className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{s.label}</dt>

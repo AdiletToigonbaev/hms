@@ -36,3 +36,18 @@ describe("statusChangeSchema", () => {
     expect(fieldErrors(statusChangeSchema.safeParse({ status: "Maintenance", reason: " " }).error!).reason).toMatch(/причину/);
   });
 });
+
+describe("roomTypeSchema — уборка категории", () => {
+  const base = { name: "Люкс", capacity: "2", bedsCount: "1", bedType: "King", basePrice: "9000" };
+
+  it("пустые поля — как в настройках гостиницы", () => {
+    const r = roomTypeSchema.safeParse({ ...base, cleaningHourlyMinutes: "", cleaningNightlyMinutes: "" });
+    expect(r.success && [r.data.cleaningHourlyMinutes, r.data.cleaningNightlyMinutes]).toEqual([undefined, undefined]);
+  });
+
+  it("своё время уборки — от 0 до 240 минут", () => {
+    const ok = roomTypeSchema.safeParse({ ...base, cleaningHourlyMinutes: "45", cleaningNightlyMinutes: "90" });
+    expect(ok.success && ok.data.cleaningNightlyMinutes).toBe(90);
+    expect(roomTypeSchema.safeParse({ ...base, cleaningNightlyMinutes: "300" }).success).toBe(false);
+  });
+});

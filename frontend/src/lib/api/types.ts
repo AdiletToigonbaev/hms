@@ -129,6 +129,8 @@ export interface HotelSettings {
   hourlyPolicy: HourlyPolicy;
   /** Отмечать неявку автоматически (фоновая задача). */
   autoNoShowEnabled: boolean;
+  /** Уборка после посуточной брони, мин (после почасовой — cleaningBufferMinutes). */
+  cleaningBufferNightlyMinutes: number;
 }
 
 /** Правила почасовых броней (настраивает владелец). */
@@ -187,6 +189,9 @@ export interface RoomType {
   basePrice: number;
   /** Цена за час; null — категория по часам не продаётся. */
   hourlyPrice: number | null;
+  /** Своё время уборки категории (мин); null — как в настройках гостиницы. */
+  cleaningHourlyMinutes: number | null;
+  cleaningNightlyMinutes: number | null;
   sortOrder: number;
   isArchived: boolean;
   activeRoomCount: number;
@@ -450,6 +455,8 @@ export interface CalendarBooking {
   noShowDue: boolean;
   canReschedule: boolean;
   version: number;
+  /** Можно продлить (подтверждённая бронь или гость заселён). */
+  canExtend: boolean;
 }
 
 export interface CalendarData {
@@ -502,9 +509,11 @@ export interface GuestStats {
   bookingsCount: number;
   /** Посещения — брони с заселением (CheckedIn/CheckedOut). */
   visitsCount: number;
-  /** Сумма действующих и завершённых броней (оплаты — с модулем Finance). */
+  /** Сумма действующих и завершённых броней. */
   bookedAmount: number;
   lastStayAt: string | null;
+  /** Фактически оплачено: поступления − аннулированные − выплаченные возвраты. */
+  paidAmount: number;
 }
 
 export interface GuestListItem {
@@ -574,4 +583,141 @@ export interface GuestBooking {
   roomNumber: string;
   totalAmount: number;
   createdAt: string;
+}
+
+// ---------- Финансы (Sprint 6) ----------
+
+export type PaymentMethod = "Cash" | "BankTransfer" | "CardPos" | "MBank" | "Optima";
+export type PaymentType = "Prepayment" | "Stay" | "Service" | "Penalty" | "Other" | "Reversal";
+export type PaymentStatus = "Pending" | "Processing" | "Paid" | "Failed" | "Cancelled" | "RefundPending" | "PartiallyRefunded" | "Refunded" | "Reversed";
+export type RefundStatus = "Requested" | "Approved" | "Rejected" | "Paid";
+
+/** Время — гостиницы, «yyyy-MM-ddTHH:mm». */
+export interface PaymentItem {
+  id: string;
+  type: PaymentType;
+  method: PaymentMethod;
+  channel: "Manual" | "Online";
+  amount: number;
+  status: PaymentStatus;
+  refundedAmount: number;
+  paidAt: string;
+  bookingId: string | null;
+  bookingNumber: string | null;
+  guestName: string | null;
+  registeredByName: string | null;
+  comment: string | null;
+  reversalOfPaymentId: string | null;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  kind: "Charge" | "Refund" | "Reversal" | "StatusChange";
+  amount: number;
+  status: PaymentStatus;
+  occurredAt: string;
+  byName: string | null;
+  comment: string | null;
+}
+
+export interface Refund {
+  id: string;
+  paymentId: string;
+  bookingId: string | null;
+  bookingNumber: string | null;
+  amount: number;
+  reason: string;
+  method: PaymentMethod;
+  status: RefundStatus;
+  requestedAt: string;
+  requestedByName: string | null;
+  decidedAt: string | null;
+  decidedByName: string | null;
+  decisionComment: string | null;
+  paidAt: string | null;
+  paidByName: string | null;
+  version: number;
+}
+
+export interface PaymentDetails {
+  payment: PaymentItem;
+  transactions: PaymentTransaction[];
+  refunds: Refund[];
+  allowedActions: ("reverse" | "refund")[];
+  version: number;
+}
+
+export interface PaymentPage {
+  page: Paged<PaymentItem>;
+  totals: { total: number; byMethod: Partial<Record<PaymentMethod, number>>; count: number };
+}
+
+export interface BookingBalance {
+  bookingId: string;
+  number: string;
+  bookingStatus: BookingStatus;
+  due: number;
+  received: number;
+  refunded: number;
+  /** Больше нуля — долг, меньше — переплата. */
+  balance: number;
+  prepaymentRequired: number;
+  payments: PaymentItem[];
+  refunds: Refund[];
+}
+
+export interface Debt {
+  bookingId: string;
+  number: string;
+  bookingStatus: BookingStatus;
+  kind: BookingKind;
+  guestName: string;
+  roomNumber: string | null;
+  startsAt: string;
+  endsAt: string;
+  due: number;
+  received: number;
+  balance: number;
+}
+
+export interface DebtList {
+  items: Debt[];
+  total: number;
+}
+
+export interface RefundPage {
+  page: Paged<Refund>;
+  canApprove: boolean;
+  approveLimit: number | null;
+}
+
+export interface Expense {
+  id: string;
+  categoryId: string;
+  categoryName: string;
+  amount: number;
+  date: string;
+  method: PaymentMethod;
+  supplier: string | null;
+  description: string;
+  createdByName: string | null;
+  createdAt: string;
+  isVoided: boolean;
+  voidReason: string | null;
+  voidedByName: string | null;
+  version: number;
+}
+
+export interface ExpensePage {
+  page: Paged<Expense>;
+  total: number;
+  byCategory: Record<string, number>;
+  canManage: boolean;
+}
+
+export interface ExpenseCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+  isActive: boolean;
 }

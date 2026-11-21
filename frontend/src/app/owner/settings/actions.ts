@@ -17,7 +17,7 @@ const SECTION_FIELDS = {
     "hourlyNoShowPenaltyHours", "hourlyPendingHoldMinutes", "checkInTime", "checkOutTime", "noShowCutoffTime",
     "freeCancelHoursBeforeCheckIn", "lateCancelPenaltyNights", "noShowPenaltyNights", "pendingHoldHours", "earlyDeparturePenaltyNights",
   ],
-  rooms: ["cleaningBufferMinutes"],
+  rooms: ["cleaningBufferMinutes", "cleaningBufferNightlyMinutes"],
   payment: ["prepaymentPercent", "paymentHoldMinutes"],
   site: [],
 } as const;
@@ -88,7 +88,10 @@ const rulesSchema = z
   })
   .refine((v) => v.hourlyMaxHours >= v.hourlyMinHours, { path: ["hourlyMaxHours"], message: "Максимум часов не меньше минимума." });
 
-const roomsSchema = z.object({ cleaningBufferMinutes: int(0, 240, "Уборка — от 0 до 240 минут.") });
+const roomsSchema = z.object({
+  cleaningBufferMinutes: int(0, 240, "Уборка — от 0 до 240 минут."),
+  cleaningBufferNightlyMinutes: int(0, 240, "Уборка — от 0 до 240 минут."),
+});
 const paymentSchema = z.object({
   prepaymentPercent: int(0, 100, "Предоплата — от 0 до 100%."),
   paymentHoldMinutes: int(5, 1440, "От 5 минут до 24 часов."),
@@ -130,6 +133,7 @@ function applySection(section: keyof typeof SECTION_FIELDS, form: FormData, body
     const r = roomsSchema.safeParse(data);
     if (!r.success) return fieldErrors(r.error);
     body.cleaningBufferMinutes = r.data.cleaningBufferMinutes;
+    body.cleaningBufferNightlyMinutes = r.data.cleaningBufferNightlyMinutes;
     body.autoReleaseRoomAfterCleaning = checkbox(form, "autoReleaseRoomAfterCleaning");
   } else if (section === "payment") {
     const r = paymentSchema.safeParse(data);

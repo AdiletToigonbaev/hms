@@ -4,11 +4,11 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { BookingStatusBadge } from "@/components/booking-status-badge";
 import { DateRangePicker } from "@/components/forms/date-range-picker";
+import { LiveSearchInput } from "@/components/forms/live-search-input";
 import { NativeSelect } from "@/components/forms/native-select";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState, ErrorState } from "@/components/states/states";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/server";
 import type { BookingListItem, Paged } from "@/lib/api/types";
@@ -98,7 +98,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
 
       <form method="get" className="flex flex-wrap items-end gap-2" role="search">
         <input type="hidden" name="all" value="1" />
-        <Input name="search" defaultValue={search} placeholder={t("searchPlaceholder")} aria-label={t("search")} className="w-full sm:max-w-xs" />
+        <LiveSearchInput defaultValue={search} placeholder={t("searchPlaceholder")} label={t("search")} className="w-full sm:max-w-xs" />
         <NativeSelect name="status" defaultValue={status} aria-label={t("colStatus")} className="w-auto">
           <option value="">{t("allStatuses")}</option>
           {bookingStatuses.map((s) => (
@@ -165,9 +165,13 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
               </TableHeader>
               <TableBody>
                 {result.data.items.map((b) => (
-                  <TableRow key={b.id}>
+                  // Вся строка открывает бронь: ссылка номера растянута на строку (клавиатура — по-прежнему через ссылку).
+                  <TableRow key={b.id} className="relative cursor-pointer hover:bg-accent/50">
                     <TableCell>
-                      <Link href={`/admin/bookings/${b.id}`} className="tabular font-medium underline-offset-4 hover:underline">
+                      <Link
+                        href={`/admin/bookings/${b.id}`}
+                        className="tabular font-medium underline-offset-4 after:absolute after:inset-0 after:content-[''] hover:underline focus-visible:outline-none focus-visible:after:rounded-md focus-visible:after:ring-3 focus-visible:after:ring-ring/50"
+                      >
                         {b.number}
                       </Link>
                     </TableCell>

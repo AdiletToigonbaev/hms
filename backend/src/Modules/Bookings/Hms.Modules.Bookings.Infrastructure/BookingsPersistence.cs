@@ -14,11 +14,14 @@ namespace Hms.Modules.Bookings.Infrastructure;
 internal sealed class BookingsModelConfigurator : IModelConfigurator
 {
     public const string Schema = "bookings";
-    public const string NumberSequence = "booking_number_seq";
 
     public void Configure(ModelBuilder b)
     {
-        b.HasSequence<long>(NumberSequence, Schema).StartsAt(1);
+        b.Entity<BookingNumberCounter>(e =>
+        {
+            e.ToTable("booking_number_counters", Schema);
+            e.HasKey(x => new { x.HotelId, x.Day });
+        });
 
         b.Entity<Booking>(e =>
         {
@@ -50,6 +53,7 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.Version).IsRowVersion();
             e.Ignore(x => x.Nights);
             e.Ignore(x => x.Units);
+            e.Ignore(x => x.ActiveExtensions);
             e.Property(x => x.PenaltyAmount).HasPrecision(14, 2);
             e.Property(x => x.PenaltyKind).HasConversion<string>().HasMaxLength(20);
             e.HasMany(x => x.Rooms).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
@@ -60,7 +64,8 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Navigation(x => x.Rooms).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Navigation(x => x.Services).UsePropertyAccessMode(PropertyAccessMode.Field);
             e.Navigation(x => x.History).UsePropertyAccessMode(PropertyAccessMode.Field);
-            e.HasIndex(x => new { x.HotelId, x.Number }).IsUnique();
+            // Номер «Ч-2111-07» повторяется через год — уникален вместе с годом создания.
+            e.HasIndex(x => new { x.HotelId, x.NumberYear, x.Number }).IsUnique();
             e.HasIndex(x => new { x.HotelId, x.Status, x.StartsAt });
             e.HasIndex(x => x.GuestId);
             // Фоновая задача ищет неподтверждённые брони с истёкшим удержанием.
@@ -137,5 +142,52 @@ internal sealed class RoomBookingQueries(DbContext db, IHotelClock clock) : IRoo
     {
         var now = clock.UtcNow;
         return db.Set<BookingRoom>().AnyAsync(r => r.RoomId == roomId && r.IsBlocking && r.BlockedUntil > now, ct);
+    }
+}
+
+/// <summary>Начисления по броням для финансов.</summary>
+internal sealed class BookingCharges(DbContext db, Hms.Modules.Hotel.Contracts.IHotelContext hotel, Hms.Modules.Rooms.Contracts.IRoomDirectory rooms) : IBookingCharges
+{
+    public async Task<BookingCharge?> GetAsync(Guid bookingId, CancellationToken ct) =>
+        (await ListAsync([bookingId], ct)) is [var first, ..] ? first : null;
+
+    public async Task<IReadOnlyList<BookingCharge>> ListAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await QueryAsync(db.Set<Booking>().Where(b => b.HotelId == hotelId && bookingIds.Contains(b.Id)), ct);
+    }
+
+    public async Task<IReadOnlyList<BookingCharge>> ListWithDueAsync(CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await QueryAsync(
+            db.Set<Booking>().Where(b => b.HotelId == hotelId
+                && (((b.Status == BookingStatus.Cancelled || b.Status == BookingStatus.NoShow) && b.PenaltyAmount > 0)
+                    || (b.Status != BookingStatus.Cancelled && b.Status != BookingStatus.NoShow && b.Status != BookingStatus.Expired && b.TotalAmount > 0))),
+            ct);
+    }
+
+    private async Task<IReadOnlyList<BookingCharge>> QueryAsync(IQueryable<Booking> query, CancellationToken ct)
+    {
+        var rows = await query.AsNoTracking()
+            .Select(b => new
+            {
+                b.Id,
+                b.Number,
+                b.Status,
+                b.Kind,
+                b.GuestId,
+                b.GuestName,
+                b.StartsAt,
+                b.EndsAt,
+                b.TotalAmount,
+                b.PenaltyAmount,
+                RoomId = b.Rooms.Select(r => r.RoomId).FirstOrDefault(),
+            })
+            .ToListAsync(ct);
+        var roomInfo = await rooms.GetManyAsync(rows.Select(r => r.RoomId).Distinct(), ct);
+        return rows.Select(r => new BookingCharge(r.Id, r.Number, r.Status, r.Kind.ToString(), r.GuestId, r.GuestName,
+                roomInfo.TryGetValue(r.RoomId, out var room) ? room.Number : null, r.StartsAt, r.EndsAt, r.TotalAmount, r.PenaltyAmount))
+            .ToList();
     }
 }

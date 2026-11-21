@@ -55,6 +55,16 @@ public class BookingRulesDomainTests
     }
 
     [Fact]
+    public void Cancel_ZeroPenaltyRules_AreFree_WithoutDeadline()
+    {
+        var booking = HourlyBooking();
+
+        BookingPenalties.ForCancel(booking, new PenaltyRules(TimeSpan.FromMinutes(120), 0, 0), Start.AddMinutes(-5))
+            .Should().BeEquivalentTo(new { IsFree = true, FreeUntil = (DateTimeOffset?)null, Penalty = 0m });
+        BookingPenalties.ForNoShow(booking, new PenaltyRules(TimeSpan.Zero, 0, 0)).Should().Be(0m);
+    }
+
+    [Fact]
     public void Cancel_Late_Nightly_ChargesOneNight()
     {
         var booking = NightlyBooking();
@@ -191,13 +201,21 @@ public class BookingRulesDomainTests
     }
 
     [Fact]
-    public void Reschedule_ExtendedBooking_IsRejected()
+    public void Reschedule_ExtendedBooking_IsRepricedAsOneBlock_AndOldExtensionsNoLongerCount()
     {
         var booking = HourlyBooking();
         booking.Extend(Hourly(Start, 4), 1, 500m, "{}", null, Now).IsSuccess.Should().BeTrue();
+        booking.ExtensionsAmount.Should().Be(500m);
 
-        booking.Reschedule(Hourly(Start.AddHours(2), 4), Guid.NewGuid(), Guid.NewGuid(), new BookingPrice(2000m, 0m, 0m, 2000m, null, null, [], "{}"), null, Now)
-            .Error!.Code.Should().Be("booking.reschedule_extended");
+        var moved = Hourly(Start.AddHours(2), 4);
+        booking.Reschedule(moved, Guid.NewGuid(), Guid.NewGuid(), new BookingPrice(2000m, 0m, 0m, 2000m, null, null, [], "{}"), null, Now.AddMinutes(1))
+            .IsSuccess.Should().BeTrue();
+
+        booking.Hours.Should().Be(4);
+        booking.ExtensionsAmount.Should().Be(0m);
+        booking.TotalAmount.Should().Be(2000m);
+        booking.Extensions.Should().HaveCount(1, "продление остаётся в истории");
+        booking.ActiveExtensions.Should().BeEmpty("но в цену уже не входит");
     }
 
     [Fact]
@@ -208,5 +226,21 @@ public class BookingRulesDomainTests
 
         booking.Reschedule(Hourly(Start.AddHours(2), 3), Guid.NewGuid(), Guid.NewGuid(), new BookingPrice(1500m, 0m, 0m, 1500m, null, null, [], "{}"), null, Now)
             .Error!.Code.Should().Be("booking.reschedule_not_allowed");
+    }
+
+    [Theory]
+    [InlineData(BookingKind.Hourly, 2026, 11, 21, 7, "Ч-2111-07")]
+    [InlineData(BookingKind.Nightly, 2026, 3, 1, 1, "С-0103-01")]
+    [InlineData(BookingKind.Hourly, 2026, 12, 31, 100, "Ч-3112-100")]
+    public void BookingNumber_KindDayAndDailySequence(BookingKind kind, int y, int m, int d, int seq, string expected)
+    {
+        BookingNumbers.Format(kind, new DateOnly(y, m, d), seq).Should().Be(expected);
+    }
+
+    [Fact]
+    public void BookingNumber_SequenceStartsAtOne()
+    {
+        var act = () => BookingNumbers.Format(BookingKind.Hourly, new DateOnly(2026, 11, 21), 0);
+        act.Should().Throw<ArgumentOutOfRangeException>();
     }
 }

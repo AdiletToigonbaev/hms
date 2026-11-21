@@ -95,7 +95,8 @@ public partial class DependencyRulesTests
             "Hotel.Domain", "Hotel.Application", "Hotel.Infrastructure", "Hotel.Contracts", "Rooms.Domain", "Rooms.Application", "Rooms.Infrastructure", "Rooms.Contracts",
             "Pricing.Domain", "Pricing.Application", "Pricing.Infrastructure", "Pricing.Contracts",
             "Bookings.Domain", "Bookings.Application", "Bookings.Infrastructure", "Bookings.Contracts",
-            "Guests.Domain", "Guests.Application", "Guests.Infrastructure", "Guests.Contracts"]);
+            "Guests.Domain", "Guests.Application", "Guests.Infrastructure", "Guests.Contracts",
+            "Finance.Domain", "Finance.Application", "Finance.Infrastructure", "Finance.Contracts"]);
     }
 
     [Fact]

@@ -67,6 +67,7 @@ public static class IdentityModule
         services.AddScoped<IStaffService, StaffService>();
         services.AddScoped<IRoleQueries, RoleQueries>();
         services.AddScoped<Hms.Modules.Identity.Contracts.IUserDirectory, UserDirectory>();
+        services.AddScoped<Hms.Modules.Identity.Contracts.IPermissionLimits, PermissionLimits>();
         services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>(includeInternalTypes: true);
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();

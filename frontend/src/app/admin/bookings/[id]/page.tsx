@@ -9,12 +9,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api/server";
 import { hotelTimeZone } from "@/i18n/config";
-import type { Booking, BookingHistoryItem, BookingStatus, CalendarData, CancellationQuote, ExtensionQuote } from "@/lib/api/types";
+import type { Booking, BookingBalance, BookingHistoryItem, BookingStatus, CalendarData, CancellationQuote, ExtensionQuote } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
-import { bookingStatusLabel, hotelToday, nightsLabel } from "@/lib/bookings/status";
+import { bookingStatusLabel, hotelNowLocal, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { BookingActions, BookingDetailsForm, ExtendBookingForm, RescheduleForm } from "../booking-forms";
+import { PaymentCard } from "./payment-card";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Bookings"))("title") };
@@ -50,9 +51,10 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   // Условия отмены и штраф за неявку — на сейчас (считает API); номера для переноса — из календаря.
   const needsTerms = b.allowedActions.includes("cancel") || b.allowedActions.includes("noShow");
   const canReschedule = can("booking.edit") && can("calendar.view") && b.allowedActions.includes("reschedule");
-  const [terms, roomsData] = await Promise.all([
+  const [terms, roomsData, balance] = await Promise.all([
     needsTerms && showActions ? api<CancellationQuote>(`/bookings/${id}/cancel/preview`) : null,
     canReschedule ? api<CalendarData>(`/calendar?from=${today}&to=${today}`) : null,
+    can("payment.view") ? api<BookingBalance>(`/bookings/${id}/balance`) : null,
   ]);
 
   // Продление: предел по правилам и по следующей брони номера (считает API).
@@ -143,6 +145,10 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               )}
             </CardContent>
           </Card>
+
+          {balance?.ok && (
+            <PaymentCard balance={balance.data} startsAt={b.startsAt} now={hotelNowLocal(hotelTimeZone)} canRegister={can("payment.register")} />
+          )}
 
           <Card>
             <CardHeader>

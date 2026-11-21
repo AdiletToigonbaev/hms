@@ -100,6 +100,18 @@ public sealed class RoomType
 
     public void SetHourlyPrice(Money? price) => HourlyPrice = price?.Amount;
 
+    /// <summary>Своё время уборки после почасовой брони, мин; null — как в настройках гостиницы.</summary>
+    public int? CleaningHourlyMinutes { get; private set; }
+
+    /// <summary>Своё время уборки после посуточной брони, мин; null — как в настройках гостиницы.</summary>
+    public int? CleaningNightlyMinutes { get; private set; }
+
+    public void SetCleaning(int? hourlyMinutes, int? nightlyMinutes)
+    {
+        CleaningHourlyMinutes = hourlyMinutes;
+        CleaningNightlyMinutes = nightlyMinutes;
+    }
+
     public int SortOrder { get; private set; }
 
     public bool IsArchived { get; private set; }

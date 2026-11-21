@@ -18,6 +18,7 @@ internal sealed class GuestService(
     DbContext db,
     IHotelContext hotel,
     IGuestBookingQueries bookings,
+    Hms.Modules.Finance.Contracts.IPaymentQueries payments,
     IUserDirectory users,
     ICurrentUser currentUser,
     IAuditTrail audit,
@@ -59,9 +60,11 @@ internal sealed class GuestService(
             .Where(x => !withBookings || x.Stats?.BookingsCount > 0)
             .ToList();
 
-        var items = rows.Skip(page.Skip).Take(page.PageSize)
+        var pageRows = rows.Skip(page.Skip).Take(page.PageSize).ToList();
+        var paid = await payments.PaidByGuestsAsync(pageRows.Select(x => x.Guest.Id).ToList(), ct);
+        var items = pageRows
             .Select(x => new GuestListItemDto(x.Guest.Id, x.Guest.FullName, x.Guest.Phone, x.Guest.Email, x.Guest.UserId != null, x.WhatsApp,
-                x.Guest.IsAnonymized, x.Guest.CreatedAt, ToDto(x.Stats)))
+                x.Guest.IsAnonymized, x.Guest.CreatedAt, ToDto(x.Stats, paid.GetValueOrDefault(x.Guest.Id))))
             .ToList();
         return new PagedResult<GuestListItemDto>(items, page.Page, page.PageSize, rows.Count);
     }
@@ -230,8 +233,7 @@ internal sealed class GuestService(
         var text = search.Trim();
         var like = $"%{text.ToLowerInvariant()}%";
         // Телефон ищем по цифрам: «0555 12», «+996 555 12…» и «55512» находят одного гостя.
-        var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
-        var phoneLike = digits.Length >= 3 ? $"%{digits}%" : null;
+        var phoneLike = PhoneNumber.SearchDigits(text) is { } digits ? $"%{digits}%" : null;
 #pragma warning disable CA1304, CA1311 // ToLower транслируется в SQL lower()
         return query.Where(g => EF.Functions.Like(g.FullName.ToLower(), like)
             || (g.Email != null && EF.Functions.Like(g.Email, like))
@@ -286,14 +288,15 @@ internal sealed class GuestService(
     private async Task<GuestDto> ToDtoAsync(Guest g, CancellationToken ct)
     {
         var stats = (await bookings.StatsAsync([g.Id], ct)).GetValueOrDefault(g.Id);
+        var paid = (await payments.PaidByGuestsAsync([g.Id], ct)).GetValueOrDefault(g.Id);
         var consents = Enum.GetValues<ConsentType>()
             .Select(type => g.CurrentConsent(type) is { } c ? new ConsentStateDto(type.ToString(), c.Granted, c.Source.ToString(), c.RecordedAt) : null)
             .OfType<ConsentStateDto>()
             .ToList();
         return new GuestDto(g.Id, g.FullName, g.Phone, g.WhatsAppPhone, g.Email, g.BirthDate, g.Notes, g.Source.ToString(), g.UserId != null,
-            g.IsAnonymized, g.CreatedAt, g.UpdatedAt, ToDto(stats), consents, g.Version);
+            g.IsAnonymized, g.CreatedAt, g.UpdatedAt, ToDto(stats, paid), consents, g.Version);
     }
 
-    private static GuestStatsDto ToDto(GuestBookingStats? s) =>
-        s is null ? new GuestStatsDto(0, 0, 0m, null) : new GuestStatsDto(s.BookingsCount, s.VisitsCount, s.BookedAmount, s.LastStayAt);
+    private static GuestStatsDto ToDto(GuestBookingStats? s, decimal paid) =>
+        s is null ? new GuestStatsDto(0, 0, 0m, null, paid) : new GuestStatsDto(s.BookingsCount, s.VisitsCount, s.BookedAmount, s.LastStayAt, paid);
 }

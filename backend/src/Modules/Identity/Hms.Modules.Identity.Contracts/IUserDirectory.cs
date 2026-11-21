@@ -5,3 +5,13 @@ public interface IUserDirectory
 {
     Task<IReadOnlyDictionary<Guid, string>> GetNamesAsync(IEnumerable<Guid> userIds, CancellationToken ct);
 }
+
+/// <summary>Лимиты сумм у прав (например, утверждение возвратов в пределах лимита).</summary>
+public interface IPermissionLimits
+{
+    /// <summary>
+    /// Лимит суммы права у пользователя: число — не больше этой суммы; null — без лимита
+    /// (владелец или право выдано без лимита). Наличие самого права проверяется отдельно.
+    /// </summary>
+    Task<decimal?> GetLimitAsync(Guid userId, string permission, CancellationToken ct);
+}

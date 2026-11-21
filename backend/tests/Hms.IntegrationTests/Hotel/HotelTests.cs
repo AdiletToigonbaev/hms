@@ -97,14 +97,22 @@ public class HotelTests(PostgresFixture db)
     }
 
     [Fact]
-    public void HourlyPolicy_Defaults_MatchCustomerDecision()
+    public void Policies_Defaults_MatchCustomerDecision_NoPenalties()
     {
+        // Решение заказчика 2026-11-21: штрафов по умолчанию нет — владелец включит сам.
+        new Hms.Modules.Hotel.Domain.CancellationPolicy().Should().BeEquivalentTo(new
+        {
+            FreeCancelHoursBeforeCheckIn = 24,
+            LateCancelPenaltyNights = 0,
+            NoShowPenaltyNights = 0,
+            EarlyDeparturePenaltyNights = 0,
+        });
         new Hms.Modules.Hotel.Domain.HourlyPolicy().Should().BeEquivalentTo(new
         {
             FreeCancelMinutesBeforeStart = 120,
-            LateCancelPenaltyHours = 1,
+            LateCancelPenaltyHours = 0,
             NoShowAfterMinutes = 30,
-            NoShowPenaltyHours = 1,
+            NoShowPenaltyHours = 0,
             PendingHoldMinutes = 30,
             RefundUnusedOnEarlyDeparture = false,
         });

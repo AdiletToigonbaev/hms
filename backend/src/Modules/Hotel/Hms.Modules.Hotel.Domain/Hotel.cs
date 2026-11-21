@@ -61,8 +61,8 @@ public sealed class HotelInfo
 /// <summary>Правила отмены. Значения по умолчанию — docs/development/development-roadmap.md §6.1.</summary>
 public sealed record CancellationPolicy(
     int FreeCancelHoursBeforeCheckIn = 24,
-    int LateCancelPenaltyNights = 1,
-    int NoShowPenaltyNights = 1,
+    int LateCancelPenaltyNights = 0,
+    int NoShowPenaltyNights = 0,
     int EarlyDeparturePenaltyNights = 0);
 
 /// <summary>
@@ -77,9 +77,9 @@ public sealed record CancellationPolicy(
 /// <param name="RefundUnusedOnEarlyDeparture">Возвращать ли деньги за неиспользованные часы при досрочном выезде.</param>
 public sealed record HourlyPolicy(
     int FreeCancelMinutesBeforeStart = 120,
-    int LateCancelPenaltyHours = 1,
+    int LateCancelPenaltyHours = 0,
     int NoShowAfterMinutes = 30,
-    int NoShowPenaltyHours = 1,
+    int NoShowPenaltyHours = 0,
     int PendingHoldMinutes = 30,
     bool RefundUnusedOnEarlyDeparture = false);
 
@@ -142,6 +142,9 @@ public sealed class HotelSettings
     /// <summary>Сколько минут номер закрыт на уборку после выезда (почасовые и посуточные брони).</summary>
     public int CleaningBufferMinutes { get; private set; } = 30;
 
+    /// <summary>Уборка после посуточной брони (полная смена белья, санузел), мин. У категории номера можно задать своё.</summary>
+    public int CleaningBufferNightlyMinutes { get; private set; } = 30;
+
     public CancellationPolicy CancellationPolicy { get; private set; }
 
     public HourlyPolicy HourlyPolicy { get; private set; }
@@ -172,6 +175,7 @@ public sealed class HotelSettings
         CancellationPolicy = change.CancellationPolicy;
         HourlyPolicy = change.HourlyPolicy ?? HourlyPolicy;
         AutoNoShowEnabled = change.AutoNoShowEnabled ?? AutoNoShowEnabled;
+        CleaningBufferNightlyMinutes = change.CleaningBufferNightlyMinutes ?? CleaningBufferNightlyMinutes;
         Rules = string.IsNullOrWhiteSpace(change.Rules) ? null : change.Rules.Trim();
         UpdatedAt = now;
     }
@@ -194,4 +198,5 @@ public sealed record HotelSettingsChange(
     CancellationPolicy CancellationPolicy,
     string? Rules,
     HourlyPolicy? HourlyPolicy = null,
-    bool? AutoNoShowEnabled = null);
+    bool? AutoNoShowEnabled = null,
+    int? CleaningBufferNightlyMinutes = null);
