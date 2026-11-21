@@ -157,7 +157,7 @@ public class BookingDomainTests
     private static Booking NewBooking(bool confirm, StayPeriod? stay = null) => Booking.Create(
         Guid.NewGuid(), "26-000001", BookingSource.Admin,
         stay ?? new StayPeriod(BookingKind.Nightly, new DateOnly(2026, 12, 1), new DateOnly(2026, 12, 3), Start, Start.AddDays(2), Start.AddDays(2), 2),
-        2, 0, new GuestContact("Гость", "+996555123456", null), null, Guid.NewGuid(), Guid.NewGuid(),
+        2, 0, new GuestContact("Гость", "+996555123456", null), Guid.NewGuid(), null, Guid.NewGuid(), Guid.NewGuid(),
         new BookingPrice(6000m, 0m, 0m, 6000m, null, null, [], "{}"), confirm, Guid.NewGuid(), Now);
 
     [Theory]

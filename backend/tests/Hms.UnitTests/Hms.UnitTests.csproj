@@ -6,5 +6,6 @@
     <ProjectReference Include="..\..\src\Modules\Rooms\Hms.Modules.Rooms.Infrastructure\Hms.Modules.Rooms.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Pricing\Hms.Modules.Pricing.Infrastructure\Hms.Modules.Pricing.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Bookings\Hms.Modules.Bookings.Infrastructure\Hms.Modules.Bookings.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Guests\Hms.Modules.Guests.Infrastructure\Hms.Modules.Guests.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

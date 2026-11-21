@@ -96,7 +96,8 @@ public sealed record CreateBookingRequest(
     string? Kind = null,
     DateOnly? Date = null,
     int? StartHour = null,
-    int? Hours = null) : IStayInput;
+    int? Hours = null,
+    Guid? GuestId = null) : IStayInput;
 
 public sealed record UpdateBookingRequest(string GuestName, string? GuestPhone, string? GuestEmail, int Adults, int Children, string? Comment, uint? Version);
 
@@ -157,7 +158,8 @@ public sealed record BookingDto(
     string EndsAt,
     int? Hours,
     decimal ExtensionsAmount,
-    IReadOnlyList<BookingExtensionDto> Extensions);
+    IReadOnlyList<BookingExtensionDto> Extensions,
+    Guid? GuestId = null);
 
 public sealed record BookingListItemDto(
     Guid Id,
@@ -175,7 +177,8 @@ public sealed record BookingListItemDto(
     string Kind,
     string StartsAt,
     string EndsAt,
-    int? Hours);
+    int? Hours,
+    Guid? GuestId = null);
 
 public sealed record BookingQuery(string? Status, DateOnly? From, DateOnly? To, Guid? RoomId, string? Search, int? Page, int? PageSize, string? Kind = null);
 
@@ -321,11 +324,12 @@ public sealed class CreateBookingRequestValidator : AbstractValidator<CreateBook
         StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).WithMessage("Взрослых — от 1 до 20.");
         RuleFor(x => x.Children).InclusiveBetween(0, 20).WithMessage("Детей — от 0 до 20.");
-        RuleFor(x => x.GuestName).NotEmpty().WithMessage("Укажите имя гостя.").MaximumLength(200);
+        // Выбран гость из базы — контакт берётся из карточки; иначе нужен контакт нового гостя.
+        RuleFor(x => x.GuestName).NotEmpty().When(x => x.GuestId is null).WithMessage("Укажите имя гостя.").MaximumLength(200);
         RuleFor(x => x.GuestPhone).Must(v => PhoneNumber.Parse(v).IsSuccess).When(x => !string.IsNullOrWhiteSpace(x.GuestPhone))
-            .WithMessage("Некорректный номер телефона. Пример: +996 555 123 456.");
+            .WithMessage("Некорректный номер телефона. Пример: +996 XXX XXX XXX.");
         RuleFor(x => x.GuestEmail).EmailAddress().WithMessage("Некорректный email.").MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.GuestEmail));
-        RuleFor(x => x).Must(x => !string.IsNullOrWhiteSpace(x.GuestPhone) || !string.IsNullOrWhiteSpace(x.GuestEmail))
+        RuleFor(x => x).Must(x => x.GuestId is not null || !string.IsNullOrWhiteSpace(x.GuestPhone) || !string.IsNullOrWhiteSpace(x.GuestEmail))
             .OverridePropertyName("guestPhone").WithMessage("Укажите телефон или email гостя для связи.");
         RuleFor(x => x.Comment).MaximumLength(1000);
         RuleFor(x => x.PromoCode).MaximumLength(30);

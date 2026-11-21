@@ -8,7 +8,8 @@
 - Sprint 2 (настройки гостиницы, интеграции без адаптеров, номерной фонд, дизайн-основа) — завершён, в `main`.
 - **Sprint 3 (тарифы, скидки, услуги, подбор номеров, расчёт цены, бронирования администратором) — завершён**, в `main`.
 - Почасовые брони учтены в плане спринтов 5, 7, 8, 9, 10 (roadmap §2): календарь по часам, уборка после каждого выезда, сайт по часам, KPI по часам, напоминание за N мин.
-- Следующий: Sprint 4 (гости / CRM) — после подтверждения заказчика. Юридические вопросы решены: паспортные данные не храним, касса и налоги не нужны.
+- **Sprint 4 (гости / CRM) — завершён**, в `main`.
+- Следующий: Sprint 5 (календарь по часам, перенос броней, правила отмены и неявки) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -120,6 +121,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Гостиница одна: `HotelId` и настройки — только через `IHotelContext` (Hotel.Contracts); имена пользователей для показа — `IUserDirectory` (Identity.Contracts).
 - Чтение несколькими ролями — `.RequireAnyPermission(...)`; изменение — `.RequirePermission(...)`. Конкурентные правки — `version` (xmin) в запросе, конфликт → `409 concurrency.conflict`.
 - Файлы: загрузка только через `IFileService` (проверка сигнатуры, лимит); браузер получает их через маршрут Next.js `/media/{id}`, а не напрямую из API.
+- Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.
 - Модули читают номерной фонд через `IRoomDirectory` (Rooms.Contracts), цену — через `IPriceCalculator` (Pricing.Contracts); Rooms узнаёт о бронях через `IRoomBookingQueries` (Bookings.Contracts).

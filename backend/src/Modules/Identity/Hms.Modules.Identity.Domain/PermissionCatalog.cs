@@ -39,8 +39,7 @@ public static class PermissionCatalog
 
         new(P.GuestView, "Гости", "Просмотр базы гостей"),
         new(P.GuestManage, "Гости", "Создание и изменение гостей, согласия"),
-        new(P.GuestDocumentsView, "Гости", "Просмотр документов гостей"),
-        new(P.GuestDocumentsManage, "Гости", "Добавление и удаление документов гостей"),
+        new(P.GuestAnonymize, "Гости", "Удаление персональных данных гостя (обезличивание)", OwnerOnly: true),
 
         new(P.PaymentView, "Финансы", "Просмотр платежей"),
         new(P.PaymentRegister, "Финансы", "Ручная регистрация платежей"),

@@ -320,3 +320,14 @@
 - **Номера сегодня**: `RoomDto.occupiedUntil` (номер сейчас по брони — до этого времени гостиницы) и `nextBookingAt` (ближайшая бронь сегодня); `displayStatus = Reserved`, если свободный номер занят бронью сейчас или сегодня есть бронь. Каталог `GET /public/room-types` — `hourlyPriceFrom` (минимальная цена часа, null — по часам не продаётся).
 - **Скидки**: `minHours` (0–24) — условие для почасовых броней (`422 pricing.promo_min_hours`); `minNights` — только для посуточных.
 - **Список броней**: фильтр `kind=Hourly|Nightly`; экран по умолчанию открывается на брони сегодняшнего дня.
+
+## Реализовано в Sprint 4 — уточнения (Guests)
+- `GET /guests?search=&filter=&page=&pageSize=` (`guest.view`) — поиск по имени, email и цифрам телефона; `filter`: `withBookings`, `whatsApp`, `noContact`. Обезличенные гости в список не попадают.
+- `GET /guests/lookup?q=` (`guest.view` или `booking.create`) — до 8 гостей для выбора при брони.
+- `POST /guests`, `PUT /guests/{id}` (`guest.manage`) `{ fullName, phone?, whatsAppPhone?, email?, birthDate?, notes?, version? }`; нужен телефон или email; дубль → `409 guest.duplicate` с полем `guestId`; устаревшая версия → `409 concurrency.conflict`.
+- `GET /guests/{id}/bookings` (`guest.view` + `booking.view`); `GET /guests/{id}/consents` — история; `POST /guests/{id}/consents` `{ type: PersonalData|WhatsApp, granted, source: Portal|FrontDesk|Phone|WhatsApp|Written }` (`guest.manage`). Вместо `PUT /guests/{id}/consents` из плана — `POST` (запись в журнал, а не замена).
+- `POST /guests/{id}/anonymize` (`guest.anonymize`, только владелец) вместо `DELETE /guests/{id}`; ошибки `guest.anonymized`, `guest.has_account`.
+- `POST /bookings`: необязательный `guestId`; без него гость находится по телефону/email или создаётся. `BookingDto`/`BookingListItemDto` — поле `guestId`. Ошибки: `404 guest.not_found`, `422 guest.anonymized`.
+- Регистрация на сайте (`POST /auth/register`) создаёт карточку гостя (или привязывает существующую по email/телефону) и записывает согласия.
+- ProblemDetails может содержать доменные поля (например, `guestId`) — без персональных данных.
+- Права: `guest.documents.*` удалены (документы не храним), добавлено `guest.anonymize` (только владелец). `GET/POST /guests/{id}/documents`, `POST /guests/{id}/merge` — не реализуются (✖ / P1).

@@ -8,10 +8,13 @@ import { SelectField } from "@/components/forms/native-select";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/api/problem";
 import { nightsLabel } from "@/lib/bookings/status";
-import type { Booking, ExtensionQuote, ExtraService } from "@/lib/api/types";
+import type { Booking, ExtensionQuote, ExtraService, GuestLookup } from "@/lib/api/types";
+import { lookupGuestsAction } from "../guests/actions";
 import { formatHotelLocal, formatMoney } from "@/lib/format";
 import { cancelBookingAction, confirmBookingAction, createBookingAction, extendBookingAction, quoteExtensionAction, updateBookingAction } from "./actions";
 
@@ -31,7 +34,7 @@ export type StayParams =
  * повторная отправка (обрыв сети, двойной клик) не создаст вторую бронь. После отказа API ключ обновляется,
  * чтобы исправленный запрос не считался повтором.
  */
-export function CreateBookingForm({ stay, services }: { stay: StayParams; services: ExtraService[] }) {
+export function CreateBookingForm({ stay, services, initialGuest = null }: { stay: StayParams; services: ExtraService[]; initialGuest?: GuestLookup | null }) {
   const t = useTranslations("Bookings");
   const [state, action, pending] = useActionState<FormState, FormData>(createBookingAction, {});
   const [key, setKey] = useState(newKey);
@@ -42,6 +45,7 @@ export function CreateBookingForm({ stay, services }: { stay: StayParams; servic
   }, [state]);
   const e = state.fieldErrors ?? {};
   const v = state.values ?? {};
+  const [guest, setGuest] = useState<GuestLookup | null>(initialGuest);
   const stayError = e.checkIn ?? e.checkOut ?? e.date ?? e.startHour ?? e.hours ?? e.roomId ?? e.adults ?? e.children;
   return (
     <form action={action} className="grid gap-4" noValidate>
@@ -55,20 +59,43 @@ export function CreateBookingForm({ stay, services }: { stay: StayParams; servic
           {stayError}
         </p>
       )}
-      <Field name="guestName" label={t("guestName")} required autoComplete="off" defaultValue={v.guestName} error={e.guestName} />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field
-          name="guestPhone"
-          type="tel"
-          inputMode="tel"
-          label={t("guestPhone")}
-          placeholder="+996 555 123 456"
-          defaultValue={v.guestPhone}
-          error={e.guestPhone}
-          hint={t("contactHint")}
-        />
-        <Field name="guestEmail" type="email" label={t("guestEmail")} defaultValue={v.guestEmail} error={e.guestEmail} />
-      </div>
+      <fieldset className="grid gap-3">
+        <legend className="mb-1 text-sm font-medium">{t("guestSection")}</legend>
+        {guest ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2.5">
+            <input type="hidden" name="guestId" value={guest.id} />
+            <div className="grid text-sm">
+              <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{t("guestChosen")}</span>
+              <span className="font-medium">{guest.fullName}</span>
+              <span className="tabular text-muted-foreground">
+                {[guest.phone, guest.email].filter(Boolean).join(" · ")} · {t("guestBookingsCount", { n: guest.bookingsCount })}
+              </span>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={() => setGuest(null)}>
+              {t("guestChange")}
+            </Button>
+          </div>
+        ) : (
+          <>
+            <GuestSearch onChoose={setGuest} />
+            <Field name="guestName" label={t("guestName")} required autoComplete="off" defaultValue={v.guestName} error={e.guestName} />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field
+                name="guestPhone"
+                type="tel"
+                inputMode="tel"
+                label={t("guestPhone")}
+                placeholder="+996 XXX XXX XXX"
+                defaultValue={v.guestPhone}
+                error={e.guestPhone}
+                hint={t("contactHint")}
+              />
+              <Field name="guestEmail" type="email" label={t("guestEmail")} defaultValue={v.guestEmail} error={e.guestEmail} />
+            </div>
+            <p className="text-xs text-muted-foreground">{t("guestNewHint")}</p>
+          </>
+        )}
+      </fieldset>
       <div className="grid gap-1.5">
         <Label htmlFor="comment">{t("comment")}</Label>
         <textarea id="comment" name="comment" className={textarea} maxLength={1000} defaultValue={v.comment} aria-describedby="comment-hint" />
@@ -303,3 +330,63 @@ export function ExtendBookingForm({ booking: b, maxUnits }: { booking: Booking; 
   );
 }
 
+
+/**
+ * Поиск гостя по базе при брони: имя, телефон или email. Запрос — через серверное действие (права проверяет API),
+ * с задержкой, чтобы не спрашивать сервер на каждую букву.
+ */
+function GuestSearch({ onChoose }: { onChoose: (guest: GuestLookup) => void }) {
+  const t = useTranslations("Bookings");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GuestLookup[] | null>(null);
+  const [searching, startSearch] = useTransition();
+  const timer = useRef<number | undefined>(undefined);
+
+  function onChange(value: string) {
+    setQuery(value);
+    window.clearTimeout(timer.current);
+    if (value.trim().length < 2) {
+      setResults(null);
+      return;
+    }
+    timer.current = window.setTimeout(() => startSearch(async () => setResults(await lookupGuestsAction(value))), 300);
+  }
+
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor="guest-search">{t("guestSearch")}</Label>
+      <Input
+        id="guest-search"
+        type="search"
+        value={query}
+        onChange={(ev) => onChange(ev.target.value)}
+        onKeyDown={(ev) => ev.key === "Enter" && ev.preventDefault()}
+        placeholder={t("guestSearchPlaceholder")}
+        autoComplete="off"
+        aria-controls="guest-results"
+      />
+      <div id="guest-results" aria-live="polite">
+        {searching && <p className="text-xs text-muted-foreground">{t("guestSearching")}</p>}
+        {!searching && results && results.length === 0 && <p className="text-xs text-muted-foreground">{t("guestNoMatches")}</p>}
+        {!searching && results && results.length > 0 && (
+          <ul className="grid gap-1 rounded-xl border bg-card p-1">
+            {results.map((g) => (
+              <li key={g.id}>
+                <button
+                  type="button"
+                  onClick={() => onChoose(g)}
+                  className="grid w-full rounded-lg px-3 py-2 text-left text-sm transition hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  <span className="font-medium">{g.fullName}</span>
+                  <span className="tabular text-xs text-muted-foreground">
+                    {[g.phone, g.email].filter(Boolean).join(" · ")} · {t("guestBookingsCount", { n: g.bookingsCount })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}

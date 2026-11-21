@@ -1,4 +1,5 @@
 using Hms.Modules.Audit.Contracts;
+using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Application;
 using Hms.Modules.Identity.Contracts;
@@ -21,6 +22,7 @@ internal sealed class AuthService(
     IEmailOutbox emails,
     IAuditTrail audit,
     IHotelContext hotel,
+    IGuestRegistration guestRegistration,
     TimeProvider time,
     IOptions<IdentityModuleOptions> options) : IAuthService
 {
@@ -70,7 +72,13 @@ internal sealed class AuthService(
 
             await users.AddToRoleAsync(user, Roles.Guest);
 
-            // Согласия фиксируются в аудите с датой, IP и источником; в Sprint 4 переносятся в GuestConsents.
+            // Карточка гостя (или существующая, найденная по email/телефону) и согласия — в той же транзакции.
+            await guestRegistration.RegisterPortalGuestAsync(
+                user.Id,
+                new GuestContact(user.FullName, phone, email),
+                request.AcceptPersonalData,
+                request.AcceptWhatsApp,
+                ct);
             audit.Record(new AuditEntry(
                 "auth.registered",
                 "User",

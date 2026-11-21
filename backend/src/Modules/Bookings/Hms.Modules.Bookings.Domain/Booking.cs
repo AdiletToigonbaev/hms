@@ -117,7 +117,7 @@ public sealed class Booking
 
     public string? GuestEmail { get; private set; }
 
-    /// <summary>Карточка гостя (появится в Sprint 4).</summary>
+    /// <summary>Карточка гостя в модуле Guests. Поля Guest* — снимок контакта на момент брони.</summary>
     public Guid? GuestId { get; private set; }
 
     public string? Comment { get; private set; }
@@ -172,6 +172,7 @@ public sealed class Booking
         int adults,
         int children,
         GuestContact guest,
+        Guid? guestId,
         string? comment,
         Guid roomId,
         Guid roomTypeId,
@@ -201,6 +202,7 @@ public sealed class Booking
             GuestName = guest.FullName.Trim(),
             GuestPhone = guest.Phone,
             GuestEmail = guest.Email,
+            GuestId = guestId,
             Comment = string.IsNullOrWhiteSpace(comment) ? null : comment.Trim(),
             DiscountId = price.DiscountId,
             PromoCode = price.PromoCode,
