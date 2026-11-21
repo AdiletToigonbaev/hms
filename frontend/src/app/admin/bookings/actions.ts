@@ -202,3 +202,40 @@ export async function rescheduleBookingAction(id: string, input: RescheduleInput
   revalidatePath("/admin/bookings");
   return { ok: true, data: result.data };
 }
+
+/** Заселение: API проверяет окно заселения и готовность номера; повтор с тем же ключом не заселит дважды. */
+export async function checkInAction(_: FormState, form: FormData): Promise<FormState> {
+  const id = uuid.parse(form.get("id"));
+  const key = idempotencyKey.safeParse(form.get("idempotencyKey"));
+  if (!key.success) return { ok: false, error: "idempotency.key_required" };
+  const result = await api<Booking>(`/bookings/${id}/check-in`, { method: "POST", headers: { "Idempotency-Key": key.data }, body: {} });
+  if (!result.ok) {
+    authGuard(result.status);
+    return toFormState(result.problem);
+  }
+  revalidatePath(`/admin/bookings/${id}`);
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Выселение: номер уходит на уборку, создаётся задача уборки. С долгом — только с явной отметкой. */
+export async function checkOutAction(_: FormState, form: FormData): Promise<FormState> {
+  const id = uuid.parse(form.get("id"));
+  const key = idempotencyKey.safeParse(form.get("idempotencyKey"));
+  if (!key.success) return { ok: false, error: "idempotency.key_required" };
+  const result = await api<Booking>(`/bookings/${id}/check-out`, {
+    method: "POST",
+    headers: { "Idempotency-Key": key.data },
+    body: { allowDebt: checkbox(form, "allowDebt") },
+  });
+  if (!result.ok) {
+    authGuard(result.status);
+    return toFormState(result.problem);
+  }
+  revalidatePath(`/admin/bookings/${id}`);
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin/housekeeping");
+  revalidatePath("/admin");
+  return { ok: true };
+}

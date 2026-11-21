@@ -7,6 +7,8 @@ import {
   CalendarRange,
   ClipboardList,
   DoorOpen,
+  History,
+  Wrench,
   LayoutDashboard,
   Tags,
   UserRound,
@@ -41,6 +43,8 @@ const icons = {
   guests: UserRound,
   account: ClipboardList,
   hotel: Building2,
+  history: History,
+  maintenance: Wrench,
 } satisfies Record<string, LucideIcon>;
 
 export type NavIcon = keyof typeof icons;

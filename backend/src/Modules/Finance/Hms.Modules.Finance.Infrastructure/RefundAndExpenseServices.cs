@@ -392,6 +392,14 @@ internal sealed class ExpenseService(
 /// <summary>Суммы оплат по гостям для модуля Guests (карточка гостя).</summary>
 internal sealed class PaymentQueries(DbContext db, IHotelContext hotel) : IPaymentQueries
 {
+    public async Task<decimal> ReceivedForBookingAsync(Guid bookingId, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await db.Set<Payment>().AsNoTracking()
+            .Where(p => p.HotelId == hotelId && p.BookingId == bookingId && FinanceReads.ReceivedStatuses.Contains(p.Status))
+            .SumAsync(p => (decimal?)(p.Amount - p.RefundedAmount), ct) ?? 0m;
+    }
+
     public async Task<IReadOnlyDictionary<Guid, decimal>> PaidByGuestsAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct)
     {
         if (guestIds.Count == 0)

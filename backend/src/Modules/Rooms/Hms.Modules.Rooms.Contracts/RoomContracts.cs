@@ -69,3 +69,16 @@ public interface IRoomDirectory
 
     Task<IReadOnlyDictionary<Guid, RoomInfo>> GetManyAsync(IEnumerable<Guid> roomIds, CancellationToken ct);
 }
+
+/// <summary>
+/// Смена статуса номера другими модулями (заселение, выселение, уборка) — в той же единице работы, что и их изменения:
+/// запись в историю статусов и аудит добавляются в контекст, сохраняет вызывающий модуль.
+/// </summary>
+public interface IRoomStatusChanger
+{
+    /// <summary>Сменить статус по правилам переходов для источника. Ошибка — если переход запрещён.</summary>
+    Task<Hms.SharedKernel.Result> ChangeAsync(Guid roomId, RoomStatus target, RoomStatusSource source, string? reason, Guid? bookingId, CancellationToken ct);
+
+    /// <summary>Текущий статус номера (null — номера нет).</summary>
+    Task<RoomStatus?> GetStatusAsync(Guid roomId, CancellationToken ct);
+}

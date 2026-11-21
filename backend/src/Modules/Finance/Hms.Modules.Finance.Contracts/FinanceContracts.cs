@@ -15,4 +15,7 @@ public interface IPaymentQueries
 {
     /// <summary>Чистые поступления по гостям: оплаты − сторно − выплаченные возвраты.</summary>
     Task<IReadOnlyDictionary<Guid, decimal>> PaidByGuestsAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct);
+
+    /// <summary>Получено по брони: оплаты − аннулированные − выплаченные возвраты.</summary>
+    Task<decimal> ReceivedForBookingAsync(Guid bookingId, CancellationToken ct);
 }

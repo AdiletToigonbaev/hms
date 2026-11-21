@@ -15,6 +15,8 @@
     <ProjectReference Include="..\..\Pricing\Hms.Modules.Pricing.Contracts\Hms.Modules.Pricing.Contracts.csproj" />
     <ProjectReference Include="..\..\Rooms\Hms.Modules.Rooms.Contracts\Hms.Modules.Rooms.Contracts.csproj" />
     <ProjectReference Include="..\..\Guests\Hms.Modules.Guests.Contracts\Hms.Modules.Guests.Contracts.csproj" />
+    <ProjectReference Include="..\..\Finance\Hms.Modules.Finance.Contracts\Hms.Modules.Finance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Housekeeping\Hms.Modules.Housekeeping.Contracts\Hms.Modules.Housekeeping.Contracts.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hms.UnitTests" />
