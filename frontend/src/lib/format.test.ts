@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatHotelDateTime, formatMoney, formatStayDate } from "./format";
+import { formatHotelDateTime, formatHotelLocal, formatHotelRelative, formatMoney, formatStayDate } from "./format";
 
 // Intl использует неразрывные пробелы — нормализуем для сравнения
 const plain = (s: string) => s.replace(/[  ]/g, " ");
@@ -40,5 +40,14 @@ describe("hotel local time", () => {
     expect(formatHotelLocal("2026-12-04T22:00")).toBe("04.12.2026 22:00");
     expect(formatHotelTime("2026-12-04T09:00")).toBe("09:00");
     expect(() => formatHotelLocal("04.12.2026")).toThrow(RangeError);
+  });
+});
+
+describe("formatHotelRelative", () => {
+  it("сегодня, завтра, вчера и другие дни (в том числе через границу месяца)", () => {
+    expect(formatHotelRelative("2026-11-22T08:00", "2026-11-22")).toBe("сегодня 08:00");
+    expect(formatHotelRelative("2026-12-01T10:00", "2026-11-30")).toBe("завтра 10:00");
+    expect(formatHotelRelative("2026-11-21T23:00", "2026-11-22")).toBe("вчера 23:00");
+    expect(formatHotelRelative("2026-11-25T12:00", "2026-11-22")).toBe(formatHotelLocal("2026-11-25T12:00"));
   });
 });

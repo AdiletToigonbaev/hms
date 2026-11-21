@@ -14,7 +14,7 @@ export function LogoutButton() {
   const [asking, setAsking] = useState(false);
   return (
     <form ref={formRef} action={logoutAction}>
-      <Button type="button" variant="ghost" size="icon" aria-label={t("logout")} title={t("logout")} onClick={() => setAsking(true)}>
+      <Button type="button" variant="ghost" size="icon" className="size-10 md:size-8" aria-label={t("logout")} title={t("logout")} onClick={() => setAsking(true)}>
         <LogOut aria-hidden />
       </Button>
       <ConfirmDialog
