@@ -471,7 +471,10 @@ stmts.push(
 );
 // Будущие брони оформлены в последние дни (а не все в момент запуска скрипта).
 for (const f of futures) {
-  const created = Math.min(localNowMin - 20, f.start - 60 - Math.floor(rnd() * 6 * MIN_DAY));
+  // lpad обрезал бы номер с сотой брони за день — поэтому выше CASE. Создание — за 1–6 дней до начала, но не позже «сейчас»;
+  // ближайшие брони оформлены в последние двое суток, а не все в последние минуты.
+  let created = f.start - 60 - Math.floor(rnd() * 6 * MIN_DAY);
+  if (created > localNowMin - 20) created = localNowMin - 20 - Math.floor(rnd() * 2 * MIN_DAY);
   stmts.push(
     `UPDATE bookings.bookings SET created_at = ${sqlLocal(created)}, confirmed_at = CASE WHEN confirmed_at IS NULL THEN NULL ELSE ${sqlLocal(created)} END WHERE id = '${f.id}';`,
     `UPDATE bookings.booking_history SET changed_at = ${sqlLocal(created)} WHERE booking_id = '${f.id}' AND event_type = 'created';`,
@@ -485,7 +488,7 @@ stmts.push(
             row_number() OVER (PARTITION BY hotel_id, (created_at AT TIME ZONE 'Asia/Bishkek')::date ORDER BY created_at, id) AS rn
      FROM bookings.bookings)
    UPDATE bookings.bookings b
-   SET number = CASE WHEN n.kind = 'Hourly' THEN 'Ч' ELSE 'С' END || '-' || to_char(n.d, 'DDMM') || '-' || lpad(n.rn::text, 2, '0'),
+   SET number = CASE WHEN n.kind = 'Hourly' THEN 'Ч' ELSE 'С' END || '-' || to_char(n.d, 'DDMM') || '-' || CASE WHEN n.rn < 100 THEN lpad(n.rn::text, 2, '0') ELSE n.rn::text END,
        number_year = EXTRACT(YEAR FROM n.d)::int
    FROM n WHERE b.id = n.id;`,
   `TRUNCATE bookings.booking_number_counters;`,
@@ -502,7 +505,7 @@ const summary = sql(
 );
 console.log(summary);
 console.log(`Готово: броней ${created}${failed ? `, пропущено ${failed}` : ""}, гостей ${guests.length}, номеров ${rooms.length}.`);
-console.log("Сотрудники (первый вход — смена пароля): admin@hms.local / admin-dev-password, admin2@hms.local / admin-dev-password, maid@hms.local / maid-dev-password");
+console.log("Сотрудники (первый вход — смена пароля): admin@hms.local / admin-dev-password, admin2@hms.local / admin-dev-password, maid@hms.local, maid2@hms.local / maid-dev-password");
 
 // ---------- Финансы: оплаты, долги, возвраты, сторно, расходы ----------
 

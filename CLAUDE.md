@@ -100,7 +100,7 @@ node deploy/dev-data/seed.mjs                                  # ЛОКАЛЬН�
 ```
 Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up`, `/health/ready` = Healthy и `npm run test:e2e`.
 Dev-владелец (только локально): `owner@hms.local` / `owner-dev-password` → при первом входе смена пароля. Письма — http://localhost:8025.
-E2E меняют пароль dev-владельца на `owner-new-password-1` (первый вход на чистой БД) — предупреждать пользователя, если E2E запускались на его стеке. После E2E тестовые данные можно пересоздать: `node deploy/dev-data/seed.mjs` (владелец, гостиница и настройки сохраняются; сотрудники admin@hms.local / admin-dev-password, maid@hms.local / maid-dev-password).
+E2E меняют пароль dev-владельца на `owner-new-password-1` (первый вход на чистой БД) — предупреждать пользователя, если E2E запускались на его стеке. После E2E тестовые данные можно пересоздать: `node deploy/dev-data/seed.mjs` (владелец, гостиница и настройки сохраняются; сотрудники admin@hms.local / admin-dev-password, maid@hms.local и maid2@hms.local / maid-dev-password).
 
 ## Дизайн
 Тёплый «гостиничный» стиль — `docs/design/design-direction.md` (палитра, шрифты Lora + Manrope, статусные цвета). Название гостиницы не зашивать в интерфейс — брать из настроек отеля; логотип — один компонент `Brand`.
