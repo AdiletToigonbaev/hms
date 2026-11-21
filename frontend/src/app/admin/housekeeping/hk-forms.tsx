@@ -12,7 +12,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import type { FormState } from "@/lib/api/problem";
 import type { ChecklistTemplate, HousekeepingStaff, HousekeepingTask, HousekeepingTaskStatus, MaintenanceRequest } from "@/lib/api/types";
-import { formatHotelLocal, formatHotelTime } from "@/lib/format";
+import { hotelTimeZone } from "@/i18n/config";
+import { hotelToday } from "@/lib/bookings/status";
+import { formatHotelRelative } from "@/lib/format";
 import {
   maintenanceSeverities,
   maintenanceSeverityLabel,
@@ -35,7 +37,7 @@ import {
 } from "./actions";
 
 const textarea =
-  "min-h-20 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive";
+  "min-h-20 w-full rounded-lg border border-input bg-card px-2.5 py-2 text-base outline-none md:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive";
 
 function newKey() {
   return crypto.randomUUID().replace(/-/g, "");
@@ -48,18 +50,21 @@ export function TaskStatusBadge({ status }: { status: HousekeepingTaskStatus }) 
 /** Срок, просрочка и ближайший заезд — то, по чему уборщик и администратор выбирают очередность. */
 export function TaskTiming({ task }: { task: HousekeepingTask }) {
   const t = useTranslations("Housekeeping");
+  const today = hotelToday(hotelTimeZone);
+  // Срок сегодня — просто время («до 02:50»), иначе «до завтра 09:00».
+  const due = (local: string) => (local.startsWith(today) ? local.slice(11, 16) : formatHotelRelative(local, today));
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
       {task.dueAt && (
         <span className={cn("inline-flex items-center gap-1", task.isOverdue && "font-medium text-destructive")}>
           <Clock className="size-3.5" aria-hidden />
-          {task.isOverdue ? t("overdue", { time: formatHotelTime(task.dueAt) }) : t("dueAt", { time: formatHotelTime(task.dueAt) })}
+          {task.isOverdue ? t("overdue", { time: due(task.dueAt) }) : t("dueAt", { time: due(task.dueAt) })}
         </span>
       )}
       {task.nextArrivalAt && (
         <span className="inline-flex items-center gap-1">
           <LogIn className="size-3.5" aria-hidden />
-          {t("nextArrival", { time: formatHotelLocal(task.nextArrivalAt) })}
+          {t("nextArrival", { time: formatHotelRelative(task.nextArrivalAt, today) })}
         </span>
       )}
     </div>
@@ -95,7 +100,7 @@ export function NewTaskForm({ rooms }: { rooms: { id: string; number: string }[]
       </SelectField>
       <div className="grid gap-1.5">
         <Label htmlFor="notes">{t("notes")}</Label>
-        <input id="notes" name="notes" maxLength={500} placeholder={t("notesPlaceholder")} className="h-9 rounded-lg border border-input bg-card px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" />
+        <input id="notes" name="notes" maxLength={500} placeholder={t("notesPlaceholder")} className="h-9 rounded-lg border border-input bg-card px-2.5 text-base outline-none md:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50" />
       </div>
       <SubmitButton pending={pending}>{t("createTask")}</SubmitButton>
     </form>
@@ -258,7 +263,7 @@ export function MaintenanceUpdateForm({ request }: { request: MaintenanceRequest
           placeholder={t("note")}
           aria-label={t("note")}
           aria-invalid={state.fieldErrors?.note ? true : undefined}
-          className="h-8 min-w-40 flex-1 rounded-lg border border-input bg-card px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
+          className="h-8 min-w-40 flex-1 rounded-lg border border-input bg-card px-2.5 text-base outline-none md:text-sm focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 aria-invalid:border-destructive"
         />
         <SubmitButton pending={pending} size="sm">
           {t("save")}
@@ -309,7 +314,7 @@ export function MaintenanceReportForm({ roomId, taskId, rooms, onDone }: { roomI
           ))}
         </SelectField>
       )}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid gap-3 min-[420px]:grid-cols-2">
         <SelectField name="type" label={t("type")} defaultValue="Defect" error={e.type}>
           {(["Defect", "Damage"] as const).map((x) => (
             <option key={x} value={x}>
@@ -326,7 +331,7 @@ export function MaintenanceReportForm({ roomId, taskId, rooms, onDone }: { roomI
         </SelectField>
       </div>
       <div className="grid gap-1.5">
-        <Label htmlFor={`description-${taskId ?? "new"}`}>{t("description")}</Label>
+        <Label htmlFor={`description-${taskId ?? "new"}`}>{t("descriptionLabel")}</Label>
         <textarea
           id={`description-${taskId ?? "new"}`}
           name="description"
@@ -338,7 +343,7 @@ export function MaintenanceReportForm({ roomId, taskId, rooms, onDone }: { roomI
         {e.description && <p className="text-xs text-destructive">{e.description}</p>}
       </div>
       <div>
-        <SubmitButton pending={pending} variant="outline">
+        <SubmitButton pending={pending} variant="outline" className="h-11 w-full sm:w-auto">
           <Wrench aria-hidden />
           {t("report")}
         </SubmitButton>
@@ -452,7 +457,7 @@ export function MaidTaskCard({ task: initial }: { task: HousekeepingTask }) {
         {task.allowedActions.includes("complete") && (
           <>
             {done < task.checklist.length && <p className="text-center text-xs text-muted-foreground">{t("completeHint")}</p>}
-            <StepButton task={task} step="complete" label={t("complete")} />
+            <StepButton key={done < task.checklist.length ? "waiting" : "ready"} task={task} step="complete" label={t("complete")} />
           </>
         )}
         {task.status === "Completed" && <p className="text-center text-sm text-muted-foreground">{t("waitingInspection")}</p>}
@@ -463,12 +468,12 @@ export function MaidTaskCard({ task: initial }: { task: HousekeepingTask }) {
           {reporting ? (
             <div className="grid gap-2">
               <MaintenanceReportForm roomId={task.roomId} taskId={task.id} />
-              <Button type="button" variant="ghost" size="sm" className="justify-self-start" onClick={() => setReporting(false)}>
+              <Button type="button" variant="ghost" className="h-11 w-full" onClick={() => setReporting(false)}>
                 {t("hide")}
               </Button>
             </div>
           ) : (
-            <Button type="button" variant="ghost" className="w-full text-muted-foreground" onClick={() => setReporting(true)}>
+            <Button type="button" variant="ghost" className="h-11 w-full text-muted-foreground" onClick={() => setReporting(true)}>
               <Wrench aria-hidden />
               {t("reportProblem")}
             </Button>

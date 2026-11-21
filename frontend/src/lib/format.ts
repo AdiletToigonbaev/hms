@@ -71,3 +71,20 @@ export function formatHotelDateTime(isoInstant: string): string {
   }
   return dateTimeFormatter.format(date);
 }
+
+/**
+ * Время гостиницы относительно сегодняшнего дня: «сегодня 08:00», «завтра 10:00», «вчера 23:00»,
+ * иначе — дата и время. `today` — дата гостиницы YYYY-MM-DD (hotelToday).
+ */
+export function formatHotelRelative(local: string, today: string): string {
+  const day = local.slice(0, 10);
+  const shift = (days: number) => {
+    const d = new Date(`${today}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+  if (day === today) return `сегодня ${formatHotelTime(local)}`;
+  if (day === shift(1)) return `завтра ${formatHotelTime(local)}`;
+  if (day === shift(-1)) return `вчера ${formatHotelTime(local)}`;
+  return formatHotelLocal(local);
+}
