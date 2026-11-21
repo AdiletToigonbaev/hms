@@ -526,3 +526,93 @@ public interface IFrontDeskService
 
     Task<Result<BookingDto>> CheckOutAsync(Guid bookingId, CheckOutRequest request, CancellationToken ct);
 }
+
+// ---- Кабинет гостя: свои брони (Sprint 8) ----
+
+/// <summary>
+/// Бронь в кабинете гостя: без служебных данных (комментарии персонала, кто создал, номер комнаты до заселения).
+/// Время — по гостинице «yyyy-MM-ddTHH:mm».
+/// </summary>
+/// <param name="RoomNumber">Номер комнаты — только после заселения (до этого номер может смениться).</param>
+/// <param name="AllowedActions">cancel, extend.</param>
+public sealed record MyBookingDto(
+    Guid Id,
+    string Number,
+    string Status,
+    string Kind,
+    string StartsAt,
+    string EndsAt,
+    int? Hours,
+    int Nights,
+    Guid RoomTypeId,
+    string RoomTypeName,
+    string? RoomNumber,
+    int Adults,
+    int Children,
+    PriceQuote? Price,
+    IReadOnlyList<MyBookingExtensionDto> Extensions,
+    decimal TotalAmount,
+    decimal PenaltyAmount,
+    string? PenaltyKind,
+    decimal EarlyDepartureCredit,
+    string? HoldUntil,
+    string? CancelReason,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<string> AllowedActions,
+    uint Version);
+
+public sealed record MyBookingExtensionDto(string Kind, int Quantity, string NewEndsAt, decimal Amount);
+
+/// <summary>Бронь гостя на сайте: категория (номер подберёт система), время, гости. Контакт — из профиля.</summary>
+public sealed record GuestCreateBookingRequest(
+    Guid RoomTypeId,
+    string? Kind,
+    DateOnly? CheckIn,
+    DateOnly? CheckOut,
+    DateOnly? Date,
+    int? StartHour,
+    int? Hours,
+    int Adults,
+    int Children,
+    string? PromoCode,
+    IReadOnlyList<ServiceLine>? Services,
+    string? Comment) : IStayInput;
+
+public sealed record GuestCancelRequest(string? Reason);
+
+/// <param name="Scope">current — предстоящие и текущие; history — завершённые, отменённые, истёкшие.</param>
+public sealed record GuestBookingQuery(string? Scope);
+
+public interface IGuestBookingService
+{
+    Task<Result<MyBookingDto>> CreateAsync(GuestCreateBookingRequest request, CancellationToken ct);
+
+    Task<IReadOnlyList<MyBookingDto>> ListAsync(GuestBookingQuery query, CancellationToken ct);
+
+    Task<Result<MyBookingDto>> GetAsync(Guid id, CancellationToken ct);
+
+    Task<Result<CancellationQuoteDto>> QuoteCancellationAsync(Guid id, CancellationToken ct);
+
+    Task<Result<MyBookingDto>> CancelAsync(Guid id, GuestCancelRequest request, CancellationToken ct);
+
+    Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct);
+
+    Task<Result<MyBookingDto>> ExtendAsync(Guid id, ExtendBookingRequest request, CancellationToken ct);
+}
+
+public sealed class GuestCreateBookingRequestValidator : AbstractValidator<GuestCreateBookingRequest>
+{
+    public GuestCreateBookingRequestValidator()
+    {
+        RuleFor(x => x.RoomTypeId).NotEmpty().WithMessage("Выберите категорию номера.");
+        RuleFor(x => x.Adults).InclusiveBetween(1, 10).WithMessage("Взрослых — от 1 до 10.");
+        RuleFor(x => x.Children).InclusiveBetween(0, 10).WithMessage("Детей — от 0 до 10.");
+        RuleFor(x => x.Comment).MaximumLength(500).WithMessage("Комментарий — не длиннее 500 символов.");
+        RuleFor(x => x.PromoCode).MaximumLength(50);
+    }
+}
+
+public sealed class GuestCancelRequestValidator : AbstractValidator<GuestCancelRequest>
+{
+    public GuestCancelRequestValidator() => RuleFor(x => x.Reason).MaximumLength(500).WithMessage("Причина — не длиннее 500 символов.");
+}

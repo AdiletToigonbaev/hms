@@ -91,6 +91,10 @@ public static class IdentityEndpoints
                 (await service.UpdateMeAsync(UserId(user), request, ct)).ToHttpResult())
             .WithValidation<UpdateMeRequest>();
 
+        me.MapDelete("/", async ([Microsoft.AspNetCore.Mvc.FromBody] DeleteAccountRequest request, ClaimsPrincipal user, IAccountService service, CancellationToken ct) =>
+                (await service.DeleteMeAsync(UserId(user), request, ct)).ToHttpResult())
+            .RequireRateLimiting(AuthStrictRateLimit);
+
         me.MapPost("/change-password", async (ChangePasswordRequest request, ClaimsPrincipal user, IAccountService service, CancellationToken ct) =>
                 (await service.ChangePasswordAsync(UserId(user), request, ct)).ToHttpResult())
             .WithValidation<ChangePasswordRequest>()

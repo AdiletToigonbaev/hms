@@ -206,9 +206,12 @@ internal sealed class BookingService(
         return booking is null ? BookingErrors.NotFound : await ToDtoAsync(booking, ct);
     }
 
-    public Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, CancellationToken ct) => CreateAsync(r, retryOnDeadlock: true, ct);
+    public Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, CancellationToken ct) => CreateAsync(r, BookingSource.Admin, retryOnDeadlock: true, ct);
 
-    private async Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, bool retryOnDeadlock, CancellationToken ct)
+    /// <summary>Бронь с сайта (кабинет гостя): источник Web, подтверждение — по настройке гостиницы.</summary>
+    internal Task<Result<BookingDto>> CreateWebAsync(CreateBookingRequest r, CancellationToken ct) => CreateAsync(r, BookingSource.Web, retryOnDeadlock: true, ct);
+
+    private async Task<Result<BookingDto>> CreateAsync(CreateBookingRequest r, BookingSource source, bool retryOnDeadlock, CancellationToken ct)
     {
         var room = await rooms.GetAsync(r.RoomId, ct);
         if (room is null)
@@ -267,7 +270,7 @@ internal sealed class BookingService(
 
         // В брони — снимок контакта на момент брони; карточка гостя (GuestId) живёт в модуле Guests.
         var contact = guest.Value.Contact;
-        var booking = Booking.Create(hotelId, number, BookingSource.Admin, stay, r.Adults, r.Children,
+        var booking = Booking.Create(hotelId, number, source, stay, r.Adults, r.Children,
             contact, guest.Value.GuestId, r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now,
             BookingRules.HoldUntil(settings, stay.Kind, stay.StartsAt, now), numberYear);
         db.Set<Booking>().Add(booking);
@@ -294,7 +297,7 @@ internal sealed class BookingService(
                 return BookingErrors.RoomUnavailable;
             }
 
-            return await CreateAsync(r, retryOnDeadlock: false, ct);
+            return await CreateAsync(r, source, retryOnDeadlock: false, ct);
         }
 
         return await ToDtoAsync(booking, ct);

@@ -3,6 +3,7 @@ import { Lora, Manrope } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { siteUrl } from "@/lib/site/url";
 import { cn } from "@/lib/utils";
 import "./globals.css";
 
@@ -13,6 +14,7 @@ const manrope = Manrope({ subsets: ["latin", "cyrillic"], variable: "--font-manr
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("App");
   return {
+    metadataBase: siteUrl(),
     title: { default: t("fullName"), template: `%s · ${t("name")}` },
     description: t("description"),
   };

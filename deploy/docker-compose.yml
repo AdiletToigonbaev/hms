@@ -69,9 +69,14 @@ services:
         condition: service_completed_successfully
 
   web:
-    build: ../frontend
+    build:
+      context: ../frontend
+      args:
+        PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
     environment:
       API_INTERNAL_URL: http://api:8080
+      # Адрес сайта для sitemap, canonical и Open Graph (тот же, что в ссылках из писем).
+      PUBLIC_WEB_URL: ${PUBLIC_WEB_URL:-http://localhost:3000}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:

@@ -88,6 +88,12 @@ export interface PublicHotelInfo {
   freeCancelHoursBeforeCheckIn: number;
   hourlyMinHours: number;
   hourlyMaxHours: number;
+  /** Почасовая бронь: бесплатная отмена не позже чем за столько минут до начала. */
+  hourlyFreeCancelMinutes: number;
+  /** Брони с сайта подтверждаются сразу (иначе — администратором). */
+  autoConfirmWebBookings: boolean;
+  /** Включены ли штрафы за позднюю отмену (по умолчанию — нет). */
+  hasLatePenalties: boolean;
 }
 
 export interface Hotel {
@@ -827,4 +833,110 @@ export interface MaintenanceRequest {
   resolutionNote: string | null;
   roomStatus: RoomStatus;
   version: number;
+}
+
+// ---- Публичный сайт (Sprint 8) ----
+
+/** Категория в каталоге сайта: только то, что видит гость (номера комнат и занятость не раскрываются). */
+export interface PublicRoomType {
+  id: string;
+  name: string;
+  description: string | null;
+  capacity: number;
+  bedsCount: number;
+  bedType: string;
+  /** Цена ночи «от». */
+  priceFrom: number;
+  /** Цена часа «от»; null — по часам категория не продаётся. */
+  hourlyPriceFrom: number | null;
+  amenities: Amenity[];
+  photos: Photo[];
+}
+
+/** Свободные категории на запрошенное время: количество и цена «от» за весь срок. */
+export interface PublicAvailability {
+  roomTypeId: string;
+  roomTypeName: string;
+  capacity: number;
+  availableCount: number;
+  nights: number;
+  totalFrom: number;
+  kind: "Hourly" | "Nightly";
+  units: number;
+}
+
+// ---- Кабинет гостя (Sprint 8) ----
+
+export interface MyBooking {
+  id: string;
+  number: string;
+  status: BookingStatus;
+  kind: "Hourly" | "Nightly";
+  startsAt: string;
+  endsAt: string;
+  hours: number | null;
+  nights: number;
+  roomTypeId: string;
+  roomTypeName: string;
+  /** Номер комнаты — после заселения. */
+  roomNumber: string | null;
+  adults: number;
+  children: number;
+  price: PriceQuote | null;
+  extensions: { kind: "Hour" | "Night"; quantity: number; newEndsAt: string; amount: number }[];
+  totalAmount: number;
+  penaltyAmount: number;
+  penaltyKind: "LateCancel" | "NoShow" | null;
+  earlyDepartureCredit: number;
+  holdUntil: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  allowedActions: ("cancel" | "extend")[];
+  version: number;
+}
+
+export interface MyPayment {
+  id: string;
+  bookingId: string | null;
+  bookingNumber: string | null;
+  type: PaymentType;
+  method: PaymentMethod;
+  amount: number;
+  refundedAmount: number;
+  status: PaymentStatus;
+  paidAt: string;
+}
+
+export interface MyRefund {
+  id: string;
+  bookingId: string | null;
+  bookingNumber: string | null;
+  amount: number;
+  reason: string;
+  status: RefundStatus;
+  requestedAt: string;
+  decidedAt: string | null;
+  decisionComment: string | null;
+  paidAt: string | null;
+}
+
+export interface MyBookingBalance {
+  bookingId: string;
+  due: number;
+  received: number;
+  refunded: number;
+  /** Больше нуля — к оплате, меньше — переплата. */
+  balance: number;
+  prepaymentRequired: number;
+  /** Сколько ещё можно запросить к возврату. */
+  refundable: number;
+  payments: MyPayment[];
+  refunds: MyRefund[];
+}
+
+export interface PortalConsents {
+  personalData: boolean;
+  personalDataAt: string | null;
+  whatsApp: boolean;
+  whatsAppAt: string | null;
 }

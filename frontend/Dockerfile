@@ -7,7 +7,10 @@ RUN npm ci
 
 FROM node:24-alpine AS build
 WORKDIR /app
-ENV NEXT_TELEMETRY_DISABLED=1
+# Адрес сайта для sitemap, robots, canonical и Open Graph — фиксируется при сборке (статические страницы).
+ARG PUBLIC_WEB_URL=http://localhost:3000
+ENV NEXT_TELEMETRY_DISABLED=1 \
+    PUBLIC_WEB_URL=$PUBLIC_WEB_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

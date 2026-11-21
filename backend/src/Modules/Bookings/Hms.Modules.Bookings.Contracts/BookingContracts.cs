@@ -95,6 +95,9 @@ public interface IBookingCharges
 
     Task<IReadOnlyList<BookingCharge>> ListAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct);
 
+    /// <summary>Все брони гостя (кабинет: свои платежи и возвраты).</summary>
+    Task<IReadOnlyList<BookingCharge>> ListForGuestAsync(Guid guestId, CancellationToken ct);
+
     /// <summary>Брони, по которым есть что платить (стоимость или штраф больше нуля).</summary>
     Task<IReadOnlyList<BookingCharge>> ListWithDueAsync(CancellationToken ct);
 }

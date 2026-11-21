@@ -63,5 +63,12 @@ public sealed class Result<T> : Result
     public static implicit operator Result<T>(Error error) => Failure(error);
 
     public static implicit operator Result<T>(T value) => Success(value);
+
+    /// <summary>Преобразовать значение успешного результата; ошибка передаётся как есть.</summary>
+    public Result<TOut> Map<TOut>(Func<T, TOut> map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+        return IsSuccess ? map(Value) : Result<TOut>.Failure(Error!);
+    }
 #pragma warning restore CA2225
 }

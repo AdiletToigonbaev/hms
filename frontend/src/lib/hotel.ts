@@ -19,5 +19,8 @@ export async function getHotelInfo(): Promise<PublicHotelInfo> {
         freeCancelHoursBeforeCheckIn: 24,
         hourlyMinHours: 2,
         hourlyMaxHours: 12,
+        hourlyFreeCancelMinutes: 120,
+        autoConfirmWebBookings: false,
+        hasLatePenalties: false,
       };
 }

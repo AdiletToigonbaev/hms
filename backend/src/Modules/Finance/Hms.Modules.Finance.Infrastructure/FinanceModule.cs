@@ -24,6 +24,7 @@ public static class FinanceModule
         services.AddScoped<FinanceReads>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IRefundService, RefundService>();
+        services.AddScoped<IMyFinanceService, MyFinanceService>();
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IPaymentQueries, PaymentQueries>();
         services.AddValidatorsFromAssemblyContaining<RegisterPaymentRequestValidator>(includeInternalTypes: true);
@@ -48,6 +49,15 @@ public static class FinanceModule
             .WithTags("Finance").RequirePermission(Permissions.PaymentView);
         api.MapGet("/finance/debts", async ([AsParameters] DebtQuery q, IPaymentService s, CancellationToken ct) => Results.Ok(await s.ListDebtsAsync(q, ct)))
             .WithTags("Finance").RequirePermission(Permissions.PaymentView);
+
+        // Кабинет гостя: только свои платежи, возвраты и баланс своих броней (владение проверяет сервис; чужое — 404).
+        var me = api.MapGroup("/me").WithTags("Account").RequireAuthorization();
+        me.MapGet("/payments", async (IMyFinanceService s, CancellationToken ct) => Results.Ok(await s.PaymentsAsync(ct)));
+        me.MapGet("/refunds", async (IMyFinanceService s, CancellationToken ct) => Results.Ok(await s.RefundsAsync(ct)));
+        me.MapPost("/refunds", async (MyRefundRequest r, IMyFinanceService s, CancellationToken ct) =>
+                (await s.RequestRefundAsync(r, ct)).ToHttpResult(x => Results.Created("/api/v1/me/refunds", x)))
+            .WithValidation<MyRefundRequest>().WithIdempotency("me.refund.request");
+        me.MapGet("/bookings/{id:guid}/balance", async (Guid id, IMyFinanceService s, CancellationToken ct) => (await s.BalanceAsync(id, ct)).ToHttpResult());
 
         var refunds = api.MapGroup("/refunds").WithTags("Finance");
         refunds.MapGet("/", async ([AsParameters] RefundQuery q, IRefundService s, CancellationToken ct) => Results.Ok(await s.ListAsync(q, ct)))

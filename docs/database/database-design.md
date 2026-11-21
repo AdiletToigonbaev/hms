@@ -204,3 +204,7 @@ Guests, Rooms (архив), Expenses (void), Users (деактивация), Hou
 - **housekeeping.checklist_templates** (HotelId, Name, IsDefault, Items `text[]`, xmin) — один шаблон по умолчанию на гостиницу (уникальный частичный индекс); создаёт сидер, пункты правит администратор.
 - **housekeeping.maintenance_requests** (RoomId, TaskId?, Type Defect|Damage, Severity Low|Normal|High|Critical, Description, Status New|InProgress|Resolved|Rejected, ReportedBy, CreatedAt, ResolvedBy/At, ResolutionNote, xmin).
 - Заселение/выселение — одна транзакция (один `HmsDbContext`): бронь, `rooms.rooms.status` + `room_status_history` (через `IRoomStatusChanger`, Rooms.Contracts), задача уборки (через `IHousekeepingTasks`, Housekeeping.Contracts), аудит.
+
+## 16. Sprint 8 (без новых таблиц)
+- Схема не менялась: брони с сайта — `bookings.bookings.source = 'Web'`, `guest_id` — карточка гостя, связанная с аккаунтом (`guests.guests.user_id`).
+- Удаление аккаунта гостем: карточка обезличивается и отвязывается от аккаунта (`user_id = null`), брони обезличиваются; строка `identity.users` удаляется (роли, права, refresh-токены — каскадом). Согласия и платежи остаются (платежи не содержат ПД).
