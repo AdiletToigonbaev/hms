@@ -266,3 +266,47 @@ public sealed class SaveExpenseCategoryRequestValidator : AbstractValidator<Save
         RuleFor(x => x.SortOrder).InclusiveBetween(0, 1000);
     }
 }
+
+// ---- Кабинет гостя: свои оплаты и возвраты (Sprint 8) ----
+
+/// <summary>Платёж в кабинете гостя — без служебных данных (кто принял, журнал операций). Время — по гостинице.</summary>
+public sealed record MyPaymentDto(Guid Id, Guid? BookingId, string? BookingNumber, string Type, string Method, decimal Amount, decimal RefundedAmount, string Status, string PaidAt);
+
+public sealed record MyRefundDto(Guid Id, Guid? BookingId, string? BookingNumber, decimal Amount, string Reason, string Status, string RequestedAt, string? DecidedAt, string? DecisionComment, string? PaidAt);
+
+/// <summary>Баланс своей брони. <paramref name="Refundable"/> — сколько ещё можно запросить к возврату (переплата минус уже запрошенное).</summary>
+public sealed record MyBookingBalanceDto(
+    Guid BookingId,
+    decimal Due,
+    decimal Received,
+    decimal Refunded,
+    decimal Balance,
+    decimal PrepaymentRequired,
+    decimal Refundable,
+    IReadOnlyList<MyPaymentDto> Payments,
+    IReadOnlyList<MyRefundDto> Refunds);
+
+/// <summary>Запрос возврата гостем: по своей брони, не больше переплаты. Способ возврата — как у оплаты.</summary>
+public sealed record MyRefundRequest(Guid BookingId, decimal Amount, string Reason);
+
+public interface IMyFinanceService
+{
+    Task<IReadOnlyList<MyPaymentDto>> PaymentsAsync(CancellationToken ct);
+
+    Task<IReadOnlyList<MyRefundDto>> RefundsAsync(CancellationToken ct);
+
+    Task<Result<MyBookingBalanceDto>> BalanceAsync(Guid bookingId, CancellationToken ct);
+
+    Task<Result<IReadOnlyList<MyRefundDto>>> RequestRefundAsync(MyRefundRequest request, CancellationToken ct);
+}
+
+public sealed class MyRefundRequestValidator : AbstractValidator<MyRefundRequest>
+{
+    public MyRefundRequestValidator()
+    {
+        RuleFor(x => x.BookingId).NotEmpty();
+        RuleFor(x => x.Amount).GreaterThan(0).WithMessage("Сумма должна быть больше нуля.")
+            .Must(a => decimal.Round(a, 2) == a).WithMessage("Не больше двух знаков после запятой.");
+        RuleFor(x => x.Reason).NotEmpty().WithMessage("Укажите причину возврата.").MaximumLength(500);
+    }
+}

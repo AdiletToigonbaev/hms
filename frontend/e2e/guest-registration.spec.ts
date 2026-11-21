@@ -49,5 +49,5 @@ test("гость регистрируется с согласием, подтв�
   await page.getByLabel("Пароль", { exact: true }).fill("guest-password-e2e");
   await page.getByRole("button", { name: "Войти" }).click();
   await expect(page).toHaveURL(/\/account$/);
-  await expect(page.getByRole("heading", { name: "Личный кабинет" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Мои брони" })).toBeVisible();
 });

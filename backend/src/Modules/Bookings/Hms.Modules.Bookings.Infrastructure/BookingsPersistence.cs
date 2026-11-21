@@ -157,6 +157,12 @@ internal sealed class BookingCharges(DbContext db, Hms.Modules.Hotel.Contracts.I
         return await QueryAsync(db.Set<Booking>().Where(b => b.HotelId == hotelId && bookingIds.Contains(b.Id)), ct);
     }
 
+    public async Task<IReadOnlyList<BookingCharge>> ListForGuestAsync(Guid guestId, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await QueryAsync(db.Set<Booking>().Where(b => b.HotelId == hotelId && b.GuestId == guestId), ct);
+    }
+
     public async Task<IReadOnlyList<BookingCharge>> ListWithDueAsync(CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);

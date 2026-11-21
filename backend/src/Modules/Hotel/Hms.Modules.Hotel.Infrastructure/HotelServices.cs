@@ -86,7 +86,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
         return new PublicHotelInfoDto(
             hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description,
             FormatTime(s.CheckInTime), FormatTime(s.CheckOutTime), s.Rules, s.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
-            s.HourlyMinHours, s.HourlyMaxHours);
+            s.HourlyMinHours, s.HourlyMaxHours, s.HourlyPolicy.FreeCancelMinutesBeforeStart, s.AutoConfirmWebBookings,
+            s.CancellationPolicy.LateCancelPenaltyNights > 0 || s.HourlyPolicy.LateCancelPenaltyHours > 0);
     }
 
     private async Task<HotelInfo> LoadHotelAsync(CancellationToken ct)

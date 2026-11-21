@@ -25,7 +25,9 @@ public static class BookingsModule
         services.AddScoped<IBookingCharges, BookingCharges>();
         services.AddScoped<Stays>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
-        services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<BookingService>();
+        services.AddScoped<IBookingService>(sp => sp.GetRequiredService<BookingService>());
+        services.AddScoped<IGuestBookingService, GuestBookingService>();
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<IFrontDeskService, FrontDeskService>();
         services.AddScoped<IBookingLifecycle, BookingLifecycle>();
@@ -103,6 +105,20 @@ public static class BookingsModule
             .RequirePermission(Permissions.CheckOutPerform);
         g.MapPost("/{id:guid}/check-out", async (Guid id, CheckOutRequest r, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutAsync(id, r, ct)).ToHttpResult())
             .WithIdempotency("booking.check_out").RequirePermission(Permissions.CheckOutPerform);
+
+        // Кабинет гостя: только свои брони (проверка владения — в сервисе; чужая бронь — 404).
+        var me = api.MapGroup("/me/bookings").WithTags("Account").RequireAuthorization();
+        me.MapGet("/", async ([AsParameters] GuestBookingQuery q, IGuestBookingService s, CancellationToken ct) => Results.Ok(await s.ListAsync(q, ct)));
+        me.MapPost("/", async (GuestCreateBookingRequest r, IGuestBookingService s, CancellationToken ct) =>
+                (await s.CreateAsync(r, ct)).ToHttpResult(b => Results.Created($"/api/v1/me/bookings/{b.Id}", b)))
+            .WithValidation<GuestCreateBookingRequest>().WithIdempotency("me.booking.create");
+        me.MapGet("/{id:guid}", async (Guid id, IGuestBookingService s, CancellationToken ct) => (await s.GetAsync(id, ct)).ToHttpResult());
+        me.MapGet("/{id:guid}/cancel/preview", async (Guid id, IGuestBookingService s, CancellationToken ct) => (await s.QuoteCancellationAsync(id, ct)).ToHttpResult());
+        me.MapPost("/{id:guid}/cancel", async (Guid id, GuestCancelRequest r, IGuestBookingService s, CancellationToken ct) => (await s.CancelAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<GuestCancelRequest>();
+        me.MapGet("/{id:guid}/extend/quote", async (Guid id, int units, IGuestBookingService s, CancellationToken ct) => (await s.QuoteExtensionAsync(id, units, ct)).ToHttpResult());
+        me.MapPost("/{id:guid}/extend", async (Guid id, ExtendBookingRequest r, IGuestBookingService s, CancellationToken ct) => (await s.ExtendAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<ExtendBookingRequest>().WithIdempotency("me.booking.extend");
 
         api.MapGet("/calendar", async ([AsParameters] CalendarQuery q, ICalendarService s, CancellationToken ct) => (await s.GetAsync(q, ct)).ToHttpResult())
             .WithTags("Bookings").RequirePermission(Permissions.CalendarView);

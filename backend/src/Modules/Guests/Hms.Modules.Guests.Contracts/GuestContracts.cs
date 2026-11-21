@@ -27,6 +27,35 @@ public interface IGuestDirectory
     Task<Result<GuestRef>> FindOrCreateAsync(GuestContact contact, CancellationToken ct);
 }
 
+/// <summary>
+/// Гость, вошедший на сайт: его карточка (по связи аккаунта с карточкой). Null — пользователь не гость,
+/// карточки нет или данные гостя удалены. Основа проверки «только свои брони и платежи» (ТЗ §3.4).
+/// </summary>
+public interface ICurrentGuest
+{
+    Task<GuestRef?> GetAsync(CancellationToken ct);
+}
+
+/// <summary>Согласия гостя в кабинете: действующее значение и когда дано/отозвано.</summary>
+public sealed record PortalConsents(bool PersonalData, DateTimeOffset? PersonalDataAt, bool WhatsApp, DateTimeOffset? WhatsAppAt);
+
+/// <summary>Аккаунт гостя на сайте (модуль Identity): профиль, согласия, удаление аккаунта.</summary>
+public interface IGuestAccount
+{
+    /// <summary>Имя и телефон из профиля — в карточку гостя. Добавляется в текущую единицу работы (сохраняет вызывающий).</summary>
+    Task SyncProfileAsync(Guid userId, string fullName, string? phone, CancellationToken ct);
+
+    Task<PortalConsents?> GetConsentsAsync(Guid userId, CancellationToken ct);
+
+    Task<Result<PortalConsents>> SetWhatsAppConsentAsync(Guid userId, bool granted, CancellationToken ct);
+
+    /// <summary>
+    /// Удаление аккаунта: карточка и брони гостя обезличиваются. Нельзя при действующих бронях.
+    /// Выполняется сразу — вызывайте внутри транзакции вызывающего.
+    /// </summary>
+    Task<Result> RemoveAsync(Guid userId, CancellationToken ct);
+}
+
 /// <summary>Регистрация гостя на сайте (модуль Identity): карточка, связь с аккаунтом и согласия — в той же транзакции.</summary>
 public interface IGuestRegistration
 {

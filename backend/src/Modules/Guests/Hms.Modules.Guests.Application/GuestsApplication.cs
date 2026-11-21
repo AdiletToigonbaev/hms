@@ -117,3 +117,6 @@ public sealed class SetConsentRequestValidator : AbstractValidator<SetConsentReq
         RuleFor(x => x.Source).Must(s => Enum.TryParse<ConsentSource>(s, out _)).WithMessage("Укажите, откуда получено согласие.");
     }
 }
+
+/// <summary>Согласие на сообщения WhatsApp из кабинета гостя.</summary>
+public sealed record SetMyConsentsRequest(bool WhatsApp);

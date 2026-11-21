@@ -175,16 +175,22 @@ public sealed class Guest
     /// Обезличивание по решению владельца: стираются ФИО, контакты, дата рождения и заметки.
     /// История согласий остаётся (подтверждение законности прошлой обработки), связь с бронями — тоже.
     /// </summary>
-    public Result Anonymize(DateTimeOffset now)
+    /// <param name="accountRemoved">Гость сам удаляет аккаунт на сайте — связь с аккаунтом снимается.</param>
+    public Result Anonymize(DateTimeOffset now, bool accountRemoved = false)
     {
         if (IsAnonymized)
         {
             return GuestErrors.Anonymized;
         }
 
-        if (UserId is not null)
+        if (UserId is not null && !accountRemoved)
         {
-            return Error.BusinessRule("guest.has_account", "У гостя есть аккаунт на сайте — обезличивание аккаунта появится вместе с личным кабинетом (Sprint 8).");
+            return Error.BusinessRule("guest.has_account", "У гостя есть аккаунт на сайте — данные удаляет сам гость в личном кабинете («Профиль» → «Удалить аккаунт»).");
+        }
+
+        if (accountRemoved)
+        {
+            UserId = null;
         }
 
         FullName = AnonymizedName;

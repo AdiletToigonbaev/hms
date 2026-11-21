@@ -51,6 +51,9 @@ public sealed record UpdateMeRequest(string FullName, string? Phone);
 
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
+/// <summary>Удаление аккаунта — подтверждение паролем.</summary>
+public sealed record DeleteAccountRequest(string Password);
+
 // ---- Персонал ----
 
 public sealed record StaffDto(

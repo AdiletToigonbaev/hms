@@ -60,6 +60,21 @@ internal sealed class GuestsModelConfigurator : IModelConfigurator
 }
 
 /// <summary>Карточки гостей для модуля Bookings.</summary>
+internal sealed class CurrentGuest(DbContext db, IHotelContext hotel, ICurrentUser currentUser) : ICurrentGuest
+{
+    public async Task<GuestRef?> GetAsync(CancellationToken ct)
+    {
+        if (currentUser.UserId is not { } userId)
+        {
+            return null;
+        }
+
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        var g = await db.Set<Guest>().AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId && x.HotelId == hotelId && x.AnonymizedAt == null, ct);
+        return g is null ? null : new GuestRef(g.Id, g.FullName, g.Phone, g.Email, false);
+    }
+}
+
 internal sealed class GuestDirectory(DbContext db, IHotelContext hotel, TimeProvider time) : IGuestDirectory
 {
     public async Task<GuestRef?> GetAsync(Guid guestId, CancellationToken ct)
@@ -158,6 +173,8 @@ public static class GuestsModule
     {
         services.AddSingleton<IModelConfigurator, GuestsModelConfigurator>();
         services.AddScoped<IGuestDirectory, GuestDirectory>();
+        services.AddScoped<ICurrentGuest, CurrentGuest>();
+        services.AddScoped<IGuestAccount, GuestAccount>();
         services.AddScoped<IGuestRegistration, GuestRegistration>();
         services.AddScoped<IGuestService, GuestService>();
         services.AddValidatorsFromAssemblyContaining<SaveGuestRequestValidator>(includeInternalTypes: true);
@@ -166,6 +183,13 @@ public static class GuestsModule
 
     public static IEndpointRouteBuilder MapGuestsEndpoints(this IEndpointRouteBuilder api)
     {
+        // Согласия в кабинете гостя: обработка ПД — условие аккаунта (отзыв = удаление аккаунта), WhatsApp — по желанию.
+        var me = api.MapGroup("/me/consents").WithTags("Account").RequireAuthorization();
+        me.MapGet("/", async (IGuestAccount s, ICurrentUser user, CancellationToken ct) =>
+            user.UserId is { } id && await s.GetConsentsAsync(id, ct) is { } c ? Results.Ok(c) : GuestErrors.NotFound.ToProblem());
+        me.MapPut("/", async (SetMyConsentsRequest r, IGuestAccount s, ICurrentUser user, CancellationToken ct) =>
+            user.UserId is { } id ? (await s.SetWhatsAppConsentAsync(id, r.WhatsApp, ct)).ToHttpResult() : GuestErrors.NotFound.ToProblem());
+
         var g = api.MapGroup("/guests").WithTags("Guests");
         g.MapGet("/", async ([AsParameters] GuestQuery q, IGuestService s, CancellationToken ct) => Results.Ok(await s.ListAsync(q, ct)))
             .RequirePermission(Permissions.GuestView);

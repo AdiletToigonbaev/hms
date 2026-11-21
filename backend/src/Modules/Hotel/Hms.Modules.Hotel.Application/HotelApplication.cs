@@ -85,7 +85,10 @@ public sealed record PublicHotelInfoDto(
     string? Rules,
     int FreeCancelHoursBeforeCheckIn,
     int HourlyMinHours = 2,
-    int HourlyMaxHours = 12);
+    int HourlyMaxHours = 12,
+    int HourlyFreeCancelMinutes = 120,
+    bool AutoConfirmWebBookings = false,
+    bool HasLatePenalties = false);
 
 public sealed record IntegrationDto(
     string Provider,

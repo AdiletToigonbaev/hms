@@ -31,6 +31,9 @@ public interface IAccountService
 
     /// <summary>Меняет пароль и выдаёт новую пару токенов (старые сессии завершаются).</summary>
     Task<Result<TokenResponse>> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken ct);
+
+    /// <summary>Гость удаляет аккаунт: карточка и брони обезличиваются, аккаунт удаляется. Персонал себя не удаляет.</summary>
+    Task<Result> DeleteMeAsync(Guid userId, DeleteAccountRequest request, CancellationToken ct);
 }
 
 public interface IStaffService

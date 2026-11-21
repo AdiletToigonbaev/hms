@@ -1,5 +1,7 @@
 using Hms.Modules.Audit.Contracts;
+using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Identity.Application;
+using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Identity.Domain;
 using Hms.Modules.Identity.Infrastructure.Persistence;
 using Hms.Platform.Security;
@@ -15,6 +17,7 @@ internal sealed class AccountService(
     TokenIssuer tokens,
     IUserAccessProvider access,
     IAuditTrail audit,
+    IGuestAccount guestAccount,
     TimeProvider time) : IAccountService
 {
     public async Task<Result<MeResponse>> GetMeAsync(Guid userId, CancellationToken ct)
@@ -41,6 +44,8 @@ internal sealed class AccountService(
         var before = new { user.FullName, user.PhoneNumber };
         user.FullName = request.FullName.Trim();
         user.PhoneNumber = phone;
+        // Карточка гостя — в той же единице работы: сохранится вместе с пользователем.
+        await guestAccount.SyncProfileAsync(user.Id, user.FullName, phone, ct);
         audit.Record(new AuditEntry("account.updated", "User", user.Id.ToString(), before, new { user.FullName, user.PhoneNumber }));
 
         try
@@ -85,5 +90,43 @@ internal sealed class AccountService(
         var response = await tokens.IssueAsync(user, familyId: null, ct);
         await db.SaveChangesAsync(ct);
         return response;
+    }
+
+    public async Task<Result> DeleteMeAsync(Guid userId, DeleteAccountRequest request, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return IdentityErrors.UserNotFound;
+        }
+
+        if (!await users.IsInRoleAsync(user, Roles.Guest) || (await users.GetRolesAsync(user)).Count > 1)
+        {
+            return Error.Forbidden("account.staff_cannot_delete", "Аккаунт сотрудника удаляет владелец в разделе «Сотрудники».");
+        }
+
+        if (!await users.CheckPasswordAsync(user, request.Password))
+        {
+            return Error.Validation("account.wrong_password", "Неверный пароль.");
+        }
+
+        // Одна транзакция: обезличивание карточки и броней, удаление аккаунта (с ролями и сессиями) — вместе или никак.
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var removed = await guestAccount.RemoveAsync(user.Id, ct);
+        if (removed.IsFailure)
+        {
+            return removed;
+        }
+
+        audit.Record(new AuditEntry("account.deleted", "User", user.Id.ToString()));
+        var result = await users.DeleteAsync(user);
+        if (!result.Succeeded)
+        {
+            return IdentityHelpers.ToError(result);
+        }
+
+        await transaction.CommitAsync(ct);
+        access.Invalidate(user.Id);
+        return Result.Success();
     }
 }

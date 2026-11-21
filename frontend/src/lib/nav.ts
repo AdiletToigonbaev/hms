@@ -1,7 +1,7 @@
 import type { NavItem } from "@/components/layout/nav-links";
 import type { Role } from "@/lib/api/types";
 
-type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "payments" | "refunds" | "expenses" | "housekeeping" | "hkHistory" | "hkRequests" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome") => string;
+type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "payments" | "refunds" | "expenses" | "housekeeping" | "hkHistory" | "hkRequests" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome" | "accountPayments" | "accountProfile" | "toSite") => string;
 
 /** Меню персонала по ролям: владелец видит и свои разделы, и разделы администратора. */
 export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
@@ -40,5 +40,10 @@ export function housekeeperNav(t: Translate): NavItem[] {
 }
 
 export function guestNav(t: Translate): NavItem[] {
-  return [{ href: "/account", label: t("accountHome"), icon: "account", exact: true }];
+  return [
+    { href: "/account", label: t("accountHome"), icon: "account", exact: true },
+    { href: "/account/payments", label: t("accountPayments"), icon: "payments" },
+    { href: "/account/profile", label: t("accountProfile"), icon: "guests" },
+    { href: "/", label: t("toSite"), icon: "hotel", exact: true },
+  ];
 }
