@@ -28,7 +28,9 @@ public sealed record RoomTypeDto(
     IReadOnlyList<AmenityDto> Amenities,
     IReadOnlyList<PhotoDto> Photos,
     uint Version,
-    decimal? HourlyPrice = null);
+    decimal? HourlyPrice = null,
+    int? CleaningHourlyMinutes = null,
+    int? CleaningNightlyMinutes = null);
 
 public sealed record SaveRoomTypeRequest(
     string Name,
@@ -39,7 +41,9 @@ public sealed record SaveRoomTypeRequest(
     decimal BasePrice,
     int SortOrder,
     uint? Version,
-    decimal? HourlyPrice = null);
+    decimal? HourlyPrice = null,
+    int? CleaningHourlyMinutes = null,
+    int? CleaningNightlyMinutes = null);
 
 public sealed record SetAmenitiesRequest(IReadOnlyList<Guid> AmenityIds);
 
@@ -217,6 +221,8 @@ public sealed class SaveRoomTypeRequestValidator : AbstractValidator<SaveRoomTyp
         RuleFor(x => x.BedType).Must(RoomRules.BedTypes.Contains).WithMessage("Выберите тип кроватей.");
         RuleFor(x => x.BasePrice).Must(RoomRules.IsMoney).WithMessage("Цена — больше нуля, не более двух знаков после запятой.");
         RuleFor(x => x.SortOrder).InclusiveBetween(0, 1000);
+        RuleFor(x => x.CleaningHourlyMinutes).InclusiveBetween(0, 240).When(x => x.CleaningHourlyMinutes is not null).WithMessage("Уборка — от 0 до 240 минут.");
+        RuleFor(x => x.CleaningNightlyMinutes).InclusiveBetween(0, 240).When(x => x.CleaningNightlyMinutes is not null).WithMessage("Уборка — от 0 до 240 минут.");
         RuleFor(x => x.HourlyPrice).Must(v => RoomRules.IsMoney(v!.Value)).When(x => x.HourlyPrice is not null)
             .WithMessage("Цена часа — больше нуля, не более двух знаков после запятой.");
     }

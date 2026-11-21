@@ -50,7 +50,8 @@ public sealed record HotelSettingsDto(
     string? Rules,
     uint Version,
     HourlyPolicyDto HourlyPolicy,
-    bool AutoNoShowEnabled = false);
+    bool AutoNoShowEnabled = false,
+    int CleaningBufferNightlyMinutes = 30);
 
 public sealed record UpdateHotelSettingsRequest(
     string CheckInTime,
@@ -69,7 +70,8 @@ public sealed record UpdateHotelSettingsRequest(
     string? Rules,
     uint Version,
     HourlyPolicyDto? HourlyPolicy = null,
-    bool? AutoNoShowEnabled = null);
+    bool? AutoNoShowEnabled = null,
+    int? CleaningBufferNightlyMinutes = null);
 
 /// <summary>Публичные сведения для сайта (без внутренних настроек).</summary>
 public sealed record PublicHotelInfoDto(
@@ -170,6 +172,7 @@ public sealed class UpdateHotelSettingsRequestValidator : AbstractValidator<Upda
         RuleFor(x => x.HourlyMaxHours).InclusiveBetween(1, 24).WithMessage("Максимум часов — от 1 до 24.")
             .GreaterThanOrEqualTo(x => x.HourlyMinHours).WithMessage("Максимум часов не меньше минимума.");
         RuleFor(x => x.CleaningBufferMinutes).InclusiveBetween(0, 240).WithMessage("Уборка — от 0 до 240 минут.");
+        RuleFor(x => x.CleaningBufferNightlyMinutes).InclusiveBetween(0, 240).When(x => x.CleaningBufferNightlyMinutes is not null).WithMessage("Уборка — от 0 до 240 минут.");
         RuleFor(x => x.CancellationPolicy).NotNull();
         RuleFor(x => x.CancellationPolicy.FreeCancelHoursBeforeCheckIn).InclusiveBetween(0, 720).When(x => x.CancellationPolicy is not null)
             .WithMessage("От 0 до 720 часов.");

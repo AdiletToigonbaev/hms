@@ -43,7 +43,7 @@ public static class PermissionCatalog
 
         new(P.PaymentView, "Финансы", "Просмотр платежей"),
         new(P.PaymentRegister, "Финансы", "Ручная регистрация платежей"),
-        new(P.PaymentReverse, "Финансы", "Сторнирование платежей"),
+        new(P.PaymentReverse, "Финансы", "Аннулирование ошибочных платежей"),
         new(P.RefundRequest, "Финансы", "Оформление запроса на возврат"),
         new(P.RefundApprove, "Финансы", "Утверждение возвратов (в пределах лимита)"),
         new(P.ExpenseCreate, "Финансы", "Внесение расходов и просмотр своих"),

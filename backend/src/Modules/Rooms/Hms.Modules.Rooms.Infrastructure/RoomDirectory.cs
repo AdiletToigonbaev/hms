@@ -37,7 +37,8 @@ internal sealed class RoomDirectory(DbContext db, IHotelContext hotel) : IRoomDi
             from r in db.Set<Room>().AsNoTracking()
             join t in db.Set<RoomType>().AsNoTracking() on r.RoomTypeId equals t.Id
             where r.HotelId == hotelId
-            select new RoomInfo(r.Id, r.Number, r.Floor, t.Id, t.Name, r.Capacity ?? t.Capacity, t.BasePrice, r.PriceOverride, r.Status, r.IsArchived, t.IsArchived, t.HourlyPrice, r.HourlyPriceOverride))
+            select new RoomInfo(r.Id, r.Number, r.Floor, t.Id, t.Name, r.Capacity ?? t.Capacity, t.BasePrice, r.PriceOverride, r.Status, r.IsArchived, t.IsArchived, t.HourlyPrice, r.HourlyPriceOverride,
+                t.CleaningHourlyMinutes, t.CleaningNightlyMinutes))
             .ToListAsync(ct);
     }
 }

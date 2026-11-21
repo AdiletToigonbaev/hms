@@ -43,7 +43,9 @@ public sealed record RoomInfo(
     bool IsArchived,
     bool RoomTypeArchived,
     decimal? HourlyBasePrice = null,
-    decimal? HourlyPriceOverride = null)
+    decimal? HourlyPriceOverride = null,
+    int? CleaningHourlyMinutes = null,
+    int? CleaningNightlyMinutes = null)
 {
     /// <summary>Продаётся ли номер по часам: задана цена часа у номера или категории.</summary>
     public bool SellsHourly => (HourlyPriceOverride ?? HourlyBasePrice) is not null;

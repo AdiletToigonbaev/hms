@@ -37,6 +37,13 @@ const optionalHourly = z
   .pipe(optionalMoney("Цена часа — больше нуля, не более двух знаков после запятой."))
   .transform((v) => v ?? null);
 
+/** Минуты уборки категории: пусто или нет поля — как в настройках гостиницы. */
+const optionalMinutes = z
+  .string()
+  .optional()
+  .transform((v) => v ?? "")
+  .pipe(optionalInt(0, 240, "Уборка — от 0 до 240 минут."));
+
 const optionalText = (max: number) =>
   z
     .string()
@@ -54,6 +61,9 @@ export const roomTypeSchema = z.object({
   basePrice: money("Цена — больше нуля, не более двух знаков после запятой."),
   hourlyPrice: optionalHourly,
   sortOrder: z.coerce.number().int().min(0).max(1000).default(0),
+  /** Своё время уборки категории; пусто — как в настройках гостиницы. */
+  cleaningHourlyMinutes: optionalMinutes,
+  cleaningNightlyMinutes: optionalMinutes,
 });
 
 export const roomSchema = z.object({

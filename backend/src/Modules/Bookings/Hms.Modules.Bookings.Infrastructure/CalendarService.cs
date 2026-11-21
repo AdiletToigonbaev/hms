@@ -40,7 +40,7 @@ internal sealed class CalendarService(DbContext db, IHotelContext hotel, IRoomDi
                 && (r.IsBlocking || b.Status == BookingStatus.CheckedOut)
                 && r.StartsAt < toUtc && r.BlockedUntil > fromUtc
             orderby r.StartsAt
-            select new { Booking = b, r.RoomId, r.StartsAt, r.EndsAt, r.BlockedUntil, ExtensionCount = b.Extensions.Count })
+            select new { Booking = b, r.RoomId, r.StartsAt, r.EndsAt, r.BlockedUntil })
             .ToListAsync(ct);
 
         var roomList = await rooms.ListActiveAsync(ct);
@@ -54,8 +54,9 @@ internal sealed class CalendarService(DbContext db, IHotelContext hotel, IRoomDi
                 b.GuestName, b.GuestPhone, b.Adults, b.Children, b.Hours, b.Nights, b.TotalAmount,
                 b.HoldUntil is { } hold ? stays.Format(hold) : null,
                 noShowDue,
-                BookingStatusMachine.CanReschedule(b.Status) && x.ExtensionCount == 0,
-                b.Version);
+                BookingStatusMachine.CanReschedule(b.Status),
+                b.Version,
+                BookingStatusMachine.CanExtend(b.Status));
         }).ToList();
 
         return new CalendarDto(

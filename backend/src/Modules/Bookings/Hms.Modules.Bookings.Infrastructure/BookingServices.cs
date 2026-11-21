@@ -108,7 +108,13 @@ internal sealed class AvailabilityService(IRoomDirectory rooms, Stays stays) : I
         var candidates = (await rooms.ListSellableAsync(roomTypeId, ct))
             .Where(r => r.Capacity >= guests && (stay.Kind == BookingKind.Nightly || r.SellsHourly))
             .ToList();
-        var busy = await stays.BusyRoomsAsync(candidates.Select(r => r.Id).ToList(), stay, null, ct);
+        var settings = await stays.SettingsAsync(ct);
+        var busy = new HashSet<Guid>();
+        foreach (var group in candidates.GroupBy(r => Stays.ForRoom(stay, settings, r).BlockedUntil))
+        {
+            busy.UnionWith(await stays.BusyRoomsAsync(group.Select(r => r.Id).ToList(), stay with { BlockedUntil = group.Key }, null, ct));
+        }
+
         return candidates.Where(r => !busy.Contains(r.Id)).ToList();
     }
 }
@@ -162,9 +168,13 @@ internal sealed class BookingService(
         if (!string.IsNullOrWhiteSpace(q.Search))
         {
             var s = $"%{q.Search.Trim().ToLowerInvariant()}%";
+            var numberLike = s.Replace('c', 'с');
+            // Телефон — по цифрам: «0555 12», «+996 555 12» и «55512» находят одну бронь.
+            var phoneLike = PhoneNumber.SearchDigits(q.Search) is { } digits ? $"%{digits}%" : null;
 #pragma warning disable CA1304, CA1311 // ToLower транслируется в SQL lower()
-            query = query.Where(b => EF.Functions.Like(b.Number, s) || EF.Functions.Like(b.GuestName.ToLower(), s)
-                || (b.GuestPhone != null && EF.Functions.Like(b.GuestPhone, s)) || (b.GuestEmail != null && EF.Functions.Like(b.GuestEmail, s)));
+            query = query.Where(b => EF.Functions.Like(b.Number.ToLower(), numberLike) || EF.Functions.Like(b.GuestName.ToLower(), s)
+                || (b.GuestPhone != null && (EF.Functions.Like(b.GuestPhone, s) || (phoneLike != null && EF.Functions.Like(b.GuestPhone, phoneLike))))
+                || (b.GuestEmail != null && EF.Functions.Like(b.GuestEmail.ToLower(), s)));
 #pragma warning restore CA1304, CA1311
         }
 
@@ -227,7 +237,7 @@ internal sealed class BookingService(
             return resolved.Error;
         }
 
-        var stay = resolved.Value;
+        var stay = Stays.ForRoom(resolved.Value, await stays.SettingsAsync(ct), room);
 
         // Быстрая проверка для понятной ошибки; гарантию против гонок даёт ограничение EXCLUDE в БД.
         if ((await stays.BusyRoomsAsync([room.Id], stay, null, ct)).Count > 0)
@@ -252,14 +262,14 @@ internal sealed class BookingService(
 
         var hotelId = await hotel.GetHotelIdAsync(ct);
         var now = clock.UtcNow;
-        var number = await NextNumberAsync(now, ct);
+        var (number, numberYear) = await NextNumberAsync(hotelId, stay.Kind, ct);
         var settings = await stays.SettingsAsync(ct);
 
         // В брони — снимок контакта на момент брони; карточка гостя (GuestId) живёт в модуле Guests.
         var contact = guest.Value.Contact;
         var booking = Booking.Create(hotelId, number, BookingSource.Admin, stay, r.Adults, r.Children,
             contact, guest.Value.GuestId, r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now,
-            BookingRules.HoldUntil(settings, stay.Kind, stay.StartsAt, now));
+            BookingRules.HoldUntil(settings, stay.Kind, stay.StartsAt, now), numberYear);
         db.Set<Booking>().Add(booking);
         audit.Record(new AuditEntry("booking.created", "Booking", booking.Id.ToString(),
             After: new { booking.Number, Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), room = room.Number, stay.StartsAt, stay.EndsAt, booking.TotalAmount }));
@@ -494,11 +504,6 @@ internal sealed class BookingService(
             return Error.Conflict("booking.reschedule_not_allowed", "Перенести можно только бронь до заселения.");
         }
 
-        if (booking.Extensions.Count > 0)
-        {
-            return Error.BusinessRule("booking.reschedule_extended", "Бронь уже продлевали — перенос недоступен. Отмените её и создайте новую.");
-        }
-
         if (r.IsHourly() != (booking.Kind == BookingKind.Hourly))
         {
             return Error.Validation("booking.reschedule_kind", "Нельзя сменить вид брони (часы/сутки) — отмените и создайте новую.");
@@ -531,7 +536,7 @@ internal sealed class BookingService(
             return resolved.Error;
         }
 
-        var stay = resolved.Value;
+        var stay = Stays.ForRoom(resolved.Value, await stays.SettingsAsync(ct), room);
         if ((await stays.BusyRoomsAsync([room.Id], stay, booking.Id, ct)).Count > 0)
         {
             return BookingErrors.RoomUnavailable;
@@ -709,6 +714,7 @@ internal sealed class BookingService(
             added = stays.Nightly(settings, booking.CheckOut, booking.CheckOut.AddDays(units));
         }
 
+        extended = Stays.ForRoom(extended, settings, room);
         var nextStart = await stays.NextBookingStartAsync(line.RoomId, booking.Id, line.EndsAt, ct);
         var buffer = extended.BlockedUntil - extended.EndsAt;
         int? maxUnits = null;
@@ -760,13 +766,21 @@ internal sealed class BookingService(
         return await ToDtoAsync(booking, ct);
     }
 
-    private async Task<string> NextNumberAsync(DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    /// Следующий номер «Ч-2111-07»: счётчик за день гостиницы увеличивается одной командой БД (INSERT … ON CONFLICT DO UPDATE),
+    /// поэтому параллельные брони не получат одинаковый номер. Пропуски возможны (бронь не сохранилась) — это нормально.
+    /// </summary>
+    private async Task<(string Number, int Year)> NextNumberAsync(Guid hotelId, BookingKind kind, CancellationToken ct)
     {
-        // Последовательность PostgreSQL: номера уникальны и без гонок при параллельном создании.
-        var value = await db.Database
-            .SqlQueryRaw<long>($"SELECT nextval('{BookingsModelConfigurator.Schema}.{BookingsModelConfigurator.NumberSequence}') AS \"Value\"")
-            .SingleAsync(ct);
-        return $"{now:yy}-{value:D6}";
+        var day = clock.Today;
+        var values = await db.Database
+            .SqlQuery<int>($"""
+                INSERT INTO bookings.booking_number_counters (hotel_id, day, last) VALUES ({hotelId}, {day}, 1)
+                ON CONFLICT (hotel_id, day) DO UPDATE SET last = booking_number_counters.last + 1
+                RETURNING last AS "Value"
+                """)
+            .ToListAsync(ct);
+        return (BookingNumbers.Format(kind, day, values[0]), day.Year);
     }
 
     private async Task<Booking?> LoadAsync(Guid id, bool tracking, CancellationToken ct)
@@ -798,7 +812,7 @@ internal sealed class BookingService(
             actions.Add("cancel");
         }
 
-        if (BookingStatusMachine.CanReschedule(b.Status) && b.Extensions.Count == 0)
+        if (BookingStatusMachine.CanReschedule(b.Status))
         {
             actions.Add("reschedule");
         }
@@ -809,7 +823,7 @@ internal sealed class BookingService(
         }
 
         var authors = await users.GetNamesAsync(b.Extensions.Where(e => e.CreatedBy != null).Select(e => e.CreatedBy!.Value), ct);
-        var extensions = b.Extensions
+        var extensions = b.ActiveExtensions
             .OrderBy(e => e.CreatedAt)
             .Select(e => new BookingExtensionDto(e.Unit == BookingKind.Hourly ? "Hour" : "Night", e.Quantity, stays.Format(e.PreviousEndsAt), stays.Format(e.NewEndsAt),
                 e.Amount, e.CreatedBy is { } by && authors.TryGetValue(by, out var n) ? n : null, e.CreatedAt))

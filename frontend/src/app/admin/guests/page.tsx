@@ -2,11 +2,11 @@ import { Plus, UserRound } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { LiveSearchInput } from "@/components/forms/live-search-input";
 import { PageHeader } from "@/components/layout/page-header";
 import { EmptyState, ErrorState } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { buttonVariants } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/server";
 import type { GuestListItem, Paged } from "@/lib/api/types";
@@ -62,10 +62,7 @@ export default async function GuestsPage({ searchParams }: PageProps<"/admin/gue
       <div className="grid gap-3">
         <form method="get" className="flex flex-wrap gap-2" role="search">
           {filter && <input type="hidden" name="filter" value={filter} />}
-          <Input name="search" defaultValue={search} placeholder={t("searchPlaceholder")} aria-label={t("search")} className="w-full sm:max-w-sm" />
-          <Button type="submit" variant="outline">
-            {t("find")}
-          </Button>
+          <LiveSearchInput defaultValue={search} placeholder={t("searchPlaceholder")} label={t("search")} className="w-full sm:max-w-sm" />
         </form>
         <nav aria-label={t("search")} className="flex flex-wrap gap-1.5">
           {filters.map((f) => (

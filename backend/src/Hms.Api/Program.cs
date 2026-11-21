@@ -1,6 +1,7 @@
 using Hms.Api.Infrastructure;
 using Hms.Modules.Audit.Infrastructure;
 using Hms.Modules.Bookings.Infrastructure;
+using Hms.Modules.Finance.Infrastructure;
 using Hms.Modules.Guests.Infrastructure;
 using Hms.Modules.Hotel.Infrastructure;
 using Hms.Modules.Identity.Infrastructure;
@@ -49,6 +50,7 @@ try
     builder.Services.AddPricingModule();
     builder.Services.AddBookingsModule();
     builder.Services.AddGuestsModule();
+    builder.Services.AddFinanceModule();
     builder.Services.AddIdentityModule(builder.Configuration);
 
     var app = builder.Build();
@@ -94,6 +96,7 @@ try
     api.MapPricingEndpoints();
     api.MapBookingsEndpoints();
     api.MapGuestsEndpoints();
+    api.MapFinanceEndpoints();
     api.MapFileEndpoints();
 
     await app.RunAsync();

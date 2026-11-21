@@ -18,7 +18,8 @@ function isoDate(daysFromNow: number): string {
 }
 
 test("владелец задаёт сезонный тариф, создаёт бронь через подбор номера и отменяет её", async ({ page }) => {
-  const suffix = String(Date.now() % 100000);
+  // 8 цифр: время + случайные — номер комнаты не совпадёт с номерами прошлых прогонов в той же базе.
+  const suffix = `${String(Date.now() % 1_000_000).padStart(6, "0")}${Math.floor(Math.random() * 90 + 10)}`;
   // Даты далеко в будущем и свои для каждого запуска — повторные прогоны не мешают друг другу.
   const offset = 200 + (Math.floor(Date.now() / 1000) % 500);
   const checkIn = isoDate(offset);

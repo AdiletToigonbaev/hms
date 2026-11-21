@@ -94,6 +94,8 @@ for (const p of photoPaths) {
 
 const login = await call("POST", "/auth/login", { login: OWNER_LOGIN, password: OWNER_PASSWORD });
 token = login.accessToken;
+// Правила гостиницы (штрафы, удержание) — данные согласуются с настройками владельца.
+const rules = await call("GET", "/hotel/settings");
 
 // ---------- 2. Сотрудники ----------
 
@@ -127,14 +129,14 @@ const types = [
   {
     name: "Семейный",
     description: "Две комнаты: большая кровать и две отдельные. Для семьи с детьми.",
-    capacity: 4, bedsCount: 3, bedType: "Twin", basePrice: 6500, hourlyPrice: 1100, sortOrder: 3,
+    capacity: 4, bedsCount: 3, bedType: "Twin", basePrice: 6500, hourlyPrice: 1100, sortOrder: 3, cleaningNightlyMinutes: 60,
     amenities: ["Wi-Fi", "Телевизор", "Ванна", "Фен", "Чайник", "Кондиционер", "Холодильник", "Балкон"],
     rooms: [["301", 3], ["302", 3]],
   },
   {
     name: "Люкс",
     description: "Номер с гостиной, ванной и балконом с видом на горы.",
-    capacity: 2, bedsCount: 1, bedType: "King", basePrice: 9000, hourlyPrice: 1500, sortOrder: 4,
+    capacity: 2, bedsCount: 1, bedType: "King", basePrice: 9000, hourlyPrice: 1500, sortOrder: 4, cleaningHourlyMinutes: 45, cleaningNightlyMinutes: 90,
     amenities: ["Wi-Fi", "Телевизор", "Ванна", "Фен", "Чайник", "Кондиционер", "Холодильник", "Сейф", "Балкон", "Вид на горы"],
     rooms: [["401", 4], ["402", 4]],
   },
@@ -144,6 +146,7 @@ for (const t of types) {
   const type = await call("POST", "/room-types", {
     name: t.name, description: t.description, capacity: t.capacity, bedsCount: t.bedsCount, bedType: t.bedType,
     basePrice: t.basePrice, sortOrder: t.sortOrder, version: null, hourlyPrice: t.hourlyPrice,
+    cleaningHourlyMinutes: t.cleaningHourlyMinutes ?? null, cleaningNightlyMinutes: t.cleaningNightlyMinutes ?? null,
   });
   t.id = type.id;
   await call("PUT", `/room-types/${t.id}/amenities`, { amenityIds: t.amenities.map((a) => amenities[a]).filter(Boolean) });
@@ -317,6 +320,7 @@ const cancelReasons = ["Гость изменил планы", "Перенёс �
 console.log(`6/6 Брони: ${plan.length}…`);
 const staging = new Map(); // своя «неделя хранения» у каждой брони номера — без пересечений
 const shifts = [];
+const futures = [];
 let created = 0;
 let failed = 0;
 for (const p of plan) {
@@ -372,6 +376,7 @@ for (const p of plan) {
   if (!past && p.status === "Cancelled") {
     await call("POST", `/bookings/${booking.id}/cancel`, { reason: pick(cancelReasons), waivePenalty: false });
   }
+  if (!past) futures.push({ id: booking.id, status: p.status, start: p.start, total: booking.totalAmount, kind: p.kind });
   if (past) shifts.push({ id: booking.id, days: offsetDays, status: p.status, start: p.start, end: p.end, total: booking.totalAmount, hours: p.hours, nights: p.nights, kind: p.kind });
 }
 
@@ -395,16 +400,23 @@ for (const x of shifts) {
        VALUES (gen_random_uuid(), '${x.id}', 'status_changed', '{"status":"${from}"}', '{"status":"${to}"}', NULL, ${sqlLocal(at)}, NULL);`;
   if (x.status === "CheckedIn" || x.status === "CheckedOut") stmts.push(hist("Confirmed", "CheckedIn", x.start + Math.floor(rnd() * 20)));
   if (x.status === "CheckedOut") stmts.push(hist("CheckedIn", "CheckedOut", x.end - Math.floor(rnd() * 25)));
+  // Штрафы — только если владелец включил их в настройках (по умолчанию штрафов нет).
+  const unit = x.kind === "Hourly" ? x.hours : x.nights;
+  const perUnit = Math.round((x.total / Math.max(1, unit)) * 100) / 100;
   if (x.status === "NoShow") {
-    const unit = x.kind === "Hourly" ? x.hours : x.nights;
-    const penalty = Math.round((x.total / Math.max(1, unit)) * 100) / 100;
-    stmts.push(`UPDATE bookings.bookings SET penalty_amount = ${penalty}, penalty_kind = 'NoShow' WHERE id = '${x.id}';`, hist("Confirmed", "NoShow", x.start + 30));
+    const units = x.kind === "Hourly" ? rules.hourlyPolicy.noShowPenaltyHours : rules.cancellationPolicy.noShowPenaltyNights;
+    const penalty = Math.min(x.total, perUnit * Math.min(units, unit));
+    stmts.push(
+      penalty > 0 ? `UPDATE bookings.bookings SET penalty_amount = ${penalty}, penalty_kind = 'NoShow' WHERE id = '${x.id}';` : "",
+      hist("Confirmed", "NoShow", x.start + 30),
+    );
   }
   if (x.status === "Cancelled") {
     const at = x.start - (30 + Math.floor(rnd() * 600));
-    const late = x.start - at < (x.kind === "Hourly" ? 120 : 24 * 60);
-    const unit = x.kind === "Hourly" ? x.hours : x.nights;
-    const penalty = late ? Math.round((x.total / Math.max(1, unit)) * 100) / 100 : 0;
+    const freeBefore = x.kind === "Hourly" ? rules.hourlyPolicy.freeCancelMinutesBeforeStart : rules.cancellationPolicy.freeCancelHoursBeforeCheckIn * 60;
+    const units = x.kind === "Hourly" ? rules.hourlyPolicy.lateCancelPenaltyHours : rules.cancellationPolicy.lateCancelPenaltyNights;
+    const late = units > 0 && x.start - at < freeBefore;
+    const penalty = late ? Math.min(x.total, perUnit * Math.min(units, unit)) : 0;
     stmts.push(
       `UPDATE bookings.bookings SET cancelled_at = ${sqlLocal(at)}, cancel_reason = '${pick(cancelReasons)}', penalty_amount = ${penalty},
          penalty_kind = ${late ? "'LateCancel'" : "NULL"} WHERE id = '${x.id}';`,
@@ -421,9 +433,34 @@ stmts.push(
   // Гости появились в базе раньше своих первых броней.
   `UPDATE guests.guests g SET created_at = LEAST(g.created_at, (SELECT min(b.created_at) - interval '1 day' FROM bookings.bookings b WHERE b.guest_id = g.id))
      WHERE EXISTS (SELECT 1 FROM bookings.bookings b WHERE b.guest_id = g.id);`,
+);
+// Будущие брони оформлены в последние дни (а не все в момент запуска скрипта).
+for (const f of futures) {
+  const created = Math.min(localNowMin - 20, f.start - 60 - Math.floor(rnd() * 6 * MIN_DAY));
+  stmts.push(
+    `UPDATE bookings.bookings SET created_at = ${sqlLocal(created)}, confirmed_at = CASE WHEN confirmed_at IS NULL THEN NULL ELSE ${sqlLocal(created)} END WHERE id = '${f.id}';`,
+    `UPDATE bookings.booking_history SET changed_at = ${sqlLocal(created)} WHERE booking_id = '${f.id}' AND event_type = 'created';`,
+  );
+}
+// Номера «Ч-2111-07» по дню создания (сначала временные — чтобы не столкнуться с уникальным индексом), затем счётчики дней.
+stmts.push(
+  `UPDATE bookings.bookings SET number = 'tmp-' || left(id::text, 15);`,
+  `WITH n AS (
+     SELECT id, kind, (created_at AT TIME ZONE 'Asia/Bishkek')::date AS d,
+            row_number() OVER (PARTITION BY hotel_id, (created_at AT TIME ZONE 'Asia/Bishkek')::date ORDER BY created_at, id) AS rn
+     FROM bookings.bookings)
+   UPDATE bookings.bookings b
+   SET number = CASE WHEN n.kind = 'Hourly' THEN 'Ч' ELSE 'С' END || '-' || to_char(n.d, 'DDMM') || '-' || lpad(n.rn::text, 2, '0'),
+       number_year = EXTRACT(YEAR FROM n.d)::int
+   FROM n WHERE b.id = n.id;`,
+  `TRUNCATE bookings.booking_number_counters;`,
+  `INSERT INTO bookings.booking_number_counters (hotel_id, day, last)
+   SELECT hotel_id, (created_at AT TIME ZONE 'Asia/Bishkek')::date, count(*) FROM bookings.bookings GROUP BY 1, 2;`,
   "COMMIT;",
 );
 sql(stmts.join("\n"));
+
+await seedFinance();
 
 const summary = sql(
   "\\pset footer off\nselect status as \"Статус\", kind as \"Вид\", count(*) as \"Броней\" from bookings.bookings group by 1, 2 order by 1, 2;",
@@ -431,3 +468,115 @@ const summary = sql(
 console.log(summary);
 console.log(`Готово: броней ${created}${failed ? `, пропущено ${failed}` : ""}, гостей ${guests.length}, номеров ${rooms.length}.`);
 console.log("Сотрудники (первый вход — смена пароля): admin@hms.local / admin-dev-password, admin2@hms.local / admin-dev-password, maid@hms.local / maid-dev-password");
+
+// ---------- Финансы: оплаты, долги, возвраты, сторно, расходы ----------
+
+/**
+ * Через API (с проверками остатка и идемпотентностью), затем время оплат прошлых броней сдвигается в прошлое SQL
+ * при временно отключённой защите от изменения платежей — только в этом скрипте для локальной базы.
+ */
+async function seedFinance() {
+  console.log("Финансы…");
+  const backdate = []; // { id, at }
+  const balanceOf = (id) => call("GET", `/bookings/${id}/balance`);
+  const pay = async (bookingId, amount, type, method, comment = null) =>
+    (await call("POST", "/payments/manual", { bookingId, type, method, amount, comment }, { "Idempotency-Key": key() })).payment;
+  const method = () => weighted([["Cash", 45], ["MBank", 25], ["CardPos", 18], ["BankTransfer", 7], ["Optima", 5]]);
+
+  let payments = 0;
+  // Прошедшие брони: выехавшие почти все оплачены, у некоторых остался долг; неявки — штраф оплачен через раз.
+  for (const x of shifts) {
+    const b = await balanceOf(x.id);
+    if (b.balance <= 0) continue;
+    if (x.status === "CheckedOut") {
+      if (chance(0.08)) {
+        const part = Math.round(b.balance * 0.5);
+        if (part > 0) backdate.push({ id: (await pay(x.id, part, "Stay", method())).id, at: x.start + 5 }), payments++;
+        continue; // остался долг
+      }
+      backdate.push({ id: (await pay(x.id, b.balance, "Stay", method())).id, at: x.start + Math.floor(rnd() * 20) });
+      payments++;
+    } else if (x.status === "CheckedIn") {
+      const amount = x.kind === "Nightly" ? Math.round(b.balance / 2) : b.balance;
+      backdate.push({ id: (await pay(x.id, amount, "Stay", method())).id, at: x.start + 10 });
+      payments++;
+    } else if ((x.status === "NoShow" || x.status === "Cancelled") && chance(0.5)) {
+      backdate.push({ id: (await pay(x.id, b.balance, "Penalty", method(), "Штраф по правилам гостиницы")).id, at: x.end });
+      payments++;
+    }
+  }
+
+  // Будущие: часть броней с предоплатой (половина или полностью), остальные — оплата при заезде.
+  const confirmed = futures.filter((f) => f.status === "Confirmed");
+  for (const f of confirmed) {
+    if (!chance(f.kind === "Nightly" ? 0.6 : 0.25)) continue;
+    const b = await balanceOf(f.id);
+    if (b.balance <= 0) continue;
+    const amount = chance(0.5) ? b.balance : Math.round(b.balance / 2);
+    const p = await pay(f.id, amount, "Prepayment", weighted([["MBank", 50], ["Optima", 15], ["BankTransfer", 20], ["Cash", 15]]));
+    // Предоплату внесли за последние дни (но не позже начала брони).
+    backdate.push({ id: p.id, at: Math.min(f.start - 60, localNowMin - 30 - Math.floor(rnd() * 3 * MIN_DAY)) });
+    payments++;
+  }
+
+  // Аннулирование: оплату ошибочно провели наличными, хотя был перевод MBANK.
+  const forReversal = confirmed.find((f) => f.kind === "Hourly");
+  if (forReversal) {
+    const b = await balanceOf(forReversal.id);
+    if (b.balance > 0) {
+      const wrong = await pay(forReversal.id, b.balance, "Prepayment", "Cash");
+      await call("POST", `/payments/${wrong.id}/reverse`, { reason: "Ошиблись способом: оплата была переводом MBANK" }, { "Idempotency-Key": key() });
+      await pay(forReversal.id, b.balance, "Prepayment", "MBank", "Перевод MBANK");
+      payments += 3;
+    }
+  }
+
+  // Переплата и возвраты: гость внёс предоплату и отменил заранее (без штрафа).
+  const refundables = confirmed.filter((f) => f.start > localNowMin + 2 * MIN_DAY && f !== forReversal).slice(-3);
+  for (const [i, f] of refundables.entries()) {
+    const b = await balanceOf(f.id);
+    if (b.balance <= 0) continue;
+    const p = await pay(f.id, b.balance, "Prepayment", "MBank");
+    await call("POST", `/bookings/${f.id}/cancel`, { reason: "Гость отменил поездку", waivePenalty: false });
+    if (i === 2) continue; // переплата без запроса — видна в «Долги → Переплата»
+    const refund = await call("POST", "/refunds", { paymentId: p.id, amount: b.balance, reason: "Отмена брони заранее — предоплата возвращается", method: "MBank" }, { "Idempotency-Key": key() });
+    if (i === 0) {
+      await call("POST", `/refunds/${refund.id}/approve`, { comment: "Отмена в срок" });
+      await call("POST", `/refunds/${refund.id}/mark-paid`, {}, { "Idempotency-Key": key() });
+    }
+    payments++;
+  }
+
+  // Время оплат — как будто их принимали при заезде/предоплате, а не в момент запуска скрипта.
+  if (backdate.length > 0) {
+    const values = backdate.map((b) => `('${b.id}'::uuid, ${sqlLocal(Math.min(b.at, localNowMin - 1))})`).join(",\n");
+    sql(`BEGIN;
+ALTER TABLE finance.payments DISABLE TRIGGER payments_immutable;
+ALTER TABLE finance.payment_transactions DISABLE TRIGGER payment_transactions_append_only;
+UPDATE finance.payments p SET paid_at = v.at, created_at = v.at FROM (VALUES ${values}) AS v(id, at) WHERE p.id = v.id;
+UPDATE finance.payment_transactions t SET occurred_at = v.at FROM (VALUES ${values}) AS v(id, at) WHERE t.payment_id = v.id;
+ALTER TABLE finance.payment_transactions ENABLE TRIGGER payment_transactions_append_only;
+ALTER TABLE finance.payments ENABLE TRIGGER payments_immutable;
+COMMIT;`);
+  }
+
+  // Расходы за последний месяц.
+  const categories = Object.fromEntries((await call("GET", "/expense-categories")).map((c) => [c.name, c.id]));
+  const expense = (cat, amount, daysAgo, description, supplier, how = "Cash") =>
+    call("POST", "/expenses", {
+      categoryId: categories[cat], amount, date: iso(todayStart - daysAgo * MIN_DAY), method: how, supplier, description, version: null,
+    }, { "Idempotency-Key": key() });
+  let expenses = 0;
+  for (let d = 30; d >= 0; d--) {
+    if (d % 3 === 0) expenses++, await expense("Бельё и прачечная", 1800 + Math.round(rnd() * 12) * 100, d, "Стирка постельного белья и полотенец", "Прачечная");
+    if (d % 7 === 2) expenses++, await expense("Моющие и расходные материалы", 2500 + Math.round(rnd() * 20) * 100, d, "Моющие средства, туалетная бумага, мыло", "Оптовый склад хозтоваров", "BankTransfer");
+    if (d % 2 === 1) expenses++, await expense("Продукты (завтраки)", 1200 + Math.round(rnd() * 15) * 100, d, "Продукты для завтраков", "Рынок");
+    if (d === 25) expenses++, await expense("Коммунальные услуги", 38400, d, "Электроэнергия за месяц", "Энергосбыт", "BankTransfer");
+    if (d === 24) expenses++, await expense("Коммунальные услуги", 9600, d, "Вода и канализация за месяц", "Водоканал", "BankTransfer");
+    if (d === 20) expenses++, await expense("Ремонт и обслуживание", 4500, d, "Замена смесителя в номере 106", "Сантехник", "Cash");
+    if (d === 15) expenses++, await expense("Зарплата", 95000, d, "Зарплата персонала, первая половина месяца", null, "BankTransfer");
+    if (d === 10) expenses++, await expense("Реклама", 6000, d, "Продвижение в соцсетях", "Рекламное агентство", "CardPos");
+    if (d === 4) expenses++, await expense("Ремонт и обслуживание", 2200, d, "Ремонт замка двери 203", "Мастер по замкам", "Cash");
+  }
+  console.log(`  платежей ${payments}, расходов ${expenses}`);
+}

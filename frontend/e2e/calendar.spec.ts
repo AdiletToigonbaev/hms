@@ -35,8 +35,9 @@ async function createHourlyRoom(page: Page, suffix: string, typeName: string) {
   await expect(page.getByRole("heading", { level: 1, name: `Номер комнаты ${suffix}` })).toBeVisible();
 }
 
-test("календарь: бронь на шкале часов, перенос перетаскиванием с подтверждением цены, отмена с условиями", async ({ page }) => {
-  const suffix = String(Date.now() % 100000);
+test("календарь: бронь на шкале часов, перенос перетаскиванием с подтверждением цены, отмена без штрафов по умолчанию", async ({ page }) => {
+  // 8 цифр: время + случайные — номер комнаты не совпадёт с номерами прошлых прогонов в той же базе.
+  const suffix = `${String(Date.now() % 1_000_000).padStart(6, "0")}${Math.floor(Math.random() * 90 + 10)}`;
   const typeName = `Кал ${suffix}`;
   const date = isoDate(200 + (Math.floor(Date.now() / 1000) % 300));
 
@@ -53,7 +54,8 @@ test("календарь: бронь на шкале часов, перенос 
   await page.getByLabel("Телефон", { exact: true }).fill("+996 700 222 333");
   await page.getByRole("button", { name: "Создать бронь" }).click();
   await expect(page.getByRole("status").getByText("Бронь создана")).toBeVisible();
-  const number = (await page.getByRole("heading", { level: 1 }).filter({ visible: true }).first().innerText()).replace(/\D+/, "").trim();
+  // «Бронь Ч-2111-07» → «Ч-2111-07»
+  const number = (await page.getByRole("heading", { level: 1 }).filter({ visible: true }).first().innerText()).replace(/^\S+\s+/, "").trim();
 
   // Календарь на этот день: блок брони в строке номера, по клику — подробности
   await page.goto(`/admin/calendar?date=${date}`);
@@ -82,5 +84,5 @@ test("календарь: бронь на шкале часов, перенос 
   await page.getByRole("link", { name: "Открыть бронь" }).click();
   await expect(page.getByText(/12:00–14:00/).filter({ visible: true }).first()).toBeVisible();
   await expect(page.getByText("Бронь перенесена", { exact: true }).filter({ visible: true }).first()).toBeVisible();
-  await expect(page.getByText(/Отмена бесплатна до/).filter({ visible: true }).first()).toBeVisible();
+  await expect(page.getByText("Штрафы за отмену не настроены — отмена бесплатна.").filter({ visible: true }).first()).toBeVisible();
 });

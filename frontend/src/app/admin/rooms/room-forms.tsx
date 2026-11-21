@@ -68,6 +68,32 @@ export function RoomTypeForm({ type }: { type?: RoomType }) {
         />
         <Field name="sortOrder" type="number" min={0} max={1000} label={t("sortOrder")} defaultValue={v.sortOrder ?? type?.sortOrder ?? 0} error={e.sortOrder} />
       </div>
+      <fieldset className="grid gap-2">
+        <legend className="mb-1 text-sm font-medium">{t("cleaningTitle")}</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            name="cleaningHourlyMinutes"
+            type="number"
+            min={0}
+            max={240}
+            step={5}
+            label={t("cleaningHourly")}
+            defaultValue={v.cleaningHourlyMinutes ?? type?.cleaningHourlyMinutes ?? ""}
+            error={e.cleaningHourlyMinutes}
+          />
+          <Field
+            name="cleaningNightlyMinutes"
+            type="number"
+            min={0}
+            max={240}
+            step={5}
+            label={t("cleaningNightly")}
+            defaultValue={v.cleaningNightlyMinutes ?? type?.cleaningNightlyMinutes ?? ""}
+            error={e.cleaningNightlyMinutes}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">{t("cleaningHint")}</p>
+      </fieldset>
       <div className="grid gap-1.5">
         <Label htmlFor="description">{t("descriptionLabel")}</Label>
         <textarea id="description" name="description" className={textarea} defaultValue={v.description ?? type?.description ?? ""} maxLength={2000} />

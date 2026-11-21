@@ -82,7 +82,7 @@ test("владелец сохраняет настройки гостиницы;
   await expect(page.locator("section#section-payment")).toHaveAttribute("data-flash", "");
 
   // Зеркально: правка поля в разделе подсвечивает его пункт в меню
-  await page.locator("section#section-rooms").getByLabel("Уборка, мин", { exact: true }).focus();
+  await page.locator("section#section-rooms").getByLabel("Уборка после почасовой брони, мин", { exact: true }).focus();
   await expect(nav.getByRole("link", { name: "Номера и уборка", exact: true })).toHaveAttribute("aria-current", "location");
 
   // Каждый раздел сохраняется своей кнопкой
@@ -96,8 +96,12 @@ test("владелец сохраняет настройки гостиницы;
 
   // Правила броней: описание обычными словами меняется вместе с цифрами, сохранение не трогает другие разделы
   const rules = page.locator("section#section-rules");
+  // По умолчанию штрафов нет — отмена всегда бесплатна; срок бесплатной отмены появляется, когда задан штраф
+  await expect(rules.getByText("Отмена всегда бесплатна", { exact: false }).first()).toBeVisible();
+  await rules.getByLabel("Штраф за позднюю отмену — По часам", { exact: true }).fill("1");
   await rules.getByLabel("Бесплатная отмена — По часам", { exact: true }).fill("90");
   await expect(rules.getByText("Бесплатная отмена — не позже чем за 90 минут до начала", { exact: false })).toBeVisible();
+  await rules.getByLabel("Штраф за позднюю отмену — По часам", { exact: true }).fill("0");
   await rules.getByLabel("Бесплатная отмена — По часам", { exact: true }).fill("120");
   await rules.getByRole("button", { name: "Сохранить" }).click();
   await expect(rules.getByText("Раздел сохранён.")).toBeVisible();

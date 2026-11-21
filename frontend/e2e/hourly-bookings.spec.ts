@@ -18,7 +18,8 @@ function isoDate(daysFromNow: number): string {
 }
 
 test("почасовая бронь: цена часа у категории, бронь на 3 часа, продление на 1 час с подтверждением", async ({ page }) => {
-  const suffix = String(Date.now() % 100000);
+  // 8 цифр: время + случайные — номер комнаты не совпадёт с номерами прошлых прогонов в той же базе.
+  const suffix = `${String(Date.now() % 1_000_000).padStart(6, "0")}${Math.floor(Math.random() * 90 + 10)}`;
   const date = isoDate(300 + (Math.floor(Date.now() / 1000) % 400));
   const [y, m, d] = date.split("-");
 

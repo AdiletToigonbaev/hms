@@ -61,3 +61,40 @@ public interface IGuestBookingQueries
     /// <summary>Удаляет персональные данные гостя из броней и их истории. Выполняется сразу — вызывайте внутри транзакции.</summary>
     Task AnonymizeAsync(Guid guestId, string placeholderName, CancellationToken ct);
 }
+
+/// <summary>
+/// Начисление по брони для финансов. К оплате (<see cref="Due"/>): действующая и завершённая бронь — её стоимость;
+/// отменённая и неявка — начисленный штраф; истёкшая — ничего.
+/// </summary>
+/// <param name="StartsAt">Начало проживания, UTC.</param>
+public sealed record BookingCharge(
+    Guid BookingId,
+    string Number,
+    BookingStatus Status,
+    string Kind,
+    Guid? GuestId,
+    string GuestName,
+    string? RoomNumber,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    decimal TotalAmount,
+    decimal PenaltyAmount)
+{
+    public decimal Due => Status switch
+    {
+        BookingStatus.Cancelled or BookingStatus.NoShow => PenaltyAmount,
+        BookingStatus.Expired => 0m,
+        _ => TotalAmount,
+    };
+}
+
+/// <summary>Начисления по броням для модуля Finance (баланс, долги).</summary>
+public interface IBookingCharges
+{
+    Task<BookingCharge?> GetAsync(Guid bookingId, CancellationToken ct);
+
+    Task<IReadOnlyList<BookingCharge>> ListAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct);
+
+    /// <summary>Брони, по которым есть что платить (стоимость или штраф больше нуля).</summary>
+    Task<IReadOnlyList<BookingCharge>> ListWithDueAsync(CancellationToken ct);
+}

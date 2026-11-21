@@ -112,7 +112,7 @@ public class BookingsTests(PostgresFixture db)
 
         var booking = await CreateBookingAsync(owner, Request(room.Id, day.AddDays(-1), 3, promo: code));
         booking.TotalAmount.Should().Be(9900m);
-        booking.Number.Should().MatchRegex(@"^\d{2}-\d{6}$");
+        booking.Number.Should().MatchRegex(@"^С-\d{4}-\d{2,}$", "посуточная бронь: «С-ДДММ-NN»");
 
         // Изменение тарифа после создания не меняет зафиксированную стоимость брони.
         var rates = (await owner.GetFromJsonAsync<List<RateDto>>($"/api/v1/rates?roomTypeId={type.Id}", Ct))!;

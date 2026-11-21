@@ -5,9 +5,12 @@
 BEGIN;
 
 TRUNCATE bookings.booking_extensions, bookings.booking_history, bookings.booking_services, bookings.booking_rooms, bookings.bookings;
-ALTER SEQUENCE bookings.booking_number_seq RESTART WITH 1;
+TRUNCATE bookings.booking_number_counters;
 
 TRUNCATE guests.guest_consents, guests.guests;
+
+-- Финансы: платежи и журнал операций приложение не удаляет (защита в БД), TRUNCATE — только для этого сброса.
+TRUNCATE finance.refunds, finance.payment_transactions, finance.payments, finance.expenses;
 
 TRUNCATE pricing.room_rates, pricing.discounts, pricing.services;
 

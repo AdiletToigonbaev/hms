@@ -16,6 +16,26 @@ public readonly record struct PhoneNumber
     /// <summary>Номер в формате E.164, начинается с «+».</summary>
     public string Value { get; }
 
+    /// <summary>
+    /// Цифры телефона для поиска по части номера: «0555 12», «+996 555 12» и «55512» дают одну подстроку.
+    /// Местный формат с ведущим 0 (0555…) и код страны 996 отбрасываются — номера хранятся как +996XXXXXXXXX.
+    /// null — цифр меньше трёх (искать по телефону бессмысленно).
+    /// </summary>
+    public static string? SearchDigits(string? text)
+    {
+        var digits = new string((text ?? string.Empty).Where(char.IsAsciiDigit).ToArray());
+        if (digits.StartsWith("996", StringComparison.Ordinal) && digits.Length > 6)
+        {
+            digits = digits[3..];
+        }
+        else if (digits.StartsWith('0'))
+        {
+            digits = digits[1..];
+        }
+
+        return digits.Length >= 3 ? digits : null;
+    }
+
     public static Result<PhoneNumber> Parse(string? input)
     {
         if (string.IsNullOrWhiteSpace(input))

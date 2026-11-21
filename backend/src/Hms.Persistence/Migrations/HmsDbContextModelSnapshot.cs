@@ -23,8 +23,6 @@ namespace Hms.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.HasSequence("booking_number_seq", "bookings");
-
             modelBuilder.Entity("Hms.Modules.Audit.Infrastructure.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -212,6 +210,10 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("character varying(20)")
                         .HasColumnName("number");
 
+                    b.Property<int>("NumberYear")
+                        .HasColumnType("integer")
+                        .HasColumnName("number_year");
+
                     b.Property<decimal>("PenaltyAmount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")
@@ -235,6 +237,10 @@ namespace Hms.Persistence.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)")
                         .HasColumnName("promo_code");
+
+                    b.Property<DateTimeOffset?>("RescheduledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("rescheduled_at");
 
                     b.Property<decimal>("ServicesAmount")
                         .HasPrecision(14, 2)
@@ -282,9 +288,9 @@ namespace Hms.Persistence.Migrations
                         .HasDatabaseName("ix_bookings_hold_until")
                         .HasFilter("hold_until IS NOT NULL");
 
-                    b.HasIndex("HotelId", "Number")
+                    b.HasIndex("HotelId", "NumberYear", "Number")
                         .IsUnique()
-                        .HasDatabaseName("ix_bookings_hotel_id_number");
+                        .HasDatabaseName("ix_bookings_hotel_id_number_year_number");
 
                     b.HasIndex("HotelId", "Status", "StartsAt")
                         .HasDatabaseName("ix_bookings_hotel_id_status_starts_at");
@@ -407,6 +413,26 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("booking_history", "bookings");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingNumberCounter", b =>
+                {
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Last")
+                        .HasColumnType("integer")
+                        .HasColumnName("last");
+
+                    b.HasKey("HotelId", "Day")
+                        .HasName("pk_booking_number_counters");
+
+                    b.ToTable("booking_number_counters", "bookings");
+                });
+
             modelBuilder.Entity("Hms.Modules.Bookings.Domain.BookingRoom", b =>
                 {
                     b.Property<Guid>("Id")
@@ -519,6 +545,407 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("booking_services", "bookings", t =>
                         {
                             t.HasCheckConstraint("ck_booking_services_qty", "quantity > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Expense", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid>("CategoryId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("category_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date")
+                        .HasColumnName("date");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsVoided")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_voided");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("method");
+
+                    b.Property<string>("Supplier")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("supplier");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("VoidReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("void_reason");
+
+                    b.Property<DateTimeOffset?>("VoidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("voided_at");
+
+                    b.Property<Guid?>("VoidedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("voided_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expenses");
+
+                    b.HasIndex("CategoryId")
+                        .HasDatabaseName("ix_expenses_category_id");
+
+                    b.HasIndex("CreatedBy")
+                        .HasDatabaseName("ix_expenses_created_by");
+
+                    b.HasIndex("HotelId", "Date")
+                        .HasDatabaseName("ix_expenses_hotel_id_date");
+
+                    b.ToTable("expenses", "finance", t =>
+                        {
+                            t.HasCheckConstraint("ck_expenses_amount", "amount > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.ExpenseCategory", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("code");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_expense_categories");
+
+                    b.HasIndex("HotelId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ix_expense_categories_hotel_id_code");
+
+                    b.ToTable("expense_categories", "finance");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("channel");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("comment");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("GuestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_id");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("method");
+
+                    b.Property<DateTimeOffset>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<decimal>("RefundedAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("refunded_amount");
+
+                    b.Property<Guid?>("RegisteredBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("registered_by");
+
+                    b.Property<Guid?>("ReversalOfPaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reversal_of_payment_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_payments");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_payments_booking_id");
+
+                    b.HasIndex("ReversalOfPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payments_reversal_of_payment_id")
+                        .HasFilter("reversal_of_payment_id IS NOT NULL");
+
+                    b.HasIndex("GuestId", "PaidAt")
+                        .HasDatabaseName("ix_payments_guest_id_paid_at");
+
+                    b.HasIndex("HotelId", "PaidAt")
+                        .HasDatabaseName("ix_payments_hotel_id_paid_at");
+
+                    b.ToTable("payments", "finance", t =>
+                        {
+                            t.HasCheckConstraint("ck_payments_amount", "(type = 'Reversal' AND amount < 0) OR (type <> 'Reversal' AND amount > 0)");
+
+                            t.HasCheckConstraint("ck_payments_refunded", "refunded_amount >= 0 AND refunded_amount <= abs(amount)");
+                        });
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("Comment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("comment");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_id");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderTxnId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("provider_txn_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_payment_transactions");
+
+                    b.HasIndex("PaymentId", "OccurredAt")
+                        .HasDatabaseName("ix_payment_transactions_payment_id_occurred_at");
+
+                    b.HasIndex("Provider", "ProviderTxnId", "Kind")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payment_transactions_provider_provider_txn_id_kind")
+                        .HasFilter("provider_txn_id IS NOT NULL");
+
+                    b.ToTable("payment_transactions", "finance");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Refund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<Guid?>("DecidedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("decided_by");
+
+                    b.Property<string>("DecisionComment")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("decision_comment");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("method");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<Guid?>("PaidBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("paid_by");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid?>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_refunds");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_refunds_booking_id");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("ix_refunds_payment_id");
+
+                    b.HasIndex("HotelId", "Status", "RequestedAt")
+                        .HasDatabaseName("ix_refunds_hotel_id_status_requested_at");
+
+                    b.ToTable("refunds", "finance", t =>
+                        {
+                            t.HasCheckConstraint("ck_refunds_amount", "amount > 0");
                         });
                 });
 
@@ -749,6 +1176,10 @@ namespace Hms.Persistence.Migrations
                     b.Property<int>("CleaningBufferMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("cleaning_buffer_minutes");
+
+                    b.Property<int>("CleaningBufferNightlyMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("cleaning_buffer_nightly_minutes");
 
                     b.Property<int>("HourlyMaxHours")
                         .HasColumnType("integer")
@@ -1644,6 +2075,14 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("capacity");
 
+                    b.Property<int?>("CleaningHourlyMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("cleaning_hourly_minutes");
+
+                    b.Property<int?>("CleaningNightlyMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("cleaning_nightly_minutes");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -2086,6 +2525,36 @@ namespace Hms.Persistence.Migrations
                         .HasConstraintName("fk_booking_services_bookings_booking_id");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Expense", b =>
+                {
+                    b.HasOne("Hms.Modules.Finance.Domain.ExpenseCategory", null)
+                        .WithMany()
+                        .HasForeignKey("CategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_expenses_expense_categories_category_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.PaymentTransaction", b =>
+                {
+                    b.HasOne("Hms.Modules.Finance.Domain.Payment", null)
+                        .WithMany("Transactions")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_payment_transactions_payments_payment_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Refund", b =>
+                {
+                    b.HasOne("Hms.Modules.Finance.Domain.Payment", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_refunds_payments_payment_id");
+                });
+
             modelBuilder.Entity("Hms.Modules.Guests.Domain.GuestConsent", b =>
                 {
                     b.HasOne("Hms.Modules.Guests.Domain.Guest", null)
@@ -2345,6 +2814,11 @@ namespace Hms.Persistence.Migrations
                     b.Navigation("Rooms");
 
                     b.Navigation("Services");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Finance.Domain.Payment", b =>
+                {
+                    b.Navigation("Transactions");
                 });
 
             modelBuilder.Entity("Hms.Modules.Guests.Domain.Guest", b =>

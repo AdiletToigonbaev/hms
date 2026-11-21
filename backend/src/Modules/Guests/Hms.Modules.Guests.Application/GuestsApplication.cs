@@ -4,8 +4,9 @@ using Hms.SharedKernel;
 
 namespace Hms.Modules.Guests.Application;
 
-/// <param name="BookedAmount">Сумма действующих и завершённых броней. Оплаты появятся с модулем Finance (Sprint 6).</param>
-public sealed record GuestStatsDto(int BookingsCount, int VisitsCount, decimal BookedAmount, DateTimeOffset? LastStayAt);
+/// <param name="BookedAmount">Сумма действующих и завершённых броней.</param>
+/// <param name="PaidAmount">Фактически оплачено: поступления − сторно − выплаченные возвраты (модуль Finance).</param>
+public sealed record GuestStatsDto(int BookingsCount, int VisitsCount, decimal BookedAmount, DateTimeOffset? LastStayAt, decimal PaidAmount = 0m);
 
 public sealed record GuestListItemDto(
     Guid Id,

@@ -36,4 +36,18 @@ public class PhoneNumberTests
         result.IsFailure.Should().BeTrue();
         result.Error!.Code.Should().Be("phone.invalid");
     }
+
+    [Theory]
+    [InlineData("0555 12", "55512")]
+    [InlineData("+996 555 12", "55512")]
+    [InlineData("55512", "55512")]
+    [InlineData("(0700) 123-456", "700123456")]
+    [InlineData("996", "996")]
+    [InlineData("05", null)]
+    [InlineData("Айгерим", null)]
+    [InlineData(null, null)]
+    public void SearchDigits_NormalizesLocalAndInternationalFormats(string? input, string? expected)
+    {
+        PhoneNumber.SearchDigits(input).Should().Be(expected);
+    }
 }

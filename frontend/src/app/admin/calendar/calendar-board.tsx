@@ -10,11 +10,12 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormAlert } from "@/components/forms/form-alert";
 import { buttonVariants } from "@/components/ui/button";
 import type { FormState } from "@/lib/api/problem";
-import type { CalendarBooking, CalendarData, CalendarRoom, RescheduleQuote } from "@/lib/api/types";
+import type { CalendarBooking, CalendarData, CalendarRoom, ExtensionQuote, RescheduleQuote } from "@/lib/api/types";
 import { nightsLabel } from "@/lib/bookings/status";
 import {
   conflictsWith,
   dayMovements,
+  fromMinutes,
   MINUTES_PER_DAY,
   moveStep,
   rescheduleTarget,
@@ -22,13 +23,14 @@ import {
   snap,
   span,
   targetPeriod,
+  toMinutes,
   type CalendarView,
 } from "@/lib/bookings/timeline";
 import { formatDayShort, formatWeekdayShort, shiftDays, type IsoDate } from "@/lib/calendar";
 import { formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { RescheduleInput } from "@/lib/validation/bookings";
-import { quoteRescheduleAction, rescheduleBookingAction } from "../bookings/actions";
+import { extendFromCalendarAction, quoteExtensionAction, quoteRescheduleAction, rescheduleBookingAction } from "../bookings/actions";
 
 const ROW = 60;
 const LABEL = 132;
@@ -63,6 +65,13 @@ interface Pending {
   booking: CalendarBooking;
   target: RescheduleInput;
   quote: RescheduleQuote;
+}
+
+/** Продление правым краем (бронь заселённого гостя или та, что не переносится): на сколько и за сколько. */
+interface PendingExtension {
+  booking: CalendarBooking;
+  units: number;
+  quote: ExtensionQuote;
 }
 
 export function CalendarBoard({
@@ -108,6 +117,7 @@ export function CalendarBoard({
   const selected = data.bookings.find((b) => b.id === selectedId) ?? null;
   const [drag, setDrag] = useState<Drag | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
+  const [pendingExtension, setPendingExtension] = useState<PendingExtension | null>(null);
   const [notice, setNotice] = useState<FormState>({});
   const [success, setSuccess] = useState<string | null>(null);
   const [busy, startBusy] = useTransition();
@@ -132,6 +142,13 @@ export function CalendarBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, from, HOUR_PX, DAY_PX]);
 
+  /** Перетащить (перенос): бронь до заселения. */
+  const canMove = (b: CalendarBooking) => canEdit && b.canReschedule;
+  /** Правый край: у переносимой брони — длительность; у заселённой — продление. */
+  const canResize = (b: CalendarBooking) => canEdit && resizeStep(b.kind, view) !== null && (b.canReschedule || b.canExtend);
+  /** Тянут край брони, которую нельзя перенести, — это продление. */
+  const isExtension = (d: Drag) => d.mode === "resize" && !d.booking.canReschedule;
+
   /** Что получится, если отпустить блок сейчас. */
   function preview(d: Drag) {
     const b = d.booking;
@@ -143,20 +160,27 @@ export function CalendarBoard({
     const row = d.mode === "move" ? Math.min(rooms.length - 1, Math.max(0, fromRow + Math.round(d.dy / ROW))) : fromRow;
     const room = rooms[row];
     const roomOk = room.isSellable && (b.kind === "Nightly" || room.sellsHourly);
+    if (isExtension(d)) {
+      // Продление: только вперёд, конец (с уборкой) не должен задеть следующую бронь.
+      const units = Math.round(stretch / (b.kind === "Hourly" ? 60 : MINUTES_PER_DAY));
+      const tooLong = b.kind === "Hourly" && (b.hours ?? 0) + units > limits.maxHours;
+      const busy = units > 0 && conflictsWith(data.bookings, b.id, b.roomId, { start: toMinutes(b.startsAt), blockedUntil: toMinutes(b.blockedUntil) + stretch });
+      return { shift: 0, stretch, rowDelta: 0, room, roomOk: true, target: null, busy, extendUnits: units, tooLong };
+    }
     const target = rescheduleTarget(b, { roomId: room.id, shift, stretch }, limits);
     const busy = target !== null && conflictsWith(data.bookings, b.id, room.id, targetPeriod(target, b, data));
-    return { shift, stretch, rowDelta: row - fromRow, room, roomOk, target, busy };
+    return { shift, stretch, rowDelta: row - fromRow, room, roomOk, target, busy, extendUnits: 0, tooLong: false };
   }
 
   function onPointerDown(e: ReactPointerEvent<HTMLElement>, b: CalendarBooking, mode: Drag["mode"]) {
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (canEdit && b.canReschedule) e.currentTarget.setPointerCapture(e.pointerId);
+    if (mode === "move" ? canMove(b) : canResize(b)) e.currentTarget.setPointerCapture(e.pointerId);
     setDrag({ booking: b, mode, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0, moved: false });
   }
 
   function onPointerMove(e: ReactPointerEvent<HTMLElement>) {
-    if (!drag || drag.pointerId !== e.pointerId || !(canEdit && drag.booking.canReschedule)) return;
+    if (!drag || drag.pointerId !== e.pointerId || !(drag.mode === "move" ? canMove(drag.booking) : canResize(drag.booking))) return;
     const dx = e.clientX - drag.x0;
     const dy = e.clientY - drag.y0;
     setDrag({ ...drag, dx, dy, moved: drag.moved || Math.abs(dx) > 5 || Math.abs(dy) > 5 });
@@ -171,6 +195,10 @@ export function CalendarBoard({
       return;
     }
     const p = preview(d);
+    if (isExtension(d)) {
+      extendByDrag(d.booking, p.extendUnits, p.busy, p.tooLong);
+      return;
+    }
     if (!p.roomOk) {
       setNotice({ ok: false, error: "calendar.room_not_suitable" });
       return;
@@ -190,6 +218,47 @@ export function CalendarBoard({
       const quote = await quoteRescheduleAction(d.booking.id, target);
       if (quote.ok) setPending({ booking: d.booking, target, quote: quote.data });
       else setNotice(quote.state);
+    });
+  }
+
+  /** Продление правым краем: расчёт API (новый выезд, доплата, свободен ли номер) → окно подтверждения. */
+  function extendByDrag(b: CalendarBooking, units: number, busy: boolean, tooLong: boolean) {
+    if (units < 0) {
+      setNotice({ ok: false, error: "calendar.shorten_not_available" });
+      return;
+    }
+    if (units === 0) return;
+    if (tooLong) {
+      setNotice({ ok: false, error: "calendar.duration_out_of_rules" });
+      return;
+    }
+    if (busy) {
+      setNotice({ ok: false, error: "booking.room_unavailable" });
+      return;
+    }
+    setNotice({});
+    setSuccess(null);
+    startBusy(async () => {
+      const quote = await quoteExtensionAction(b.id, units);
+      if (quote.ok) setPendingExtension({ booking: b, units, quote: quote.quote });
+      else setNotice(quote.state);
+    });
+  }
+
+  function confirmExtension() {
+    if (!pendingExtension) return;
+    const { booking, units, quote } = pendingExtension;
+    setPendingExtension(null);
+    startBusy(async () => {
+      const result = await extendFromCalendarAction(booking.id, units, booking.version);
+      if (result.ok) {
+        setNotice({});
+        setSuccess(t("extendedTo", { number: booking.number, end: formatHotelLocal(quote.newEndsAt), amount: formatMoney(quote.amount) }));
+        setSelectedId(booking.id);
+        router.refresh();
+      } else {
+        setNotice(result.state);
+      }
     });
   }
 
@@ -264,9 +333,9 @@ export function CalendarBoard({
 
       <div className="grid min-w-0 content-start gap-4">
 
-        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
+        <div className="grid gap-2">
           <Legend />
-          {canEdit && <p>{view === "day" ? t("dragHintDay") : t("dragHintWeek")}</p>}
+          {canEdit && <p className="text-xs text-muted-foreground">{view === "day" ? t("dragHintDay") : t("dragHintWeek")}</p>}
         </div>
 
         <div aria-live="polite" className="grid gap-2">
@@ -332,14 +401,23 @@ export function CalendarBoard({
                           const block = span(b.startsAt, b.endsAt, from, days, ppm);
                           const cleaning = span(b.endsAt, b.blockedUntil, from, days, ppm);
                           const dragging = drag?.booking.id === b.id && drag.moved ? preview(drag) : null;
-                          const draggable = canEdit && b.canReschedule;
-                          const resizable = draggable && resizeStep(b.kind, view) !== null;
+                          const draggable = canMove(b);
+                          const resizable = canResize(b);
+                          const why = !canEdit
+                            ? null
+                            : b.canReschedule
+                              ? null
+                              : b.canExtend
+                                ? resizable
+                                  ? t("whyExtendOnly")
+                                  : t("whyExtendInCard")
+                                : t("whyClosed");
                           return (
                             <div key={b.id}>
                               {cleaning && (
                                 <div
                                   aria-hidden
-                                  title={t("cleaning", { n: data.cleaningBufferMinutes })}
+                                  title={t("cleaning", { n: toMinutes(b.blockedUntil) - toMinutes(b.endsAt) })}
                                   className="bg-hatch pointer-events-none absolute top-2 bottom-2 rounded-r-md border border-l-0 border-border/70"
                                   style={{ left: cleaning.left, width: cleaning.width }}
                                 />
@@ -350,7 +428,7 @@ export function CalendarBoard({
                                   data-booking={b.number}
                                   aria-label={t("blockLabel", { number: b.number, guest: b.guestName, when: rangeLabel(b.startsAt, b.endsAt, b.kind) })}
                                   aria-pressed={selectedId === b.id}
-                                  title={`${b.guestName} · ${rangeLabel(b.startsAt, b.endsAt, b.kind)} · № ${room.number}`}
+                                  title={`${b.guestName} · ${rangeLabel(b.startsAt, b.endsAt, b.kind)} · № ${room.number}${why ? `\n${why}` : ""}`}
                                   onPointerDown={(e) => onPointerDown(e, b, "move")}
                                   onPointerMove={onPointerMove}
                                   onPointerUp={onPointerUp}
@@ -397,7 +475,7 @@ export function CalendarBoard({
                                   aria-hidden
                                   className={cn(
                                     "pointer-events-none absolute top-1.5 bottom-1.5 z-30 grid content-center rounded-lg border-2 px-2 text-xs font-semibold shadow-lg",
-                                    dragging.roomOk && !dragging.busy && (dragging.target || (dragging.shift === 0 && dragging.stretch === 0 && dragging.rowDelta === 0))
+                                    dragging.roomOk && !dragging.busy && !dragging.tooLong && (dragging.target || dragging.extendUnits > 0 || (dragging.shift === 0 && dragging.stretch === 0 && dragging.rowDelta === 0))
                                       ? "border-status-occupied bg-status-occupied/15 text-status-occupied"
                                       : "border-destructive bg-destructive/10 text-destructive",
                                   )}
@@ -408,7 +486,11 @@ export function CalendarBoard({
                                   }}
                                 >
                                   <span className="tabular truncate">
-                                    {dragging.target
+                                    {isExtension(drag!)
+                                      ? dragging.extendUnits > 0
+                                        ? `${b.kind === "Hourly" ? `+${t("hoursShort", { n: dragging.extendUnits })}` : `+${nightsLabel(dragging.extendUnits)}`} · ${t("until", { time: formatHotelTime(fromMinutes(toMinutes(b.endsAt) + dragging.stretch)) })}`
+                                        : t("shortenLater")
+                                      : dragging.target
                                       ? dragging.target.kind === "Hourly"
                                         ? `№ ${dragging.room.number} · ${String(dragging.target.startHour).padStart(2, "0")}:00 · ${t("hoursShort", { n: dragging.target.hours })}`
                                         : `№ ${dragging.room.number} · ${formatDayShort(dragging.target.checkIn)} — ${formatDayShort(dragging.target.checkOut)}`
@@ -435,6 +517,20 @@ export function CalendarBoard({
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={pendingExtension !== null}
+        onOpenChange={(open) => !open && setPendingExtension(null)}
+        title={pendingExtension ? t("extendTitle", { number: pendingExtension.booking.number }) : ""}
+        description={
+          pendingExtension
+            ? t("extendText", { end: formatHotelLocal(pendingExtension.quote.newEndsAt), amount: formatMoney(pendingExtension.quote.amount) })
+            : ""
+        }
+        confirmLabel={t("extendYes")}
+        cancelLabel={t("moveNo")}
+        onConfirm={confirmExtension}
+      />
 
       <ConfirmDialog
         open={pending !== null}
@@ -517,7 +613,7 @@ function SelectedBooking({
         <MoveRight aria-hidden />
       </Link>
       {canEdit && (
-        <p className="text-xs text-muted-foreground">{b.canReschedule ? t("canDrag") : t("cannotDrag")}</p>
+        <p className="text-xs text-muted-foreground">{b.canReschedule ? t("canDrag") : b.canExtend ? t("canExtendOnly") : t("cannotDrag")}</p>
       )}
     </section>
   );
@@ -579,10 +675,10 @@ function Legend() {
     { label: t("legendLate"), className: "border-destructive/70 bg-card" },
   ];
   return (
-    <ul className="flex flex-wrap items-center gap-x-4 gap-y-1" aria-label={t("legend")}>
+    <ul className="flex flex-wrap items-center gap-2" aria-label={t("legend")}>
       {items.map((i) => (
-        <li key={i.label} className="flex items-center gap-1.5">
-          <span className={cn("inline-block h-3 w-5 rounded border", i.className)} aria-hidden />
+        <li key={i.label} className="flex items-center gap-2.5 rounded-full border bg-card px-3.5 py-1.5 text-sm shadow-xs">
+          <span className={cn("inline-block h-4 w-9 rounded-md border", i.className)} aria-hidden />
           {i.label}
         </li>
       ))}

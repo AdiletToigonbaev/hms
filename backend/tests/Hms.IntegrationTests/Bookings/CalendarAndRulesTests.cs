@@ -6,6 +6,7 @@ using Hms.Modules.Hotel.Application;
 using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Rooms.Application;
 using Hms.Platform.Time;
+using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using static Hms.IntegrationTests.TestApi;
@@ -50,6 +51,19 @@ internal static class BookingTestKit
     public static RescheduleBookingRequest MoveHourly(Guid roomId, DateOnly date, int startHour, int hours, uint? version = null) =>
         new(roomId, StayKinds.Hourly, null, null, date, startHour, hours, version);
 
+    /// <summary>Штрафы гостиницы: 1 час / 1 ночь или выключены (по умолчанию). Меняет глобальные настройки — только в GlobalSettingsGroup.</summary>
+    public static async Task SetPenaltiesAsync(HttpClient owner, bool enabled)
+    {
+        var units = enabled ? 1 : 0;
+        var settings = (await owner.GetFromJsonAsync<HotelSettingsDto>("/api/v1/hotel/settings", Ct))!;
+        var response = await owner.PutAsJsonAsync("/api/v1/hotel/settings", HotelTests.ToUpdate(settings) with
+        {
+            CancellationPolicy = settings.CancellationPolicy with { LateCancelPenaltyNights = units, NoShowPenaltyNights = units },
+            HourlyPolicy = settings.HourlyPolicy with { LateCancelPenaltyHours = units, NoShowPenaltyHours = units },
+        }, Ct);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+    }
+
     /// <summary>Ближайший целый час, с которого можно начать бронь сегодня (или завтра в 00:00).</summary>
     public static (DateOnly Date, int Hour) NextHour(IHotelClock clock)
     {
@@ -70,17 +84,15 @@ public class CalendarAndRulesTests(PostgresFixture db)
     private async Task<HttpClient> OwnerAsync() => _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
 
     [Fact]
-    public async Task CancelQuote_FarAhead_IsFree_ThenCancelWithoutPenalty()
+    public async Task ByDefault_NoPenalties_EvenLateCancelIsFree()
     {
         var owner = await OwnerAsync();
-        var room = await BookingTestKit.CreateRoomAsync(owner);
-        var booking = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, Today.AddDays(20), 10, 2));
+        var room = await BookingTestKit.CreateRoomAsync(owner, 600m);
+        var (date, hour) = BookingTestKit.NextHour(Clock);
+        var booking = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, date, hour, 2));
 
         var quote = (await owner.GetFromJsonAsync<CancellationQuoteDto>($"/api/v1/bookings/{booking.Id}/cancel/preview", Ct))!;
-        quote.IsFree.Should().BeTrue();
-        quote.FreeUntil.Should().Be($"{Today.AddDays(20):yyyy-MM-dd}T08:00", "бесплатно — за 2 часа до начала");
-        quote.Unit.Should().Be("Hour");
-        quote.NoShowPenalty.Should().Be(500m);
+        quote.Should().BeEquivalentTo(new { IsFree = true, FreeUntil = (string?)null, Penalty = 0m, NoShowPenalty = 0m }, "штрафы по умолчанию выключены");
 
         var cancelled = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/cancel", new CancelBookingRequest("Планы изменились"), Ct);
         cancelled.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -90,37 +102,49 @@ public class CalendarAndRulesTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task LateCancel_ChargesOneHour_AdminCannotWaive_OwnerCan()
+    public async Task BookingNumbers_KindAndCreationDay_DailyCounter_Searchable()
     {
         var owner = await OwnerAsync();
-        var room = await BookingTestKit.CreateRoomAsync(owner, 600m);
-        var (date, hour) = BookingTestKit.NextHour(Clock);
-        var first = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, date, hour, 2));
-        var (_, adminTokens) = await _api.CreateActiveStaffAsync(Roles.Administrator);
-        var admin = _api.Authorized(adminTokens.AccessToken);
+        var room = await BookingTestKit.CreateRoomAsync(owner);
+        var hourly = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, Today.AddDays(33), 10, 2));
+        var nightly = await BookingTestKit.CreateAsync(owner,
+            new CreateBookingRequest(room.Id, Today.AddDays(34), Today.AddDays(35), 2, 0, "Гость", "+996555123456", null, null, null, null, true));
+        var day = Today.ToString("ddMM", System.Globalization.CultureInfo.InvariantCulture);
 
-        var quote = (await admin.GetFromJsonAsync<CancellationQuoteDto>($"/api/v1/bookings/{first.Id}/cancel/preview", Ct))!;
-        quote.IsFree.Should().BeFalse("до начала меньше двух часов");
-        quote.Penalty.Should().Be(600m);
-        quote.CanWaive.Should().BeFalse("у администратора по умолчанию нет права «Отмена без штрафа»");
+        hourly.Number.Should().MatchRegex($@"^Ч-{day}-\d{{2,}}$", "почасовая, создана сегодня");
+        nightly.Number.Should().MatchRegex($@"^С-{day}-\d{{2,}}$", "посуточная, создана сегодня");
+        int Seq(string number) => int.Parse(number.Split('-')[2], System.Globalization.CultureInfo.InvariantCulture);
+        Seq(nightly.Number).Should().BeGreaterThan(Seq(hourly.Number), "счётчик за день общий для обоих видов");
 
-        var waive = await admin.PostAsJsonAsync($"/api/v1/bookings/{first.Id}/cancel", new CancelBookingRequest("Исключение", WaivePenalty: true), Ct);
-        waive.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await ProblemCodeAsync(waive)).Should().Be("booking.penalty_waive_forbidden");
+        foreach (var search in new[] { hourly.Number, hourly.Number.ToLowerInvariant(), nightly.Number.Replace('С', 'C') })
+        {
+            var page = (await owner.GetFromJsonAsync<PagedResult<BookingListItemDto>>($"/api/v1/bookings?search={Uri.EscapeDataString(search)}", Ct))!;
+            page.Items.Should().Contain(b => b.Number == search || b.Id == nightly.Id || b.Id == hourly.Id, $"поиск «{search}»");
+        }
+    }
 
-        var charged = await admin.PostAsJsonAsync($"/api/v1/bookings/{first.Id}/cancel", new CancelBookingRequest("Гость отказался"), Ct);
-        charged.StatusCode.Should().Be(HttpStatusCode.OK, await charged.Content.ReadAsStringAsync(Ct));
-        var dto = (await charged.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
-        dto.PenaltyAmount.Should().Be(600m);
-        dto.PenaltyKind.Should().Be("LateCancel");
+    [Fact]
+    public async Task ParallelBookings_GetDistinctNumbers()
+    {
+        var owner = await OwnerAsync();
+        var rooms = await Task.WhenAll(Enumerable.Range(0, 5).Select(_ => BookingTestKit.CreateRoomAsync(owner)));
+        var created = await Task.WhenAll(rooms.Select(r => BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(r.Id, Today.AddDays(36), 10, 2))));
 
-        // Владелец может отменить без штрафа — штраф не начисляется, но исключение запоминается.
-        var second = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, date, hour, 2));
-        var waived = await owner.PostAsJsonAsync($"/api/v1/bookings/{second.Id}/cancel", new CancelBookingRequest("Постоянный гость", WaivePenalty: true), Ct);
-        waived.StatusCode.Should().Be(HttpStatusCode.OK);
-        var waivedDto = (await waived.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
-        waivedDto.PenaltyAmount.Should().Be(0m);
-        waivedDto.PenaltyWaived.Should().BeTrue();
+        created.Select(b => b.Number).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task BookingSearch_FindsPhoneInLocalFormat()
+    {
+        var owner = await OwnerAsync();
+        var room = await BookingTestKit.CreateRoomAsync(owner);
+        var phone = UniquePhone(); // +9967XXXXXXXX
+        var booking = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, Today.AddDays(31), 10, 2) with { GuestPhone = phone });
+        var local = "0" + phone[4..7] + " " + phone[7..10]; // «0700 123» — так номер называют по телефону
+
+        var page = (await owner.GetFromJsonAsync<PagedResult<BookingListItemDto>>($"/api/v1/bookings?search={Uri.EscapeDataString(local)}", Ct))!;
+
+        page.Items.Should().Contain(b => b.Id == booking.Id);
     }
 
     [Fact]
@@ -191,7 +215,7 @@ public class CalendarAndRulesTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Reschedule_CannotChangeKind_OrMoveExtendedBooking()
+    public async Task Reschedule_CannotChangeKind_ButExtendedBookingMovesAsOneBlock()
     {
         var owner = await OwnerAsync();
         var room = await BookingTestKit.CreateRoomAsync(owner);
@@ -204,8 +228,17 @@ public class CalendarAndRulesTests(PostgresFixture db)
 
         var extended = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/extend", new ExtendBookingRequest(1, booking.Version), Ct);
         extended.StatusCode.Should().Be(HttpStatusCode.OK);
-        var moved = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/reschedule", BookingTestKit.MoveHourly(room.Id, day, 14, 2), Ct);
-        (await ProblemCodeAsync(moved)).Should().Be("booking.reschedule_extended");
+        var afterExtend = (await extended.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
+        afterExtend.AllowedActions.Should().Contain("reschedule");
+
+        // 3 часа (2 + продление 1) переносятся одним блоком и пересчитываются по текущей цене часа.
+        var moved = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/reschedule", BookingTestKit.MoveHourly(room.Id, day, 14, 3, afterExtend.Version), Ct);
+        moved.StatusCode.Should().Be(HttpStatusCode.OK, await moved.Content.ReadAsStringAsync(Ct));
+        var dto = (await moved.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
+        dto.Hours.Should().Be(3);
+        dto.TotalAmount.Should().Be(1500m);
+        dto.ExtensionsAmount.Should().Be(0m);
+        dto.Extensions.Should().BeEmpty("прежнее продление уже вошло в новую цену");
     }
 
     [Fact]
@@ -239,6 +272,7 @@ public class CalendarAndRulesTests(PostgresFixture db)
         block.EndsAt.Should().Be($"{day:yyyy-MM-dd}T12:00");
         block.BlockedUntil.Should().Be($"{day:yyyy-MM-dd}T12:30");
         block.CanReschedule.Should().BeTrue();
+        block.CanExtend.Should().BeTrue();
         calendar.CleaningBufferMinutes.Should().Be(30);
     }
 
@@ -287,6 +321,60 @@ public class BookingLifecycleTests(PostgresFixture db)
         return await scope.ServiceProvider.GetRequiredService<IBookingLifecycle>().RunAsync(Clock.UtcNow, Ct);
     }
 
+    [Fact]
+    public async Task Penalties_WhenOwnerEnablesThem_LateCancelChargesOneHour_AdminCannotWaive_OwnerCan()
+    {
+        var owner = await OwnerAsync();
+        await BookingTestKit.SetPenaltiesAsync(owner, true);
+        try
+        {
+            var room = await BookingTestKit.CreateRoomAsync(owner, 600m);
+            var far = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, Clock.Today.AddDays(20), 10, 2));
+            var farQuote = (await owner.GetFromJsonAsync<CancellationQuoteDto>($"/api/v1/bookings/{far.Id}/cancel/preview", Ct))!;
+            farQuote.IsFree.Should().BeTrue();
+            farQuote.FreeUntil.Should().Be($"{Clock.Today.AddDays(20):yyyy-MM-dd}T08:00", "бесплатно — за 2 часа до начала");
+            farQuote.NoShowPenalty.Should().Be(600m);
+
+            var (date, hour) = BookingTestKit.NextHour(Clock);
+            var first = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, date, hour, 2));
+            var (_, adminTokens) = await _api.CreateActiveStaffAsync(Roles.Administrator);
+            var admin = _api.Authorized(adminTokens.AccessToken);
+
+            var quote = (await admin.GetFromJsonAsync<CancellationQuoteDto>($"/api/v1/bookings/{first.Id}/cancel/preview", Ct))!;
+            quote.IsFree.Should().BeFalse("до начала меньше двух часов");
+            quote.Penalty.Should().Be(600m);
+            quote.CanWaive.Should().BeFalse("у администратора по умолчанию нет права «Отмена без штрафа»");
+
+            var waive = await admin.PostAsJsonAsync($"/api/v1/bookings/{first.Id}/cancel", new CancelBookingRequest("Исключение", WaivePenalty: true), Ct);
+            waive.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await ProblemCodeAsync(waive)).Should().Be("booking.penalty_waive_forbidden");
+
+            var charged = await admin.PostAsJsonAsync($"/api/v1/bookings/{first.Id}/cancel", new CancelBookingRequest("Гость отказался"), Ct);
+            charged.StatusCode.Should().Be(HttpStatusCode.OK, await charged.Content.ReadAsStringAsync(Ct));
+            var dto = (await charged.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
+            dto.PenaltyAmount.Should().Be(600m);
+            dto.PenaltyKind.Should().Be("LateCancel");
+
+            // Владелец может отменить без штрафа — штраф не начисляется, но исключение запоминается.
+            var second = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, date, hour, 2));
+            var waived = await owner.PostAsJsonAsync($"/api/v1/bookings/{second.Id}/cancel", new CancelBookingRequest("Постоянный гость", WaivePenalty: true), Ct);
+            waived.StatusCode.Should().Be(HttpStatusCode.OK);
+            var waivedDto = (await waived.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
+            waivedDto.PenaltyAmount.Should().Be(0m);
+            waivedDto.PenaltyWaived.Should().BeTrue();
+
+            // Начисленный штраф — к оплате и в долгах.
+            var balance = (await owner.GetFromJsonAsync<Hms.Modules.Finance.Application.BookingBalanceDto>($"/api/v1/bookings/{first.Id}/balance", Ct))!;
+            balance.Due.Should().Be(600m);
+            var debts = (await owner.GetFromJsonAsync<Hms.Modules.Finance.Application.DebtListDto>("/api/v1/finance/debts", Ct))!;
+            debts.Items.Should().Contain(d => d.BookingId == first.Id && d.Balance == 600m && d.BookingStatus == "Cancelled");
+        }
+        finally
+        {
+            await BookingTestKit.SetPenaltiesAsync(owner, false);
+        }
+    }
+
     private static async Task<HotelSettingsDto> SetAutoNoShowAsync(HttpClient owner, bool enabled)
     {
         var settings = (await owner.GetFromJsonAsync<HotelSettingsDto>("/api/v1/hotel/settings", Ct))!;
@@ -333,6 +421,7 @@ public class BookingLifecycleTests(PostgresFixture db)
         (await owner.GetFromJsonAsync<BookingDto>($"/api/v1/bookings/{booking.Id}", Ct))!.Status.Should().Be("Confirmed", "автонеявка выключена по умолчанию");
 
         await SetAutoNoShowAsync(owner, true);
+        await BookingTestKit.SetPenaltiesAsync(owner, true);
         try
         {
             var run = await RunAsync();
@@ -345,6 +434,7 @@ public class BookingLifecycleTests(PostgresFixture db)
         finally
         {
             await SetAutoNoShowAsync(owner, false);
+            await BookingTestKit.SetPenaltiesAsync(owner, false);
         }
     }
 
@@ -362,7 +452,8 @@ public class BookingLifecycleTests(PostgresFixture db)
         marked.StatusCode.Should().Be(HttpStatusCode.OK, await marked.Content.ReadAsStringAsync(Ct));
         var dto = (await marked.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
         dto.Status.Should().Be("NoShow");
-        dto.PenaltyWaived.Should().BeTrue();
+        dto.PenaltyAmount.Should().Be(0m, "штрафы по умолчанию выключены — снимать нечего");
+        dto.PenaltyWaived.Should().BeFalse();
         await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, day, 10, 2)); // номер освобождён
     }
 }
