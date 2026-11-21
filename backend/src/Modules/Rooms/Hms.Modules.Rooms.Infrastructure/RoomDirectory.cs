@@ -14,6 +14,9 @@ internal sealed class RoomDirectory(DbContext db, IHotelContext hotel) : IRoomDi
     public async Task<IReadOnlyList<RoomInfo>> ListSellableAsync(Guid? roomTypeId, CancellationToken ct) =>
         (await QueryAsync(ct)).Where(r => r.IsSellable && (roomTypeId == null || r.RoomTypeId == roomTypeId)).ToList();
 
+    public async Task<IReadOnlyList<RoomInfo>> ListActiveAsync(CancellationToken ct) =>
+        (await QueryAsync(ct)).Where(r => !r.IsArchived && !r.RoomTypeArchived).OrderBy(r => r.Number.Length).ThenBy(r => r.Number, StringComparer.Ordinal).ToList();
+
     public async Task<bool> RoomTypeExistsAsync(Guid roomTypeId, CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);

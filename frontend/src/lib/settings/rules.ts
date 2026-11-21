@@ -60,6 +60,7 @@ export function settingsUpdateBody(s: HotelSettings) {
     rules: s.rules,
     version: s.version,
     hourlyPolicy: { ...s.hourlyPolicy },
+    autoNoShowEnabled: s.autoNoShowEnabled,
   };
 }
 

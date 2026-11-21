@@ -36,7 +36,8 @@ public sealed record HotelSettingsSnapshot(
     int HourlyMaxHours,
     int CleaningBufferMinutes,
     CancellationPolicySnapshot CancellationPolicy,
-    HourlyPolicySnapshot HourlyPolicy);
+    HourlyPolicySnapshot HourlyPolicy,
+    bool AutoNoShowEnabled = false);
 
 /// <summary>
 /// Текущая гостиница и её настройки. Сейчас гостиница одна (ТЗ §2), модель данных готова к нескольким:

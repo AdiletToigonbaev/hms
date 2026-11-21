@@ -602,6 +602,13 @@ export function BookingRulesForm({ settings }: { settings: HotelSettings }) {
         />
       </div>
 
+      <Toggle
+        name="autoNoShowEnabled"
+        label={t("autoNoShow")}
+        defaultChecked={settings.autoNoShowEnabled}
+        help={help("autoNoShow", t("autoNoShow"))}
+      />
+
       <section
         aria-live="polite"
         className="grid gap-3 rounded-xl bg-secondary/60 p-4 text-sm"

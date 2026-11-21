@@ -38,6 +38,74 @@ public static class BookingStatusMachine
 
     /// <summary>Продлить можно подтверждённую бронь и бронь заселённого гостя.</summary>
     public static bool CanExtend(BookingStatus status) => status is BookingStatus.Confirmed or BookingStatus.CheckedIn;
+
+    /// <summary>Перенести (время, даты, номер) можно до заселения.</summary>
+    public static bool CanReschedule(BookingStatus status) =>
+        status is BookingStatus.Pending or BookingStatus.AwaitingPayment or BookingStatus.Confirmed;
+
+    /// <summary>Неподтверждённая бронь держит номер ограниченное время (<see cref="Booking.HoldUntil"/>).</summary>
+    public static bool IsHeld(BookingStatus status) => status is BookingStatus.Pending or BookingStatus.AwaitingPayment;
+}
+
+/// <summary>За что начислен штраф.</summary>
+public enum PenaltyKind
+{
+    LateCancel,
+    NoShow,
+}
+
+/// <summary>Правило штрафа одного вида брони (из настроек гостиницы, roadmap §6.1 и §6.1a).</summary>
+/// <param name="FreeCancelBefore">За сколько до начала отмена бесплатна.</param>
+/// <param name="LateCancelUnits">Штраф за позднюю отмену — часов (почасовая) или ночей (посуточная).</param>
+/// <param name="NoShowUnits">Штраф за неявку — часов или ночей.</param>
+public sealed record PenaltyRules(TimeSpan FreeCancelBefore, int LateCancelUnits, int NoShowUnits);
+
+/// <summary>Условия отмены на текущий момент.</summary>
+/// <param name="FreeUntil">До какого момента отмена бесплатна (для подтверждённой брони).</param>
+/// <param name="Units">За сколько часов/ночей штраф.</param>
+public sealed record CancellationTerms(bool IsFree, DateTimeOffset? FreeUntil, decimal Penalty, int Units);
+
+/// <summary>
+/// Расчёт штрафов. Штрафуется только подтверждённая бронь: неподтверждённая номер не гарантировала.
+/// Цена единицы — средняя цена часа (ночи) брони после скидки, с продлениями; штраф не больше стоимости проживания.
+/// </summary>
+public static class BookingPenalties
+{
+    public static CancellationTerms ForCancel(Booking booking, PenaltyRules rules, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(rules);
+        if (booking.Status != BookingStatus.Confirmed)
+        {
+            return new CancellationTerms(true, null, 0m, 0);
+        }
+
+        var freeUntil = booking.StartsAt - rules.FreeCancelBefore;
+        return now <= freeUntil
+            ? new CancellationTerms(true, freeUntil, 0m, 0)
+            : new CancellationTerms(false, freeUntil, Amount(booking, rules.LateCancelUnits), Math.Min(rules.LateCancelUnits, booking.Units));
+    }
+
+    public static decimal ForNoShow(Booking booking, PenaltyRules rules)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        ArgumentNullException.ThrowIfNull(rules);
+        return Amount(booking, rules.NoShowUnits);
+    }
+
+    /// <summary>Штраф за <paramref name="units"/> часов/ночей по средней цене единицы брони.</summary>
+    public static decimal Amount(Booking booking, int units)
+    {
+        ArgumentNullException.ThrowIfNull(booking);
+        var accommodation = booking.AccommodationAmount - booking.DiscountAmount + booking.ExtensionsAmount;
+        if (units <= 0 || booking.Units <= 0 || accommodation <= 0)
+        {
+            return 0m;
+        }
+
+        var amount = Math.Round(accommodation / booking.Units * Math.Min(units, booking.Units), 2, MidpointRounding.AwayFromZero);
+        return Math.Min(amount, accommodation);
+    }
 }
 
 /// <summary>
@@ -146,6 +214,19 @@ public sealed class Booking
 
     public string? CancelReason { get; private set; }
 
+    /// <summary>До какого момента неподтверждённая бронь держит номер; потом фоновая задача переводит её в Expired.</summary>
+    public DateTimeOffset? HoldUntil { get; private set; }
+
+    /// <summary>
+    /// Начисленный штраф (поздняя отмена, неявка). Только начислен: принимается и учитывается модулем оплат (Sprint 6).
+    /// </summary>
+    public decimal PenaltyAmount { get; private set; }
+
+    public PenaltyKind? PenaltyKind { get; private set; }
+
+    /// <summary>Штраф полагался по правилам, но сотрудник с правом снял его (исключение из правил).</summary>
+    public bool PenaltyWaived { get; private set; }
+
     public Guid? CreatedBy { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
@@ -164,6 +245,9 @@ public sealed class Booking
 
     public int Nights => Kind == BookingKind.Nightly ? CheckOut.DayNumber - CheckIn.DayNumber : 0;
 
+    /// <summary>Часы (почасовая) или ночи (посуточная) — единицы цены и штрафов.</summary>
+    public int Units => Kind == BookingKind.Hourly ? Hours ?? 0 : Nights;
+
     public static Booking Create(
         Guid hotelId,
         string number,
@@ -179,7 +263,8 @@ public sealed class Booking
         BookingPrice price,
         bool confirm,
         Guid? createdBy,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        DateTimeOffset? holdUntil = null)
     {
         ArgumentNullException.ThrowIfNull(stay);
         ArgumentNullException.ThrowIfNull(guest);
@@ -212,6 +297,7 @@ public sealed class Booking
             TotalAmount = price.Total,
             PriceSnapshot = price.SnapshotJson,
             ConfirmedAt = confirm ? now : null,
+            HoldUntil = confirm ? null : holdUntil,
             CreatedBy = createdBy,
             CreatedAt = now,
             UpdatedAt = now,
@@ -234,12 +320,16 @@ public sealed class Booking
         if (result.IsSuccess)
         {
             ConfirmedAt = now;
+            HoldUntil = null;
         }
 
         return result;
     }
 
-    public Result Cancel(string reason, Guid? by, DateTimeOffset now)
+    public Result Cancel(string reason, Guid? by, DateTimeOffset now) => Cancel(reason, 0m, false, by, now);
+
+    /// <summary>Отмена. <paramref name="penalty"/> — штраф по правилам; <paramref name="waived"/> — снят сотрудником с правом.</summary>
+    public Result Cancel(string reason, decimal penalty, bool waived, Guid? by, DateTimeOffset now)
     {
         if (string.IsNullOrWhiteSpace(reason))
         {
@@ -251,9 +341,119 @@ public sealed class Booking
         {
             CancelledAt = now;
             CancelReason = reason.Trim();
+            HoldUntil = null;
+            ApplyPenalty(Domain.PenaltyKind.LateCancel, penalty, waived, by, now);
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Неявка: гость не пришёл. Номер освобождается (статус NoShow не блокирует), начисляется штраф по правилам.
+    /// <paramref name="by"/> = null — отметила фоновая задача.
+    /// </summary>
+    public Result MarkNoShow(decimal penalty, bool waived, Guid? by, DateTimeOffset now)
+    {
+        if (Status == BookingStatus.Confirmed && now < StartsAt)
+        {
+            return Error.BusinessRule("booking.no_show_too_early", "Неявку можно отметить только после времени начала брони.");
+        }
+
+        var result = ChangeStatus(BookingStatus.NoShow, by, now, null);
+        if (result.IsSuccess)
+        {
+            ApplyPenalty(Domain.PenaltyKind.NoShow, penalty, waived, by, now);
+        }
+
+        return result;
+    }
+
+    /// <summary>Неподтверждённая бронь не подтверждена вовремя — номер освобождается.</summary>
+    public Result Expire(DateTimeOffset now)
+    {
+        if (!BookingStatusMachine.IsHeld(Status) || HoldUntil is not { } until || until > now)
+        {
+            return Error.Conflict("booking.not_expired", "Срок удержания брони ещё не истёк.");
+        }
+
+        var result = ChangeStatus(BookingStatus.Expired, null, now, null);
+        if (result.IsSuccess)
+        {
+            HoldUntil = null;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Перенос до заселения: новое время (и длительность) и/или другой номер. Цена — по текущим ценам на новое время.
+    /// Бронь с продлениями не переносится: её стоимость сложена из разных расчётов.
+    /// </summary>
+    public Result Reschedule(StayPeriod stay, Guid roomId, Guid roomTypeId, BookingPrice price, Guid? by, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(stay);
+        ArgumentNullException.ThrowIfNull(price);
+        if (!BookingStatusMachine.CanReschedule(Status))
+        {
+            return Error.Conflict("booking.reschedule_not_allowed", "Перенести можно только бронь до заселения.");
+        }
+
+        if (stay.Kind != Kind)
+        {
+            return Error.Validation("booking.reschedule_kind", "Нельзя сменить вид брони (часы/сутки) — отмените и создайте новую.");
+        }
+
+        if (_extensions.Count > 0)
+        {
+            return Error.BusinessRule("booking.reschedule_extended", "Бронь уже продлевали — перенос недоступен. Отмените её и создайте новую.");
+        }
+
+        var line = _rooms[0];
+        var before = new { StartsAt, EndsAt, RoomId = line.RoomId, TotalAmount };
+        CheckIn = stay.CheckIn;
+        CheckOut = stay.CheckOut;
+        StartsAt = stay.StartsAt;
+        EndsAt = stay.EndsAt;
+        Hours = Kind == BookingKind.Hourly ? stay.Units : null;
+        line.Move(roomId, roomTypeId, stay);
+
+        AccommodationAmount = price.Accommodation;
+        DiscountAmount = price.Discount;
+        ServicesAmount = price.Services;
+        TotalAmount = price.Total;
+        DiscountId = price.DiscountId;
+        PromoCode = price.PromoCode;
+        PriceSnapshot = price.SnapshotJson;
+        foreach (var service in _services)
+        {
+            var updated = price.ServiceLines.FirstOrDefault(s => s.ServiceId == service.ServiceId);
+            if (updated is not null)
+            {
+                service.Reprice(updated.Quantity, updated.UnitPrice, updated.Total);
+            }
+        }
+
+        if (HoldUntil is { } hold && stay.StartsAt > now && stay.StartsAt < hold)
+        {
+            HoldUntil = stay.StartsAt;
+        }
+
+        UpdatedAt = now;
+        AddHistory("rescheduled", before, new { StartsAt, EndsAt, RoomId = roomId, TotalAmount }, by, now, null);
+        return Result.Success();
+    }
+
+    private void ApplyPenalty(PenaltyKind kind, decimal penalty, bool waived, Guid? by, DateTimeOffset now)
+    {
+        if (penalty <= 0)
+        {
+            return;
+        }
+
+        PenaltyKind = kind;
+        PenaltyWaived = waived;
+        PenaltyAmount = waived ? 0m : penalty;
+        AddHistory(waived ? "penalty_waived" : "penalty_charged", null, new { Kind = kind.ToString(), Amount = penalty }, by, now, null);
     }
 
     /// <summary>Смена статуса по машине переходов; пересчитывает блокировку номера в той же единице работы.</summary>
@@ -386,6 +586,17 @@ public sealed class BookingRoom
 
     internal void SetBlocking(bool blocking) => IsBlocking = blocking;
 
+    internal void Move(Guid roomId, Guid roomTypeId, StayPeriod stay)
+    {
+        RoomId = roomId;
+        RoomTypeId = roomTypeId;
+        CheckIn = stay.CheckIn;
+        CheckOut = stay.CheckOut;
+        StartsAt = stay.StartsAt;
+        EndsAt = stay.EndsAt;
+        BlockedUntil = stay.BlockedUntil;
+    }
+
     internal void Extend(StayPeriod extended)
     {
         CheckOut = extended.CheckOut;
@@ -479,6 +690,14 @@ public sealed class BookingServiceLine
     public Guid? AddedBy { get; private set; }
 
     public DateTimeOffset AddedAt { get; private set; }
+
+    /// <summary>Пересчёт при переносе брони (число ночей и цены могли измениться).</summary>
+    internal void Reprice(int quantity, decimal unitPrice, decimal total)
+    {
+        Quantity = quantity;
+        UnitPrice = unitPrice;
+        Total = total;
+    }
 }
 
 /// <summary>Запись истории брони (BOOK-7). Только добавление.</summary>

@@ -125,6 +125,7 @@ function applySection(section: keyof typeof SECTION_FIELDS, form: FormData, body
       pendingHoldMinutes: v.hourlyPendingHoldMinutes,
       refundUnusedOnEarlyDeparture: checkbox(form, "hourlyRefundUnused"),
     };
+    body.autoNoShowEnabled = checkbox(form, "autoNoShowEnabled");
   } else if (section === "rooms") {
     const r = roomsSchema.safeParse(data);
     if (!r.success) return fieldErrors(r.error);

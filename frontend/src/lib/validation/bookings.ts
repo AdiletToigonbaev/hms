@@ -149,3 +149,28 @@ export const serviceSchema = z.object({
   description: optionalText(500),
   price: money("Цена — больше нуля, не более двух знаков после запятой."),
 });
+
+// ---------- Перенос брони ----------
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Выберите дату.");
+
+/** Перенос: вид брони не меняется; номер — любой подходящий, время и длительность — новые. */
+export const rescheduleSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("Hourly"),
+    roomId: z.string().uuid({ error: "Выберите номер." }),
+    date: isoDay,
+    startHour: z.coerce.number().int().min(0).max(23, "Время начала — от 00:00 до 23:00."),
+    hours: z.coerce.number().int().min(1, "Минимум 1 час.").max(24, "Не более 24 часов."),
+  }),
+  z
+    .object({
+      kind: z.literal("Nightly"),
+      roomId: z.string().uuid({ error: "Выберите номер." }),
+      checkIn: isoDay,
+      checkOut: isoDay,
+    })
+    .refine((v) => v.checkOut > v.checkIn, { path: ["checkOut"], message: "Дата выезда должна быть позже даты заезда." }),
+]);
+
+export type RescheduleInput = z.infer<typeof rescheduleSchema>;

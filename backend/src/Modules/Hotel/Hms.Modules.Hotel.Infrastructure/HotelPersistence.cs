@@ -120,7 +120,8 @@ internal sealed class HotelContext(DbContext db, IMemoryCache cache) : IHotelCon
                 s.HourlyPolicy.NoShowAfterMinutes,
                 s.HourlyPolicy.NoShowPenaltyHours,
                 s.HourlyPolicy.PendingHoldMinutes,
-                s.HourlyPolicy.RefundUnusedOnEarlyDeparture));
+                s.HourlyPolicy.RefundUnusedOnEarlyDeparture),
+            s.AutoNoShowEnabled);
 
         cache.Set(CacheKey, snapshot, TimeSpan.FromMinutes(5));
         return snapshot;

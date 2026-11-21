@@ -60,6 +60,9 @@ public interface IRoomDirectory
     /// <summary>Номера в продаже (опционально — одной категории).</summary>
     Task<IReadOnlyList<RoomInfo>> ListSellableAsync(Guid? roomTypeId, CancellationToken ct);
 
+    /// <summary>Все номера не в архиве, включая «вне продажи», — для календаря занятости.</summary>
+    Task<IReadOnlyList<RoomInfo>> ListActiveAsync(CancellationToken ct);
+
     Task<bool> RoomTypeExistsAsync(Guid roomTypeId, CancellationToken ct);
 
     Task<IReadOnlyDictionary<Guid, RoomInfo>> GetManyAsync(IEnumerable<Guid> roomIds, CancellationToken ct);

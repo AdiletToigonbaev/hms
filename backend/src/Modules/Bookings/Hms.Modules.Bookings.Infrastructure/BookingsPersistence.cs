@@ -28,6 +28,7 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
                 t.HasCheckConstraint("ck_bookings_hours", "hours IS NULL OR hours BETWEEN 1 AND 24");
                 t.HasCheckConstraint("ck_bookings_adults", "adults >= 1");
                 t.HasCheckConstraint("ck_bookings_amounts", "total_amount >= 0 AND discount_amount >= 0 AND discount_amount <= accommodation_amount");
+                t.HasCheckConstraint("ck_bookings_penalty", "penalty_amount >= 0");
             });
             e.HasKey(x => x.Id);
             e.Property(x => x.Number).HasMaxLength(20).IsRequired();
@@ -48,6 +49,9 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.PriceSnapshot).HasColumnType("jsonb").IsRequired();
             e.Property(x => x.Version).IsRowVersion();
             e.Ignore(x => x.Nights);
+            e.Ignore(x => x.Units);
+            e.Property(x => x.PenaltyAmount).HasPrecision(14, 2);
+            e.Property(x => x.PenaltyKind).HasConversion<string>().HasMaxLength(20);
             e.HasMany(x => x.Rooms).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.Services).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(x => x.History).WithOne().HasForeignKey(x => x.BookingId).OnDelete(DeleteBehavior.Restrict);
@@ -59,6 +63,8 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.HasIndex(x => new { x.HotelId, x.Number }).IsUnique();
             e.HasIndex(x => new { x.HotelId, x.Status, x.StartsAt });
             e.HasIndex(x => x.GuestId);
+            // Фоновая задача ищет неподтверждённые брони с истёкшим удержанием.
+            e.HasIndex(x => x.HoldUntil).HasFilter("hold_until IS NOT NULL");
         });
 
         b.Entity<BookingRoom>(e =>

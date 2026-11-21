@@ -2,6 +2,7 @@
 
 import {
   BedDouble,
+  CalendarClock,
   Building2,
   CalendarRange,
   ClipboardList,
@@ -29,6 +30,7 @@ const icons = {
   integrations: PlugZap,
   housekeeping: Sparkles,
   bookings: CalendarRange,
+  calendar: CalendarClock,
   pricing: Tags,
   guests: UserRound,
   account: ClipboardList,

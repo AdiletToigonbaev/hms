@@ -25,6 +25,10 @@ public static class BookingsModule
         services.AddScoped<Stays>();
         services.AddScoped<IAvailabilityService, AvailabilityService>();
         services.AddScoped<IBookingService, BookingService>();
+        services.AddScoped<ICalendarService, CalendarService>();
+        services.AddScoped<IBookingLifecycle, BookingLifecycle>();
+        services.AddOptions<BookingJobsOptions>().BindConfiguration(BookingJobsOptions.Section);
+        services.AddHostedService<BookingLifecycleBackgroundService>();
         services.AddValidatorsFromAssemblyContaining<CreateBookingRequestValidator>(includeInternalTypes: true);
         return services;
     }
@@ -74,9 +78,23 @@ public static class BookingsModule
         g.MapPost("/{id:guid}/extend", async (Guid id, ExtendBookingRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.ExtendAsync(id, r, ct)).ToHttpResult())
             .WithValidation<ExtendBookingRequest>().RequirePermission(Permissions.BookingEdit);
+        g.MapGet("/{id:guid}/cancel/preview", async (Guid id, IBookingService s, CancellationToken ct) => (await s.QuoteCancellationAsync(id, ct)).ToHttpResult())
+            .RequireAnyPermission(Permissions.BookingCancel, Permissions.BookingEdit);
         g.MapPost("/{id:guid}/cancel", async (Guid id, CancelBookingRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.CancelAsync(id, r, ct)).ToHttpResult())
             .WithValidation<CancelBookingRequest>().RequirePermission(Permissions.BookingCancel);
+        g.MapPost("/{id:guid}/no-show", async (Guid id, NoShowRequest r, IBookingService s, CancellationToken ct) =>
+                (await s.MarkNoShowAsync(id, r, ct)).ToHttpResult())
+            .RequirePermission(Permissions.BookingEdit);
+        g.MapPost("/{id:guid}/reschedule/quote", async (Guid id, RescheduleBookingRequest r, IBookingService s, CancellationToken ct) =>
+                (await s.QuoteRescheduleAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<RescheduleBookingRequest>().RequirePermission(Permissions.BookingEdit);
+        g.MapPost("/{id:guid}/reschedule", async (Guid id, RescheduleBookingRequest r, IBookingService s, CancellationToken ct) =>
+                (await s.RescheduleAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<RescheduleBookingRequest>().RequirePermission(Permissions.BookingEdit);
+
+        api.MapGet("/calendar", async ([AsParameters] CalendarQuery q, ICalendarService s, CancellationToken ct) => (await s.GetAsync(q, ct)).ToHttpResult())
+            .WithTags("Bookings").RequirePermission(Permissions.CalendarView);
         return api;
     }
 
