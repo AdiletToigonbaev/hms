@@ -23,7 +23,18 @@ public static class ResultHttpExtensions
         return Results.Problem(
             statusCode: error.Type.ToStatusCode(),
             title: error.Message,
-            extensions: new Dictionary<string, object?> { [ProblemFields.Code] = error.Code });
+            extensions: Extensions(error));
+    }
+
+    private static Dictionary<string, object?> Extensions(Error error)
+    {
+        var extensions = new Dictionary<string, object?> { [ProblemFields.Code] = error.Code };
+        foreach (var (key, value) in error.Details ?? new Dictionary<string, object?>())
+        {
+            extensions[key] = value;
+        }
+
+        return extensions;
     }
 
     /// <summary>400 с ошибками по полям: <c>{ "errors": { "email": ["..."] } }</c>.</summary>

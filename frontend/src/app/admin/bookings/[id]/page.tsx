@@ -120,6 +120,13 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               <CardTitle>
                 <h2 className="text-xl">{editable ? t("edit") : t("contact")}</h2>
               </CardTitle>
+              {b.guestId && can("guest.view") && (
+                <CardDescription>
+                  <Link href={`/admin/guests/${b.guestId}`} className="font-medium text-primary underline-offset-4 hover:underline">
+                    {t("guestCard")} →
+                  </Link>
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
               {editable ? (

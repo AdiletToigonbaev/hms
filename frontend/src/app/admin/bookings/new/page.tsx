@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { hotelTimeZone } from "@/i18n/config";
 import { errorKey } from "@/lib/api/problem";
 import { api } from "@/lib/api/server";
-import type { AvailableRoom, ExtraService, RoomType } from "@/lib/api/types";
+import type { AvailableRoom, ExtraService, Guest, GuestLookup, RoomType } from "@/lib/api/types";
 import { addDays, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { isIsoDate } from "@/lib/calendar";
 import { formatMoney, formatStayDate } from "@/lib/format";
@@ -57,17 +57,24 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
   };
   const typeId = str(params.type) && uuid.test(str(params.type)!) ? str(params.type)! : "";
   const roomId = str(params.roomId) && uuid.test(str(params.roomId)!) ? str(params.roomId)! : "";
+  // Бронь из карточки гостя: гость выбран заранее.
+  const guestId = str(params.guestId) && uuid.test(str(params.guestId)!) ? str(params.guestId)! : "";
   const searched = hourly ? params.date !== undefined : params.checkIn !== undefined;
   const nightly = staySchema.safeParse(raw);
   const hourlyStay = hourlySchema.safeParse(raw);
   const valid = hourly ? hourlyStay.success : nightly.success;
 
-  const [t, errors, types, services] = await Promise.all([
+  const [t, errors, types, services, preselected] = await Promise.all([
     getTranslations("Bookings"),
     getTranslations("Errors"),
     api<RoomType[]>("/room-types"),
     api<ExtraService[]>("/services"),
+    guestId ? api<Guest>(`/guests/${guestId}`) : Promise.resolve(null),
   ]);
+  const initialGuest: GuestLookup | null =
+    preselected?.ok && !preselected.data.isAnonymized
+      ? { id: preselected.data.id, fullName: preselected.data.fullName, phone: preselected.data.phone, email: preselected.data.email, bookingsCount: preselected.data.stats.bookingsCount }
+      : null;
 
   let rooms: AvailableRoom[] | null = null;
   let searchError: string | null = null;
@@ -101,6 +108,7 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
       : { kind: "nightly", checkIn: raw.checkIn, checkOut: raw.checkOut, adults: raw.adults, children: raw.children },
   );
   if (typeId) base.set("type", typeId);
+  if (initialGuest) base.set("guestId", initialGuest.id);
   const chooseLink = (id: string) => {
     const next = new URLSearchParams(base);
     next.set("roomId", id);
@@ -169,6 +177,7 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
                 : "lg:grid-cols-[minmax(0,2.4fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.4fr)_auto]",
             )}
           >
+            {initialGuest && <input type="hidden" name="guestId" value={initialGuest.id} />}
             {hourly ? (
               <>
                 <input type="hidden" name="kind" value="hourly" />
@@ -317,7 +326,7 @@ export default async function NewBookingPage({ searchParams }: PageProps<"/admin
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <CreateBookingForm key={selected.roomId} stay={stayParams} services={services.ok ? services.data.filter((s) => s.isActive) : []} />
+              <CreateBookingForm key={selected.roomId} initialGuest={initialGuest} stay={stayParams} services={services.ok ? services.data.filter((s) => s.isActive) : []} />
             </CardContent>
           </Card>
           <Card className="content-start">

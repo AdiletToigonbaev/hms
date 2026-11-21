@@ -45,7 +45,7 @@ public class PermissionsTests
             Permissions.PaymentRegister, Permissions.ExpenseCreate, Permissions.HousekeepingInspect, Permissions.WhatsAppSend]);
         // Матрица: ⚙ по умолчанию «нет» и «—»
         admin.Should().NotContain([Permissions.FinanceReportView, Permissions.ReportExport, Permissions.RefundApprove,
-            Permissions.GuestDocumentsView, Permissions.BookingCancelPenaltyOverride, Permissions.PaymentReverse]);
+            Permissions.GuestAnonymize, Permissions.BookingCancelPenaltyOverride, Permissions.PaymentReverse]);
         admin.Should().OnlyContain(code => !PermissionCatalog.Find(code)!.OwnerOnly);
     }
 

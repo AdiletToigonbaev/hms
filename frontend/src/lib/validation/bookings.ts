@@ -62,6 +62,15 @@ const contactRequired = (v: { guestPhone: string | null; guestEmail: string | nu
 const bookingGuest = z.object({
   roomId: z.string().uuid({ error: "Выберите номер." }),
   ...guestFields,
+  // Гость из базы: имя и контакт берутся из карточки, поля можно не заполнять.
+  guestName: z.string().trim().max(200),
+  guestId: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v))
+    .pipe(z.string().uuid().nullable())
+    .optional()
+    .transform((v) => v ?? null),
   promoCode: z
     .string()
     .trim()
@@ -69,15 +78,19 @@ const bookingGuest = z.object({
     .transform((v) => (v === "" ? null : v.toUpperCase())),
 });
 
+const guestNameRequired = (v: { guestId: string | null; guestName: string }) => Boolean(v.guestId || v.guestName);
+
 /** Посуточная бронь. */
 export const createBookingSchema = staySchema
   .and(bookingGuest)
-  .refine(contactRequired, { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
+  .refine(guestNameRequired, { path: ["guestName"], message: "Укажите имя гостя." })
+  .refine((v) => Boolean(v.guestId) || contactRequired(v), { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
 
 /** Почасовая бронь. */
 export const createHourlyBookingSchema = hourlySchema
   .and(bookingGuest)
-  .refine(contactRequired, { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
+  .refine(guestNameRequired, { path: ["guestName"], message: "Укажите имя гостя." })
+  .refine((v) => Boolean(v.guestId) || contactRequired(v), { path: ["guestPhone"], message: "Укажите телефон или email гостя для связи." });
 
 export const extendSchema = z.object({
   units: z.coerce.number().int().min(1, "Минимум 1.").max(30, "Не более 30."),

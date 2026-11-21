@@ -345,6 +345,7 @@ export interface BookingListItem {
   startsAt: string;
   endsAt: string;
   hours: number | null;
+  guestId: string | null;
 }
 
 export interface Booking {
@@ -382,6 +383,7 @@ export interface Booking {
   hours: number | null;
   extensionsAmount: number;
   extensions: BookingExtension[];
+  guestId: string | null;
 }
 
 export interface BookingExtension {
@@ -413,4 +415,84 @@ export interface BookingHistoryItem {
   changedByName: string | null;
   changedAt: string;
   comment: string | null;
+}
+
+// ---------- Гости (CRM) ----------
+
+export interface GuestStats {
+  bookingsCount: number;
+  /** Посещения — брони с заселением (CheckedIn/CheckedOut). */
+  visitsCount: number;
+  /** Сумма действующих и завершённых броней (оплаты — с модулем Finance). */
+  bookedAmount: number;
+  lastStayAt: string | null;
+}
+
+export interface GuestListItem {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  hasAccount: boolean;
+  whatsAppConsent: boolean;
+  isAnonymized: boolean;
+  createdAt: string;
+  stats: GuestStats;
+}
+
+export type ConsentType = "PersonalData" | "WhatsApp";
+export type ConsentSource = "Portal" | "FrontDesk" | "Phone" | "WhatsApp" | "Written";
+
+export interface ConsentState {
+  type: ConsentType;
+  granted: boolean;
+  source: ConsentSource;
+  recordedAt: string;
+}
+
+export interface Guest {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  whatsAppPhone: string | null;
+  email: string | null;
+  birthDate: string | null;
+  notes: string | null;
+  source: "Admin" | "Booking" | "Portal";
+  hasAccount: boolean;
+  isAnonymized: boolean;
+  createdAt: string;
+  updatedAt: string;
+  stats: GuestStats;
+  consents: ConsentState[];
+  version: number;
+}
+
+export interface GuestLookup {
+  id: string;
+  fullName: string;
+  phone: string | null;
+  email: string | null;
+  bookingsCount: number;
+}
+
+export interface ConsentHistoryItem {
+  id: string;
+  type: ConsentType;
+  granted: boolean;
+  source: ConsentSource;
+  recordedByName: string | null;
+  recordedAt: string;
+}
+
+export interface GuestBooking {
+  bookingId: string;
+  number: string;
+  status: BookingStatus;
+  kind: BookingKind;
+  startsAt: string;
+  endsAt: string;
+  roomNumber: string;
+  totalAmount: number;
+  createdAt: string;
 }

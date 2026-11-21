@@ -10,6 +10,7 @@ export default async function OwnerHomePage() {
       <QuickLinks
         links={[
           { href: "/admin/bookings", title: t("qlBookings"), description: t("qlBookingsText"), icon: "bookings" },
+          { href: "/admin/guests", title: t("qlGuests"), description: t("qlGuestsText"), icon: "guests" },
           { href: "/admin/rooms", title: t("qlRooms"), description: t("qlRoomsText"), icon: "rooms" },
           { href: "/admin/room-types", title: t("qlTypes"), description: t("qlTypesText"), icon: "roomTypes" },
           { href: "/owner/pricing", title: t("qlPricing"), description: t("qlPricingText"), icon: "pricing" },

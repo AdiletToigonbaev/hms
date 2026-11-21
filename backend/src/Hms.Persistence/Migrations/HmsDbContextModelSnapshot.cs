@@ -498,6 +498,138 @@ namespace Hms.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Hms.Modules.Guests.Domain.Guest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anonymized_at");
+
+                    b.Property<DateOnly?>("BirthDate")
+                        .HasColumnType("date")
+                        .HasColumnName("birth_date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("source");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("WhatsAppPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("whats_app_phone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_guests");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_guests_user_id")
+                        .HasFilter("user_id IS NOT NULL");
+
+                    b.HasIndex("HotelId", "CreatedAt")
+                        .HasDatabaseName("ix_guests_hotel_id_created_at");
+
+                    b.HasIndex("HotelId", "Email")
+                        .HasDatabaseName("ix_guests_hotel_id_email");
+
+                    b.HasIndex("HotelId", "Phone")
+                        .HasDatabaseName("ix_guests_hotel_id_phone");
+
+                    b.ToTable("guests", "guests");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Guests.Domain.GuestConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Granted")
+                        .HasColumnType("boolean")
+                        .HasColumnName("granted");
+
+                    b.Property<Guid>("GuestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_id");
+
+                    b.Property<DateTimeOffset>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid?>("RecordedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recorded_by");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("source");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_guest_consents");
+
+                    b.HasIndex("GuestId", "Type", "RecordedAt")
+                        .HasDatabaseName("ix_guest_consents_guest_id_type_recorded_at");
+
+                    b.ToTable("guest_consents", "guests");
+                });
+
             modelBuilder.Entity("Hms.Modules.Hotel.Domain.HotelInfo", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1926,6 +2058,16 @@ namespace Hms.Persistence.Migrations
                         .HasConstraintName("fk_booking_services_bookings_booking_id");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Guests.Domain.GuestConsent", b =>
+                {
+                    b.HasOne("Hms.Modules.Guests.Domain.Guest", null)
+                        .WithMany("Consents")
+                        .HasForeignKey("GuestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_guest_consents_guests_guest_id");
+                });
+
             modelBuilder.Entity("Hms.Modules.Hotel.Domain.HotelSettings", b =>
                 {
                     b.HasOne("Hms.Modules.Hotel.Domain.HotelInfo", null)
@@ -2175,6 +2317,11 @@ namespace Hms.Persistence.Migrations
                     b.Navigation("Rooms");
 
                     b.Navigation("Services");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Guests.Domain.Guest", b =>
+                {
+                    b.Navigation("Consents");
                 });
 
             modelBuilder.Entity("Hms.Modules.Rooms.Domain.RoomType", b =>

@@ -29,6 +29,9 @@ public sealed record Error
 
     public ErrorType Type { get; }
 
+    /// <summary>Дополнительные данные для клиента (например, id найденного дубля). Без персональных данных.</summary>
+    public IReadOnlyDictionary<string, object?>? Details { get; init; }
+
     public static Error Validation(string code, string message) => new(code, message, ErrorType.Validation);
 
     public static Error NotFound(string code, string message) => new(code, message, ErrorType.NotFound);

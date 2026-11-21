@@ -8,6 +8,7 @@ import {
   DoorOpen,
   LayoutDashboard,
   Tags,
+  UserRound,
   PlugZap,
   Settings,
   Sparkles,
@@ -29,6 +30,7 @@ const icons = {
   housekeeping: Sparkles,
   bookings: CalendarRange,
   pricing: Tags,
+  guests: UserRound,
   account: ClipboardList,
   hotel: Building2,
 } satisfies Record<string, LucideIcon>;

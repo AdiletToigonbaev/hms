@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Guests.Application\Hms.Modules.Guests.Application.csproj" />
+    <ProjectReference Include="..\..\..\Hms.Platform\Hms.Platform.csproj" />
+    <ProjectReference Include="..\..\Audit\Hms.Modules.Audit.Contracts\Hms.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Hms.Modules.Identity.Contracts\Hms.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Hotel\Hms.Modules.Hotel.Contracts\Hms.Modules.Hotel.Contracts.csproj" />
+    <ProjectReference Include="..\..\Bookings\Hms.Modules.Bookings.Contracts\Hms.Modules.Bookings.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hms.UnitTests" />
+    <InternalsVisibleTo Include="Hms.IntegrationTests" />
+  </ItemGroup>
+</Project>

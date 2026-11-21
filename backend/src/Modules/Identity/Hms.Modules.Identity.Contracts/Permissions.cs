@@ -25,8 +25,8 @@ public static class Permissions
 
     public const string GuestView = "guest.view";
     public const string GuestManage = "guest.manage";
-    public const string GuestDocumentsView = "guest.documents.view";
-    public const string GuestDocumentsManage = "guest.documents.manage";
+    /// <summary>Обезличивание гостя (удаление персональных данных) — только владелец.</summary>
+    public const string GuestAnonymize = "guest.anonymize";
 
     public const string PaymentView = "payment.view";
     public const string PaymentRegister = "payment.register";

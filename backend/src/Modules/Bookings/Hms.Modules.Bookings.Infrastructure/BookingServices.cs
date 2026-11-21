@@ -4,6 +4,7 @@ using Hms.Modules.Audit.Contracts;
 using Hms.Modules.Bookings.Application;
 using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Bookings.Domain;
+using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Pricing.Contracts;
@@ -12,6 +13,7 @@ using Hms.Platform.Security;
 using Hms.Platform.Time;
 using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
+using GuestContact = Hms.Modules.Bookings.Domain.GuestContact;
 
 namespace Hms.Modules.Bookings.Infrastructure;
 
@@ -117,6 +119,7 @@ internal sealed class BookingService(
     IRoomDirectory rooms,
     Stays stays,
     IUserDirectory users,
+    IGuestDirectory guests,
     ICurrentUser currentUser,
     IAuditTrail audit,
     IHotelClock clock) : IBookingService
@@ -179,7 +182,7 @@ internal sealed class BookingService(
                 var room = roomInfo.GetValueOrDefault(i.RoomId);
                 return new BookingListItemDto(b.Id, b.Number, b.Status.ToString(), b.CheckIn, b.CheckOut, b.Nights,
                     b.GuestName, b.GuestPhone, room?.Number ?? "—", room?.RoomTypeName ?? "—", b.TotalAmount, b.CreatedAt,
-                    b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours);
+                    b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.GuestId);
             }).ToList(),
             page.Page,
             page.PageSize,
@@ -248,14 +251,20 @@ internal sealed class BookingService(
             q.Services.Select(s => new BookingPriceServiceLine(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
             JsonSerializer.Serialize(q, JsonSerializerOptions.Web));
 
+        var guest = await ResolveGuestAsync(r, ct);
+        if (guest.IsFailure)
+        {
+            return guest.Error;
+        }
+
         var hotelId = await hotel.GetHotelIdAsync(ct);
         var now = clock.UtcNow;
         var number = await NextNumberAsync(now, ct);
-        var phone = string.IsNullOrWhiteSpace(r.GuestPhone) ? null : PhoneNumber.Parse(r.GuestPhone).Value.Value;
-        var email = string.IsNullOrWhiteSpace(r.GuestEmail) ? null : r.GuestEmail.Trim().ToLowerInvariant();
 
+        // В брони — снимок контакта на момент брони; карточка гостя (GuestId) живёт в модуле Guests.
+        var contact = guest.Value.Contact;
         var booking = Booking.Create(hotelId, number, BookingSource.Admin, stay, r.Adults, r.Children,
-            new GuestContact(r.GuestName, phone, email), r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now);
+            contact, guest.Value.GuestId, r.Comment, room.Id, room.RoomTypeId, price, r.Confirm, currentUser.UserId, now);
         db.Set<Booking>().Add(booking);
         audit.Record(new AuditEntry("booking.created", "Booking", booking.Id.ToString(),
             After: new { booking.Number, Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), room = room.Number, stay.StartsAt, stay.EndsAt, booking.TotalAmount }));
@@ -308,7 +317,8 @@ internal sealed class BookingService(
         var phone = string.IsNullOrWhiteSpace(r.GuestPhone) ? null : PhoneNumber.Parse(r.GuestPhone).Value.Value;
         var email = string.IsNullOrWhiteSpace(r.GuestEmail) ? null : r.GuestEmail.Trim().ToLowerInvariant();
         booking.UpdateDetails(new GuestContact(r.GuestName, phone, email), r.Adults, r.Children, r.Comment, currentUser.UserId, clock.UtcNow);
-        audit.Record(new AuditEntry("booking.updated", "Booking", id.ToString(), After: new { r.GuestName, r.Adults, r.Children }));
+        // Без персональных данных: только состав гостей.
+        audit.Record(new AuditEntry("booking.updated", "Booking", id.ToString(), After: new { r.Adults, r.Children }));
         return await SaveAsync(booking, ct);
     }
 
@@ -596,10 +606,39 @@ internal sealed class BookingService(
             JsonSerializer.Deserialize<PriceQuote>(b.PriceSnapshot, JsonSerializerOptions.Web),
             b.Services.Select(s => new BookingServiceDto(s.ServiceId, s.Name, s.Quantity, s.UnitPrice, s.PerNight, s.Total)).ToList(),
             actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version,
-            b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions);
+            b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions, b.GuestId);
     }
 
     private static JsonElement? Parse(string? json) => json is null ? null : JsonDocument.Parse(json).RootElement.Clone();
+
+    /// <summary>
+    /// Гость брони: выбранный из базы (контакт — из запроса, если указан, иначе из карточки)
+    /// или найденный/созданный по контакту из запроса.
+    /// </summary>
+    private async Task<Result<(Guid GuestId, GuestContact Contact)>> ResolveGuestAsync(CreateBookingRequest r, CancellationToken ct)
+    {
+        var phone = string.IsNullOrWhiteSpace(r.GuestPhone) ? null : PhoneNumber.Parse(r.GuestPhone).Value.Value;
+        var email = string.IsNullOrWhiteSpace(r.GuestEmail) ? null : r.GuestEmail.Trim().ToLowerInvariant();
+        if (r.GuestId is { } guestId)
+        {
+            var known = await guests.GetAsync(guestId, ct);
+            if (known is null)
+            {
+                return GuestErrors.NotFound;
+            }
+
+            if (known.IsAnonymized)
+            {
+                return GuestErrors.Anonymized;
+            }
+
+            var name = string.IsNullOrWhiteSpace(r.GuestName) ? known.FullName : r.GuestName;
+            return (known.Id, new GuestContact(name, phone ?? known.Phone, email ?? known.Email));
+        }
+
+        var found = await guests.FindOrCreateAsync(new Hms.Modules.Guests.Contracts.GuestContact(r.GuestName, phone, email), ct);
+        return found.IsFailure ? found.Error : (found.Value.Id, new GuestContact(r.GuestName, phone, email));
+    }
 
     /// <summary>SQLSTATE нарушения ограничения EXCLUDE (пересечение броней).</summary>
     private const string ExclusionViolation = "23P01";

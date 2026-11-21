@@ -13,6 +13,8 @@ export interface FormState {
    * поэтому при ошибке форма восстанавливает их отсюда через defaultValue.
    */
   values?: Record<string, string>;
+  /** Id связанной записи из ответа API (например, найденный дубль гостя — guestId). */
+  refId?: string;
 }
 
 /** Значения полей формы для повторного показа (пароли и служебные поля не возвращаются). */
@@ -42,6 +44,7 @@ export function toFormState(problem: Problem): FormState {
     // Текст API (на русском) — запасной вариант, если перевода кода нет, и точная причина для auth.password_rejected.
     message: problem.title,
     fieldErrors: Object.keys(fieldErrors).length ? fieldErrors : undefined,
+    refId: typeof (problem as unknown as Record<string, unknown>).guestId === "string" ? ((problem as unknown as Record<string, unknown>).guestId as string) : undefined,
   };
 }
 
