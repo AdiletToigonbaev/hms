@@ -167,7 +167,7 @@ internal sealed class ReportData(IBookingFacts bookings, IFinanceFacts finance, 
         DateOnly.FromDateTime(clock.ToHotelTime(b.StartsAt).DateTime),
         DateOnly.FromDateTime(clock.ToHotelTime(b.EndsAt).DateTime),
         b.TotalAmount,
-        b.AccommodationAmount - b.DiscountAmount + b.ExtensionsAmount - b.EarlyDepartureCredit,
+        b.AccommodationAmount - b.DiscountAmount + b.ExtensionsAmount - b.EarlyDepartureCredit + b.RoomChangeAmount,
         b.PenaltyAmount,
         b.Status == BookingStatus.Cancelled ? b.CancelledAt : b.Status == BookingStatus.NoShow ? b.StartsAt : null);
 

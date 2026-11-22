@@ -18,6 +18,7 @@ import type {
   CancellationQuote,
   CheckInPreview,
   CheckOutPreview,
+  MoveOptions,
   ExtensionQuote,
 } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
@@ -25,7 +26,7 @@ import { bookingStatusLabel, hotelNowLocal, hotelToday, nightsLabel } from "@/li
 import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { BookingActions, BookingDetailsForm, ExtendBookingForm, RescheduleForm } from "../booking-forms";
-import { CheckInForm, CheckOutForm } from "./front-desk-card";
+import { CheckInForm, CheckOutForm, MoveGuestForm } from "./front-desk-card";
 import { PaymentCard } from "./payment-card";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -55,7 +56,11 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   const editable = can("booking.edit") && !["Cancelled", "CheckedOut", "NoShow", "Expired"].includes(b.status);
   const showActions = can("booking.edit") || can("booking.cancel");
   const evKey = (e: string) =>
-    ["created", "status_changed", "details_changed", "extended", "rescheduled", "penalty_charged", "penalty_waived", "early_departure"].includes(e) ? (`ev_${e}` as "ev_created") : null;
+    ["created", "status_changed", "details_changed", "extended", "rescheduled", "penalty_charged", "penalty_waived", "early_departure", "room_moved"].includes(
+      e,
+    )
+      ? (`ev_${e}` as "ev_created")
+      : null;
   const hourly = b.kind === "Hourly";
   const today = hotelToday(hotelTimeZone);
 
@@ -65,12 +70,14 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
   // Стойка: можно ли заселить / что будет при выселении сейчас (считает API).
   const canCheckIn = can("checkin.perform") && b.allowedActions.includes("checkIn");
   const canCheckOut = can("checkout.perform") && b.allowedActions.includes("checkOut");
-  const [terms, roomsData, balance, checkIn, checkOut] = await Promise.all([
+  const canMove = can("booking.edit") && b.allowedActions.includes("move");
+  const [terms, roomsData, balance, checkIn, checkOut, move] = await Promise.all([
     needsTerms && showActions ? api<CancellationQuote>(`/bookings/${id}/cancel/preview`) : null,
     canReschedule ? api<CalendarData>(`/calendar?from=${today}&to=${today}`) : null,
     can("payment.view") ? api<BookingBalance>(`/bookings/${id}/balance`) : null,
     canCheckIn ? api<CheckInPreview>(`/bookings/${id}/check-in/preview`) : null,
     canCheckOut ? api<CheckOutPreview>(`/bookings/${id}/check-out/preview`) : null,
+    canMove ? api<MoveOptions>(`/bookings/${id}/move/options`) : null,
   ]);
 
   // Продление: предел по правилам и по следующей брони номера (считает API).
@@ -161,19 +168,20 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               {b.price && (
                 <PriceBreakdown
                   quote={b.price}
-                  extras={b.extensions.map((x) => ({
-                    label: `${t("extensionLine", { n: x.kind === "Hour" ? `${x.quantity} ч` : nightsLabel(x.quantity) })} · до ${formatHotelLocal(x.newEndsAt)}`,
-                    amount: x.amount,
-                  }))}
+                  extras={[
+                    ...b.extensions.map((x) => ({
+                      label: `${t("extensionLine", { n: x.kind === "Hour" ? `${x.quantity} ч` : nightsLabel(x.quantity) })} · до ${formatHotelLocal(x.newEndsAt)}`,
+                      amount: x.amount,
+                    })),
+                    ...(b.roomChangeAmount !== 0 ? [{ label: t("roomChangeLine"), amount: b.roomChangeAmount }] : []),
+                  ]}
                   total={b.totalAmount}
                 />
               )}
             </CardContent>
           </Card>
 
-          {balance?.ok && (
-            <PaymentCard balance={balance.data} startsAt={b.startsAt} now={hotelNowLocal(hotelTimeZone)} canRegister={can("payment.register")} />
-          )}
+          {balance?.ok && <PaymentCard balance={balance.data} startsAt={b.startsAt} now={hotelNowLocal(hotelTimeZone)} canRegister={can("payment.register")} canRefund={can("refund.request")} />}
 
           <Card>
             <CardHeader>
@@ -214,6 +222,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
               <CardContent>
                 {checkIn?.ok && <CheckInForm booking={b} preview={checkIn.data} />}
                 {checkOut?.ok && <CheckOutForm booking={b} preview={checkOut.data} />}
+                {move?.ok && <MoveGuestForm booking={b} options={move.data} />}
               </CardContent>
             </Card>
           )}

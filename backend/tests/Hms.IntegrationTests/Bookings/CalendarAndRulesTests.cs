@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Hms.IntegrationTests.Hotel;
 using Hms.Modules.Bookings.Application;
 using Hms.Modules.Hotel.Application;
@@ -78,6 +79,29 @@ public class CalendarAndRulesTests(PostgresFixture db)
     private readonly TestApi _api = new(db);
 
     private IHotelClock Clock => db.Factory.Services.GetRequiredService<IHotelClock>();
+
+    [Fact]
+    public async Task RescheduleRooms_OnlyFreeAtNewTime_OwnRoomStaysAvailable()
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var day = Clock.Today.AddDays(45);
+        var first = await BookingTestKit.CreateRoomAsync(owner, 500m);
+        var second = await BookingTestKit.CreateRoomAsync(owner, 500m);
+        await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(first.Id, day, 10, 2));
+        var moving = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(second.Id, day, 10, 2));
+
+        async Task<List<Guid>> FreeAsync(int hour) =>
+            (await owner.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/{moving.Id}/reschedule/rooms?date={day:yyyy-MM-dd}&startHour={hour}&hours=2", Ct))
+                .GetProperty("roomIds").EnumerateArray().Select(x => x.GetGuid()).ToList();
+
+        var same = await FreeAsync(10);
+        same.Should().Contain(second.Id, "переносимая бронь свой номер не занимает");
+        same.Should().NotContain(first.Id, "в 10:00 первый номер занят другой бронью");
+        var later = await FreeAsync(14);
+        later.Should().Contain([first.Id, second.Id]);
+        // Уборка после брони (по умолчанию 30 мин): с 12:00 первый номер ещё на уборке.
+        (await FreeAsync(12)).Should().NotContain(first.Id);
+    }
 
     private DateOnly Today => Clock.Today;
 

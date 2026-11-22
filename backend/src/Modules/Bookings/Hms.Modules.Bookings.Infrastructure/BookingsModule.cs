@@ -91,6 +91,9 @@ public static class BookingsModule
         g.MapPost("/{id:guid}/no-show", async (Guid id, NoShowRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.MarkNoShowAsync(id, r, ct)).ToHttpResult())
             .RequirePermission(Permissions.BookingEdit);
+        g.MapGet("/{id:guid}/reschedule/rooms", async (Guid id, [AsParameters] RescheduleRoomsQuery q, IBookingService s, CancellationToken ct) =>
+                (await s.RescheduleRoomsAsync(id, q, ct)).ToHttpResult(ids => Results.Ok(new { roomIds = ids })))
+            .RequirePermission(Permissions.BookingEdit);
         g.MapPost("/{id:guid}/reschedule/quote", async (Guid id, RescheduleBookingRequest r, IBookingService s, CancellationToken ct) =>
                 (await s.QuoteRescheduleAsync(id, r, ct)).ToHttpResult())
             .WithValidation<RescheduleBookingRequest>().RequirePermission(Permissions.BookingEdit);
@@ -102,6 +105,10 @@ public static class BookingsModule
             .RequirePermission(Permissions.CheckInPerform);
         g.MapPost("/{id:guid}/check-in", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.CheckInAsync(id, ct)).ToHttpResult())
             .WithIdempotency("booking.check_in").RequirePermission(Permissions.CheckInPerform);
+        g.MapGet("/{id:guid}/move/options", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.MoveOptionsAsync(id, ct)).ToHttpResult())
+            .RequirePermission(Permissions.BookingEdit);
+        g.MapPost("/{id:guid}/move", async (Guid id, MoveGuestRequest r, IFrontDeskService s, CancellationToken ct) => (await s.MoveAsync(id, r, ct)).ToHttpResult())
+            .WithValidation<MoveGuestRequest>().WithIdempotency("booking.move").RequirePermission(Permissions.BookingEdit);
         g.MapGet("/{id:guid}/check-out/preview", async (Guid id, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutPreviewAsync(id, ct)).ToHttpResult())
             .RequirePermission(Permissions.CheckOutPerform);
         g.MapPost("/{id:guid}/check-out", async (Guid id, CheckOutRequest r, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutAsync(id, r, ct)).ToHttpResult())

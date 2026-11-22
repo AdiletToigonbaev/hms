@@ -182,7 +182,7 @@ internal sealed class BookingService(
         var items = await query
             .OrderBy(b => b.StartsAt).ThenBy(b => b.Number)
             .Skip(page.Skip).Take(page.PageSize)
-            .Select(b => new { Booking = b, RoomId = b.Rooms.Select(r => r.RoomId).First() })
+            .Select(b => new { Booking = b, RoomId = b.Rooms.OrderByDescending(r => r.StartsAt).Select(r => r.RoomId).First() })
             .ToListAsync(ct);
         var roomInfo = await rooms.GetManyAsync(items.Select(i => i.RoomId), ct);
 
@@ -311,7 +311,7 @@ internal sealed class BookingService(
             return BookingErrors.NotFound;
         }
 
-        var room = await rooms.GetAsync(booking.Rooms[0].RoomId, ct);
+        var room = await rooms.GetAsync(booking.CurrentRoom.RoomId, ct);
         if (room is not null && r.Adults + r.Children > room.Capacity)
         {
             return BookingErrors.CapacityExceeded(room.Capacity);
@@ -464,7 +464,7 @@ internal sealed class BookingService(
         }
 
         var p = plan.Value;
-        var before = new { booking.StartsAt, booking.EndsAt, booking.Rooms[0].RoomId, booking.TotalAmount };
+        var before = new { booking.StartsAt, booking.EndsAt, booking.CurrentRoom.RoomId, booking.TotalAmount };
         var result = booking.Reschedule(p.Stay, p.Room.Id, p.Room.RoomTypeId, ToBookingPrice(p.Quote, p.PromoCode), currentUser.UserId, clock.UtcNow);
         if (result.IsFailure)
         {
@@ -500,6 +500,35 @@ internal sealed class BookingService(
     /// План переноса: номер подходит (продаётся, вмещает, по часам — если почасовая), время свободно (кроме самой брони),
     /// цена — по текущим ценам с тем же промокодом и услугами; если промокод на новое время не действует — без него.
     /// </summary>
+    public async Task<Result<IReadOnlyList<Guid>>> RescheduleRoomsAsync(Guid id, RescheduleRoomsQuery q, CancellationToken ct)
+    {
+        var booking = await LoadAsync(id, tracking: false, ct);
+        if (booking is null)
+        {
+            return BookingErrors.NotFound;
+        }
+
+        var resolved = await stays.ResolveAsync(q with { Kind = booking.Kind == BookingKind.Hourly ? StayKinds.Hourly : StayKinds.Nightly }, ct);
+        if (resolved.IsFailure)
+        {
+            return resolved.Error;
+        }
+
+        var settings = await stays.SettingsAsync(ct);
+        var hourly = booking.Kind == BookingKind.Hourly;
+        var candidates = (await rooms.ListSellableAsync(null, ct))
+            .Where(r => r.Capacity >= booking.Adults + booking.Children && (!hourly || r.SellsHourly))
+            .ToList();
+        // Время уборки своё у категории — проверяем группами с одинаковым концом занятости.
+        var busy = new HashSet<Guid>();
+        foreach (var group in candidates.GroupBy(r => Stays.ForRoom(resolved.Value, settings, r).BlockedUntil))
+        {
+            busy.UnionWith(await stays.BusyRoomsAsync(group.Select(r => r.Id).ToList(), resolved.Value with { BlockedUntil = group.Key }, booking.Id, ct));
+        }
+
+        return candidates.Where(r => !busy.Contains(r.Id)).Select(r => r.Id).ToList();
+    }
+
     private async Task<Result<ReschedulePlan>> PlanRescheduleAsync(Booking booking, RescheduleBookingRequest r, CancellationToken ct)
     {
         if (!BookingStatusMachine.CanReschedule(booking.Status))
@@ -680,7 +709,7 @@ internal sealed class BookingService(
         }
 
         var settings = await stays.SettingsAsync(ct);
-        var line = booking.Rooms[0];
+        var line = booking.CurrentRoom;
         var room = await rooms.GetAsync(line.RoomId, ct);
         if (room is null)
         {
@@ -797,7 +826,7 @@ internal sealed class BookingService(
 
     private async Task<BookingDto> ToDtoAsync(Booking b, CancellationToken ct)
     {
-        var line = b.Rooms[0];
+        var line = b.CurrentRoom;
         var room = await rooms.GetAsync(line.RoomId, ct);
         var actions = new List<string>();
         if (BookingStatusMachine.CanTransition(b.Status, BookingStatus.Confirmed))
@@ -836,6 +865,12 @@ internal sealed class BookingService(
             actions.Add("checkOut");
         }
 
+        // Переселить — заселённого гостя, пока время брони не закончилось.
+        if (b.Status == BookingStatus.CheckedIn && clock.UtcNow < b.EndsAt)
+        {
+            actions.Add("move");
+        }
+
         var authors = await users.GetNamesAsync(b.Extensions.Where(e => e.CreatedBy != null).Select(e => e.CreatedBy!.Value), ct);
         var extensions = b.ActiveExtensions
             .OrderBy(e => e.CreatedAt)
@@ -853,7 +888,8 @@ internal sealed class BookingService(
             actions, b.ConfirmedAt, b.CancelledAt, b.CancelReason, b.CreatedAt, b.Version,
             b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt), b.Hours, b.ExtensionsAmount, extensions, b.GuestId,
             b.HoldUntil is { } hold ? stays.Format(hold) : null, b.PenaltyAmount, b.PenaltyKind?.ToString(), b.PenaltyWaived,
-            b.ActualCheckInAt is { } checkedIn ? stays.Format(checkedIn) : null, b.ActualCheckOutAt is { } checkedOut ? stays.Format(checkedOut) : null, b.EarlyDepartureCredit);
+            b.ActualCheckInAt is { } checkedIn ? stays.Format(checkedIn) : null, b.ActualCheckOutAt is { } checkedOut ? stays.Format(checkedOut) : null, b.EarlyDepartureCredit,
+            b.RoomChangeAmount);
     }
 
     private static JsonElement? Parse(string? json) => json is null ? null : JsonDocument.Parse(json).RootElement.Clone();

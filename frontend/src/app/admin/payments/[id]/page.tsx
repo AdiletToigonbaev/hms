@@ -17,13 +17,17 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const kindKey = { Charge: "txCharge", Refund: "txRefund", Reversal: "txReversal", StatusChange: "txStatus" } as const;
 
-export default async function PaymentPage({ params }: PageProps<"/admin/payments/[id]">) {
+export default async function PaymentPage({ params, searchParams }: PageProps<"/admin/payments/[id]">) {
   const { id } = await params;
+  const { refund: suggestedRaw } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [t, result] = await Promise.all([getTranslations("Finance"), api<PaymentDetails>(`/payments/${id}`)]);
   if (!result.ok) notFound();
   const { payment: p, transactions, refunds, allowedActions } = result.data;
   const reserved = refunds.filter((r) => r.status !== "Rejected").reduce((s, r) => s + r.amount, 0);
+  // Переход с брони «Вернуть переплату»: сумма подставляется, но не больше доступного.
+  const suggested = Number(typeof suggestedRaw === "string" ? suggestedRaw : NaN);
+  const refundAmount = Number.isFinite(suggested) && suggested > 0 ? Math.min(suggested, p.amount - reserved) : undefined;
 
   return (
     <div className="grid max-w-5xl gap-6">
@@ -115,7 +119,7 @@ export default async function PaymentPage({ params }: PageProps<"/admin/payments
 
         <div className="grid content-start gap-6">
           {allowedActions.includes("refund") && (
-            <Card>
+            <Card id="refund" className="scroll-mt-20">
               <CardHeader>
                 <CardTitle>
                   <h2 className="text-xl">{t("refundTitle")}</h2>
@@ -123,7 +127,7 @@ export default async function PaymentPage({ params }: PageProps<"/admin/payments
                 <CardDescription>{t("refundHint")}</CardDescription>
               </CardHeader>
               <CardContent>
-                <RefundRequestForm payment={p} available={p.amount - reserved} />
+                <RefundRequestForm payment={p} available={p.amount - reserved} suggested={refundAmount} />
               </CardContent>
             </Card>
           )}

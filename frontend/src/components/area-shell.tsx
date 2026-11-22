@@ -34,16 +34,24 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
   const [user, hotel] = await Promise.all([requireUser(roles), getHotelInfo()]);
   const role = user.roles[0] ?? "Guest";
   const baseItems = typeof nav === "function" ? nav(user.roles, user.permissions) : nav;
-  // Значок у «Бронирований»: брони с сайта и без подтверждения, которые ждут администратора.
-  const pending =
-    user.permissions.includes("booking.view") && baseItems.some((i) => i.href === "/admin/bookings")
-      ? await api<{ pending: number }>("/bookings/pending-count")
-      : null;
-  const items = baseItems.map((i) =>
-    i.href === "/admin/bookings" && pending?.ok && pending.data.pending > 0
-      ? { ...i, badge: pending.data.pending, badgeLabel: `Ждут подтверждения: ${pending.data.pending}` }
-      : i,
-  );
+  // Значки в меню — то, что ждёт администратора: брони без подтверждения и уборки на проверке.
+  const has = (href: string) => baseItems.some((i) => i.href === href);
+  const can = (p: string) => user.permissions.includes(p);
+  const [pending, inspection] = await Promise.all([
+    can("booking.view") && has("/admin/bookings") ? api<{ pending: number }>("/bookings/pending-count") : null,
+    (can("housekeeping.inspect") || can("housekeeping.manage")) && has("/admin/housekeeping")
+      ? api<{ count: number }>("/housekeeping/awaiting-inspection-count")
+      : null,
+  ]);
+  const items = baseItems.map((i) => {
+    if (i.href === "/admin/bookings" && pending?.ok && pending.data.pending > 0) {
+      return { ...i, badge: pending.data.pending, badgeLabel: `Ждут подтверждения: ${pending.data.pending}` };
+    }
+    if (i.href === "/admin/housekeeping" && inspection?.ok && inspection.data.count > 0) {
+      return { ...i, badge: inspection.data.count, badgeLabel: `Ждут проверки: ${inspection.data.count}` };
+    }
+    return i;
+  });
 
   const userBlock = (
     <div className="flex items-center justify-between gap-2 rounded-xl bg-sidebar-accent/50 p-3">

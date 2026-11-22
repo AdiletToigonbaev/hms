@@ -21,4 +21,7 @@ public interface IHousekeepingFacts
 
     /// <summary>Открытые задачи уборки сейчас (не принятые и не удалённые).</summary>
     Task<int> OpenCountAsync(CancellationToken ct);
+
+    /// <summary>Уборки, которые закончены и ждут проверки администратором.</summary>
+    Task<int> AwaitingInspectionCountAsync(CancellationToken ct);
 }

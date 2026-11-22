@@ -136,7 +136,7 @@ export function ReversePaymentForm({ payment }: { payment: PaymentItem }) {
 }
 
 /** Запрос возврата по платежу: не больше суммы платежа за вычетом уже оформленных возвратов. */
-export function RefundRequestForm({ payment, available }: { payment: PaymentItem; available: number }) {
+export function RefundRequestForm({ payment, available, suggested }: { payment: PaymentItem; available: number; suggested?: number }) {
   const t = useTranslations("Finance");
   const [state, action, pending] = useActionState<FormState, FormData>(requestRefundAction, {});
   const key = useIdempotencyKey(state);
@@ -153,7 +153,7 @@ export function RefundRequestForm({ payment, available }: { payment: PaymentItem
           inputMode="decimal"
           label={t("refundAmount")}
           required
-          defaultValue={v.amount ?? amountText(available)}
+          defaultValue={v.amount ?? amountText(suggested ?? available)}
           error={e.amount}
           hint={t("refundAvailable", { amount: formatMoney(available) })}
         />
@@ -268,7 +268,13 @@ export function ExpenseForm({ categories, today, expense }: { categories: Expens
       {expense && <input type="hidden" name="version" value={expense.version} />}
       <FormAlert state={state} success={expense ? t("expenseSaved") : t("expenseCreated")} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <SelectField name="categoryId" id="expense-category" label={t("category")} defaultValue={v.categoryId ?? expense?.categoryId ?? ""} error={e.categoryId}>
+        <SelectField
+          name="categoryId"
+          id="expense-category"
+          label={t("category")}
+          defaultValue={v.categoryId ?? expense?.categoryId ?? ""}
+          error={e.categoryId}
+        >
           <option value="" disabled>
             {t("chooseCategory")}
           </option>
@@ -278,7 +284,14 @@ export function ExpenseForm({ categories, today, expense }: { categories: Expens
             </option>
           ))}
         </SelectField>
-        <Field name="amount" inputMode="decimal" label={t("amount")} required defaultValue={v.amount ?? (expense ? amountText(expense.amount) : "")} error={e.amount} />
+        <Field
+          name="amount"
+          inputMode="decimal"
+          label={t("amount")}
+          required
+          defaultValue={v.amount ?? (expense ? amountText(expense.amount) : "")}
+          error={e.amount}
+        />
         <DateRangePicker mode="single" size="compact" startName="date" defaultStart={v.date ?? expense?.date ?? today} today={today} startLabel={t("date")} />
         <SelectField name="method" id="expense-method" label={t("method")} defaultValue={v.method ?? expense?.method ?? "Cash"} error={e.method}>
           {paymentMethods.map((m) => (
@@ -293,7 +306,14 @@ export function ExpenseForm({ categories, today, expense }: { categories: Expens
           {e.date}
         </p>
       )}
-      <Field name="description" label={t("description")} required defaultValue={v.description ?? expense?.description} error={e.description} hint={t("descriptionHint")} />
+      <Field
+        name="description"
+        label={t("description")}
+        required
+        defaultValue={v.description ?? expense?.description}
+        error={e.description}
+        hint={t("descriptionHint")}
+      />
       <Field name="supplier" label={t("supplier")} defaultValue={v.supplier ?? expense?.supplier ?? ""} error={e.supplier} />
       <div>
         <SubmitButton pending={pending}>{expense ? t("save") : t("addExpense")}</SubmitButton>
@@ -377,4 +397,3 @@ export function CategoryManager({ categories }: { categories: ExpenseCategory[] 
     </div>
   );
 }
-

@@ -78,6 +78,7 @@ public sealed record OperationsDashboardDto(
     int PendingConfirmations,
     IReadOnlyDictionary<string, int> RoomsByStatus,
     int OpenCleaningTasks,
+    int CleaningAwaitingInspection,
     decimal OccupancyToday,
     int BookingsCreatedToday);
 

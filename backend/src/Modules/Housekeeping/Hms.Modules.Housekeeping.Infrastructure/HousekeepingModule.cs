@@ -60,6 +60,9 @@ public static class HousekeepingModule
             .RequirePermission(Permissions.HousekeepingWork);
         g.MapGet("/my/history", async (IHousekeepingService s, CancellationToken ct) => Results.Ok(await s.MyHistoryAsync(ct)))
             .RequirePermission(Permissions.HousekeepingWork);
+        // Значок у пункта меню «Уборка»: уборки, которые ждут проверки.
+        g.MapGet("/awaiting-inspection-count", async (IHousekeepingFacts facts, CancellationToken ct) => Results.Ok(new { count = await facts.AwaitingInspectionCountAsync(ct) }))
+            .RequireAnyPermission(Permissions.HousekeepingInspect, Permissions.HousekeepingManage);
         g.MapGet("/staff", async (IHousekeepingService s, CancellationToken ct) => Results.Ok(await s.StaffAsync(ct)))
             .RequirePermission(Permissions.HousekeepingManage);
         g.MapGet("/checklist-template", async (IHousekeepingService s, CancellationToken ct) => Results.Ok(await s.GetTemplateAsync(ct)))

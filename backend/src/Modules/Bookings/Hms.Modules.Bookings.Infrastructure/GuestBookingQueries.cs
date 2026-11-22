@@ -16,7 +16,7 @@ internal sealed class GuestBookingQueries(DbContext db, IRoomDirectory rooms, St
         var rows = await db.Set<Booking>().AsNoTracking()
             .Where(b => b.GuestId == guestId)
             .OrderByDescending(b => b.StartsAt)
-            .Select(b => new { b.Id, b.Number, b.Status, b.Kind, b.StartsAt, b.EndsAt, b.TotalAmount, b.CreatedAt, RoomId = b.Rooms.Select(r => r.RoomId).First() })
+            .Select(b => new { b.Id, b.Number, b.Status, b.Kind, b.StartsAt, b.EndsAt, b.TotalAmount, b.CreatedAt, RoomId = b.Rooms.OrderByDescending(r => r.StartsAt).Select(r => r.RoomId).First() })
             .ToListAsync(ct);
         var roomInfo = await rooms.GetManyAsync(rows.Select(r => r.RoomId), ct);
         return rows.Select(b => new GuestBookingItem(b.Id, b.Number, b.Status, b.Kind.ToString(), stays.Format(b.StartsAt), stays.Format(b.EndsAt),

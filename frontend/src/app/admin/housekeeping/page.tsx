@@ -113,48 +113,65 @@ async function TasksBoard({ canManage, canInspect }: { canManage: boolean; canIn
         <EmptyState icon={Sparkles} title={t("noTasks")} description={t("noTasksHint")} />
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
-          {columns.map((c) => (
-            <section key={c.key} aria-labelledby={`col-${c.key}`} className="grid content-start gap-3 rounded-2xl bg-muted/40 p-3">
-              <h2 id={`col-${c.key}`} className="flex items-center justify-between font-heading text-base">
-                {c.title}
-                <span className="tabular rounded-full bg-card px-2 text-sm text-muted-foreground">{c.items.length}</span>
-              </h2>
-              {c.items.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t("columnEmpty")}</p>}
-              {c.items.map((task) => (
-                <article
-                  key={task.id}
-                  aria-label={t("roomN", { n: task.roomNumber })}
-                  className={cn("grid gap-2 rounded-xl border bg-card p-3", task.priority === "High" && "border-status-cleaning/60", task.isOverdue && "border-destructive/50")}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-heading text-lg leading-tight">{t("roomN", { n: task.roomNumber })}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {task.roomTypeName} · {task.origin === "CheckOut" ? t("originCheckOut") : t("originManual")}
-                        {task.priority === "High" && <span className="font-medium text-status-cleaning"> · {t("priorityHigh")}</span>}
-                      </p>
+          {columns.map((c) => {
+            // Уборки на проверке ждут администратора — колонка выделяется, пока в ней что-то есть.
+            const attention = c.key === "inspect" && c.items.length > 0;
+            return (
+              <section
+                key={c.key}
+                aria-labelledby={`col-${c.key}`}
+                className={cn("grid content-start gap-3 rounded-2xl p-3", attention ? "bg-primary/10 ring-1 ring-primary/40" : "bg-muted/40")}
+              >
+                <h2 id={`col-${c.key}`} className={cn("flex items-center justify-between font-heading text-base", attention && "text-primary")}>
+                  {c.title}
+                  <span className={cn("tabular rounded-full px-2 text-sm", attention ? "bg-primary text-primary-foreground" : "bg-card text-muted-foreground")}>
+                    {c.items.length}
+                  </span>
+                </h2>
+                {c.items.length === 0 && <p className="px-1 text-sm text-muted-foreground">{t("columnEmpty")}</p>}
+                {c.items.map((task) => (
+                  <article
+                    key={task.id}
+                    aria-label={t("roomN", { n: task.roomNumber })}
+                    className={cn(
+                      "grid gap-2 rounded-xl border bg-card p-3",
+                      task.priority === "High" && "border-status-cleaning/60",
+                      task.isOverdue && "border-destructive/50",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-heading text-lg leading-tight">{t("roomN", { n: task.roomNumber })}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {task.roomTypeName} · {task.origin === "CheckOut" ? t("originCheckOut") : t("originManual")}
+                          {task.priority === "High" && <span className="font-medium text-status-cleaning"> · {t("priorityHigh")}</span>}
+                        </p>
+                      </div>
+                      <TaskStatusBadge status={task.status} />
                     </div>
-                    <TaskStatusBadge status={task.status} />
-                  </div>
-                  <TaskTiming task={task} />
-                  {task.notes && <p className="text-sm">{task.notes}</p>}
-                  {task.status === "Rejected" && task.rejectReason && <p className="text-xs text-destructive">{t("rejectedBecause", { reason: task.rejectReason })}</p>}
-                  <p className="text-xs text-muted-foreground">
-                    {task.assignedToName ? t("assignedTo", { name: task.assignedToName }) : t("unassigned")}
-                    {task.status === "InProgress" && task.checklist.length > 0 &&
-                      ` · ${t("checklistProgress", { done: task.checklist.filter((i) => i.isDone).length, total: task.checklist.length })}`}
-                  </p>
-                  {canManage && task.allowedActions.includes("assign") && <AssignForm task={task} staff={staffList} />}
-                  {canInspect && task.allowedActions.includes("inspect") && <InspectForm task={task} />}
-                  {canManage && task.allowedActions.includes("delete") && (
-                    <div className="justify-self-end">
-                      <DeleteTaskButton task={task} />
-                    </div>
-                  )}
-                </article>
-              ))}
-            </section>
-          ))}
+                    <TaskTiming task={task} />
+                    {task.notes && <p className="text-sm">{task.notes}</p>}
+                    {task.status === "Rejected" && task.rejectReason && (
+                      <p className="text-xs text-destructive">{t("rejectedBecause", { reason: task.rejectReason })}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      {task.assignedToName ? t("assignedTo", { name: task.assignedToName }) : t("unassigned")}
+                      {task.status === "InProgress" &&
+                        task.checklist.length > 0 &&
+                        ` · ${t("checklistProgress", { done: task.checklist.filter((i) => i.isDone).length, total: task.checklist.length })}`}
+                    </p>
+                    {canManage && task.allowedActions.includes("assign") && <AssignForm task={task} staff={staffList} />}
+                    {canInspect && task.allowedActions.includes("inspect") && <InspectForm task={task} />}
+                    {canManage && task.allowedActions.includes("delete") && (
+                      <div className="justify-self-end">
+                        <DeleteTaskButton task={task} />
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </section>
+            );
+          })}
         </div>
       )}
     </div>
@@ -181,11 +198,7 @@ async function DoneTasks() {
 }
 
 async function Maintenance() {
-  const [t, requests, rooms] = await Promise.all([
-    getTranslations("Housekeeping"),
-    api<MaintenanceRequest[]>("/maintenance-requests"),
-    api<Room[]>("/rooms"),
-  ]);
+  const [t, requests, rooms] = await Promise.all([getTranslations("Housekeeping"), api<MaintenanceRequest[]>("/maintenance-requests"), api<Room[]>("/rooms")]);
   if (!requests.ok) return <ErrorState title={t("loadError")} />;
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
