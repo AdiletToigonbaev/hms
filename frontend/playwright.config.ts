@@ -6,6 +6,8 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: "./e2e",
+  // Пароль владельца готовится один раз до всех тестов (на чистой БД CI — первый вход со сменой пароля).
+  globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   retries: 0,
   reporter: "list",
