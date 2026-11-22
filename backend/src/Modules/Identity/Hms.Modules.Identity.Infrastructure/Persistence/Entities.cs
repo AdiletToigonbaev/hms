@@ -47,10 +47,13 @@ public sealed class PermissionEntity
     public bool OwnerOnly { get; set; }
 }
 
-/// <summary>Права роли по умолчанию.</summary>
+/// <summary>Право роли (настраивает владелец).</summary>
 public sealed class RolePermissionGrant
 {
     public Guid RoleId { get; set; }
 
     public string PermissionCode { get; set; } = string.Empty;
+
+    /// <summary>Лимит суммы для прав с лимитом (null — без лимита). Личный лимит сотрудника важнее.</summary>
+    public decimal? LimitAmount { get; set; }
 }

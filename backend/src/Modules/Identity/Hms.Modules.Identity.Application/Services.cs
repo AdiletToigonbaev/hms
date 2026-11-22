@@ -63,3 +63,14 @@ public interface IRoleQueries
 
     IReadOnlyList<PermissionDto> ListPermissions();
 }
+
+/// <summary>Настройка прав ролей владельцем (администратор, уборщик). Владелец всегда имеет все права.</summary>
+public interface IRolePermissionsService
+{
+    Task<Result<RolePermissionsDto>> GetAsync(string role, CancellationToken ct);
+
+    Task<Result<RolePermissionsDto>> SetAsync(string role, SetRolePermissionsRequest request, CancellationToken ct);
+
+    /// <summary>Вернуть стандартные права роли (личные права сотрудников не трогаются).</summary>
+    Task<Result<RolePermissionsDto>> ResetAsync(string role, CancellationToken ct);
+}

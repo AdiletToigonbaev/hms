@@ -230,21 +230,21 @@ internal sealed class StaffService(
             return error;
         }
 
-        if (role != Roles.Administrator)
+        if (!PermissionCatalog.ConfigurableRoles.Contains(role!))
         {
             return IdentityErrors.OverridesOnlyForAdministrator;
         }
 
         foreach (var o in request.Overrides)
         {
-            if (!PermissionCatalog.IsConfigurableForAdministrator(o.Code))
+            if (!PermissionCatalog.IsAllowedFor(role!, o.Code))
             {
                 return IdentityErrors.PermissionNotConfigurable(o.Code);
             }
         }
 
         // Сохраняем только отличия от роли: «выдать» уже имеющееся и «отозвать» отсутствующее — лишние записи.
-        var roleDefaults = (await RolePermissionsAsync(role, ct)).ToHashSet(StringComparer.Ordinal);
+        var roleDefaults = (await RolePermissionsAsync(role!, ct)).ToHashSet(StringComparer.Ordinal);
         var normalized = request.Overrides
             .Where(o => o.IsGranted ? !roleDefaults.Contains(o.Code) || o.LimitAmount is not null : roleDefaults.Contains(o.Code))
             .Select(o => new PermissionOverride(user!.Id, o.Code, o.IsGranted, o.IsGranted ? o.LimitAmount : null))
@@ -263,7 +263,7 @@ internal sealed class StaffService(
         await db.SaveChangesAsync(ct);
         access.Invalidate(user.Id);
 
-        return await BuildPermissionsDtoAsync(user.Id, role, ct);
+        return await BuildPermissionsDtoAsync(user.Id, role!, ct);
     }
 
     private async Task<StaffPermissionsDto> BuildPermissionsDtoAsync(Guid userId, string role, CancellationToken ct)
@@ -274,9 +274,13 @@ internal sealed class StaffService(
             .Select(o => new PermissionOverrideDto(o.PermissionCode, o.IsGranted, o.LimitAmount))
             .ToListAsync(ct);
         var state = await access.GetAsync(userId, ct);
-        var configurable = role == Roles.Administrator
-            ? PermissionCatalog.All.Where(p => !p.OwnerOnly).Select(p => new PermissionDto(p.Code, p.Group, p.Description, p.OwnerOnly)).ToList()
-            : [];
+        var configurable = PermissionCatalog.All.Where(p => PermissionCatalog.IsAllowedFor(role, p.Code))
+            .Select(p => new PermissionDto(p.Code, p.Group, p.Description, p.OwnerOnly)).ToList();
+        var roleLimits = await (
+            from rp in db.Set<RolePermissionGrant>()
+            join r in db.Set<HmsRole>() on rp.RoleId equals r.Id
+            where r.Name == role && rp.LimitAmount != null
+            select new PermissionOverrideDto(rp.PermissionCode, true, rp.LimitAmount)).AsNoTracking().ToListAsync(ct);
 
         return new StaffPermissionsDto(
             userId,
@@ -284,7 +288,8 @@ internal sealed class StaffService(
             rolePermissions.Order(StringComparer.Ordinal).ToList(),
             overrides,
             (state?.Permissions ?? new HashSet<string>()).Order(StringComparer.Ordinal).ToList(),
-            configurable);
+            configurable,
+            roleLimits);
     }
 
     private Task<List<string>> RolePermissionsAsync(string role, CancellationToken ct) =>

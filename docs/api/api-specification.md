@@ -48,6 +48,9 @@
 | PUT | /staff/{id}/permissions | O | ✔ |
 | GET | /roles | O | ✔ |
 | GET | /roles/{name}/permissions | O | ✔ |
+| GET | /roles/{name}/settings | O (`staff.manage`; права роли для настройки: `grants` с лимитами, `defaults`, `configurable`, `limited`, `staffCount`; только Administrator, Housekeeper — иначе `role.not_configurable`) | ✔ |
+| PUT | /roles/{name}/permissions | O (`{ grants: [{ code, limitAmount }] }`; недопустимое для роли право → `staff.permission_not_configurable`; аудит `role.permissions.changed`) | ✔ |
+| POST | /roles/{name}/permissions/reset | O (стандартные права роли; личные права сотрудников не меняются; аудит `role.permissions.reset`) | ✔ |
 | GET | /permissions | O | ✔ |
 
 ## 3. Hotel / Settings / Integrations

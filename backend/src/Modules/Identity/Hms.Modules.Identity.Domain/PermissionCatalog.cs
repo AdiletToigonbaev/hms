@@ -12,7 +12,8 @@ public sealed record PermissionDefinition(string Code, string Group, string Desc
 
 /// <summary>
 /// Каталог разрешений и права ролей по умолчанию — реализация матрицы
-/// docs/architecture/security-architecture.md §3. Синхронизируется в БД сидером при каждом релизе.
+/// docs/architecture/security-architecture.md §3. Каталог синхронизируется в БД при каждом релизе; права ролей
+/// после первой установки настраивает владелец (сидер добавляет ролям только новые права каталога).
 /// </summary>
 public static class PermissionCatalog
 {
@@ -94,6 +95,27 @@ public static class PermissionCatalog
         _ => [],
     };
 
+    /// <summary>
+    /// Права, которые можно выдать уборщику: только работа с уборкой и заявками. Финансы и данные гостей уборщику
+    /// недоступны (инвариант проекта), остальные экраны персонала ему не открываются.
+    /// </summary>
+    private static readonly HashSet<string> HousekeeperAllowed = new([P.HousekeepingWork, P.MaintenanceCreate], StringComparer.Ordinal);
+
+    /// <summary>Роли, права которых настраивает владелец (своя роль владельца — всегда все права).</summary>
+    public static readonly IReadOnlyList<string> ConfigurableRoles = [Roles.Administrator, Roles.Housekeeper];
+
+    /// <summary>Права с лимитом суммы (лимит задаётся роли и/или сотруднику; пусто — без лимита).</summary>
+    public static readonly IReadOnlySet<string> LimitedPermissions = new HashSet<string>([P.RefundApprove], StringComparer.Ordinal);
+
+    /// <summary>Можно ли выдать разрешение роли или сотруднику этой роли.</summary>
+    public static bool IsAllowedFor(string role, string code) =>
+        ByCode.TryGetValue(code, out var p) && role switch
+        {
+            Roles.Administrator => !p.OwnerOnly,
+            Roles.Housekeeper => HousekeeperAllowed.Contains(code),
+            _ => false,
+        };
+
     /// <summary>Можно ли владельцу выдать/отозвать это разрешение у администратора индивидуально.</summary>
-    public static bool IsConfigurableForAdministrator(string code) => ByCode.TryGetValue(code, out var p) && !p.OwnerOnly;
+    public static bool IsConfigurableForAdministrator(string code) => IsAllowedFor(Roles.Administrator, code);
 }

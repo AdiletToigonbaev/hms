@@ -1,4 +1,4 @@
-import type { PermissionInfo, PermissionOverride } from "@/lib/api/types";
+import type { PermissionInfo, PermissionOverride, RoleGrant } from "@/lib/api/types";
 
 /** Разрешение, для которого задаётся лимит суммы. */
 export const LIMITED_PERMISSIONS = new Set(["refund.approve"]);
@@ -27,6 +27,24 @@ export function computeOverrides(
     }
   }
   return result;
+}
+
+/** Отмеченные права роли → список прав роли с лимитами (лимит — только у прав с лимитом). */
+export function computeRoleGrants(
+  configurable: readonly PermissionInfo[],
+  checked: ReadonlySet<string>,
+  limits: Readonly<Record<string, number | null | undefined>>,
+): RoleGrant[] {
+  return configurable
+    .filter((p) => checked.has(p.code))
+    .map((p) => ({ code: p.code, limitAmount: LIMITED_PERMISSIONS.has(p.code) ? (limits[p.code] ?? null) : null }));
+}
+
+/** Отличие права роли от стандарта: «добавлено» (нет в стандарте), «снято» (есть в стандарте), иначе null. */
+export function roleChange(code: string, checked: ReadonlySet<string>, defaults: ReadonlySet<string>): "added" | "removed" | null {
+  const on = checked.has(code);
+  const standard = defaults.has(code);
+  return on && !standard ? "added" : !on && standard ? "removed" : null;
 }
 
 /** Группирует разрешения по разделам, сохраняя порядок каталога. */

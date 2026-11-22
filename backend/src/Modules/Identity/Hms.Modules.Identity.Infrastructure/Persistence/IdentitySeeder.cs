@@ -26,14 +26,16 @@ internal sealed partial class IdentitySeeder(
 
     public async Task SeedAsync(CancellationToken cancellationToken)
     {
-        await SyncPermissionsAsync(cancellationToken);
+        var added = await SyncPermissionsAsync(cancellationToken);
         await EnsureRolesAsync();
-        await SyncRolePermissionsAsync(cancellationToken);
+        await SyncRolePermissionsAsync(added, cancellationToken);
         await EnsureOwnerAsync();
     }
 
-    private async Task SyncPermissionsAsync(CancellationToken ct)
+    /// <summary>Синхронизирует каталог прав; возвращает коды, которых в БД ещё не было (новые в этом релизе).</summary>
+    private async Task<HashSet<string>> SyncPermissionsAsync(CancellationToken ct)
     {
+        var added = new HashSet<string>(StringComparer.Ordinal);
         var existing = await db.Set<PermissionEntity>().ToDictionaryAsync(p => p.Code, StringComparer.Ordinal, ct);
         foreach (var def in PermissionCatalog.All)
         {
@@ -46,12 +48,14 @@ internal sealed partial class IdentitySeeder(
             else
             {
                 db.Set<PermissionEntity>().Add(new PermissionEntity { Code = def.Code, Group = def.Group, Description = def.Description, OwnerOnly = def.OwnerOnly });
+                added.Add(def.Code);
             }
         }
 
         // Разрешения, удалённые из каталога, удаляются (каскадно — из ролей и индивидуальных настроек).
         db.Set<PermissionEntity>().RemoveRange(existing.Values);
         await db.SaveChangesAsync(ct);
+        return added;
     }
 
     private async Task EnsureRolesAsync()
@@ -69,18 +73,34 @@ internal sealed partial class IdentitySeeder(
         }
     }
 
-    private async Task SyncRolePermissionsAsync(CancellationToken ct)
+    /// <summary>
+    /// Права ролей. Владелец — всегда весь каталог. Права администратора и уборщика настраивает владелец, поэтому
+    /// сидер их не перезаписывает: добавляет только новые права каталога по умолчанию (на чистой БД — все по умолчанию)
+    /// и убирает недопустимые для роли.
+    /// </summary>
+    private async Task SyncRolePermissionsAsync(HashSet<string> added, CancellationToken ct)
     {
         var roleIds = await db.Set<HmsRole>().ToDictionaryAsync(r => r.Name!, r => r.Id, StringComparer.Ordinal, ct);
         var current = await db.Set<RolePermissionGrant>().ToListAsync(ct);
+        foreach (var role in Roles.All)
+        {
+            var roleId = roleIds[role];
+            var grants = current.Where(rp => rp.RoleId == roleId).ToList();
+            var have = grants.Select(rp => rp.PermissionCode).ToHashSet(StringComparer.Ordinal);
+            if (role == Roles.Owner)
+            {
+                var all = PermissionCatalog.DefaultsFor(role).ToHashSet(StringComparer.Ordinal);
+                db.Set<RolePermissionGrant>().RemoveRange(grants.Where(rp => !all.Contains(rp.PermissionCode)));
+                db.Set<RolePermissionGrant>().AddRange(all.Where(c => !have.Contains(c)).Select(c => new RolePermissionGrant { RoleId = roleId, PermissionCode = c }));
+                continue;
+            }
 
-        var desired = Roles.All
-            .SelectMany(role => PermissionCatalog.DefaultsFor(role).Select(code => (RoleId: roleIds[role], Code: code)))
-            .ToHashSet();
-        var actual = current.Select(rp => (rp.RoleId, Code: rp.PermissionCode)).ToHashSet();
+            db.Set<RolePermissionGrant>().RemoveRange(grants.Where(rp => !PermissionCatalog.IsAllowedFor(role, rp.PermissionCode)));
+            db.Set<RolePermissionGrant>().AddRange(PermissionCatalog.DefaultsFor(role)
+                .Where(c => added.Contains(c) && !have.Contains(c))
+                .Select(c => new RolePermissionGrant { RoleId = roleId, PermissionCode = c }));
+        }
 
-        db.Set<RolePermissionGrant>().RemoveRange(current.Where(rp => !desired.Contains((rp.RoleId, rp.PermissionCode))));
-        db.Set<RolePermissionGrant>().AddRange(desired.Where(d => !actual.Contains(d)).Select(d => new RolePermissionGrant { RoleId = d.RoleId, PermissionCode = d.Code }));
         await db.SaveChangesAsync(ct);
     }
 

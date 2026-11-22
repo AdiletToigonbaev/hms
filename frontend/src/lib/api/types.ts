@@ -64,6 +64,25 @@ export interface StaffPermissions {
   overrides: PermissionOverride[];
   effective: string[];
   configurable: PermissionInfo[];
+  /** Лимиты прав у роли (личный лимит сотрудника важнее). */
+  roleLimits?: PermissionOverride[] | null;
+}
+
+/** Право роли и его лимит суммы. */
+export interface RoleGrant {
+  code: string;
+  limitAmount: number | null;
+}
+
+/** Права роли для настройки владельцем. */
+export interface RolePermissions {
+  role: Role;
+  displayName: string;
+  grants: RoleGrant[];
+  defaults: string[];
+  configurable: PermissionInfo[];
+  limited: string[];
+  staffCount: number;
 }
 
 /** Ошибка API в формате RFC 9457 с кодом домена. */

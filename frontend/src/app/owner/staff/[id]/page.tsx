@@ -84,9 +84,14 @@ export default async function StaffPage({ params }: PageProps<"/owner/staff/[id]
           <CardTitle>
             <h2>{t("permissions")}</h2>
           </CardTitle>
-          <CardDescription>{s.role === "Administrator" ? t("permissionsHint") : t("permissionsOnlyAdmin")}</CardDescription>
+          <CardDescription>
+            {s.role === "Administrator" ? t("permissionsHint") : t("permissionsHousekeeperHint")}{" "}
+            <Link href={`/owner/staff/roles#${s.role}`} className="text-primary underline-offset-4 hover:underline">
+              {t("rolePermissionsLink", { role: s.roleDisplayName })}
+            </Link>
+          </CardDescription>
         </CardHeader>
-        {s.role === "Administrator" && (
+        {(s.role === "Administrator" || s.role === "Housekeeper") && (
           <CardContent>
             <PermissionsEditor id={s.id} permissions={permissions.data} />
           </CardContent>
