@@ -93,7 +93,7 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
         </details>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10 has-[[data-wide]]:max-w-none">{children}</main>
+      <main className="area-main mx-auto w-full max-w-6xl min-w-0 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">{children}</main>
     </div>
   );
 }

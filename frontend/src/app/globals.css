@@ -162,6 +162,15 @@
 }
 
 /* Суммы и числа в таблицах — моноширинные цифры */
+/*
+ * Широкая страница (календарь) снимает ограничение ширины области.
+ * Next.js 16 держит прошлые страницы в DOM скрытыми (<Activity>: style="display: none !important"),
+ * поэтому скрытый календарь не должен растягивать следующую страницу.
+ */
+.area-main:has([data-wide]:not([style*="display: none"]):not([style*="display: none"] *)) {
+  max-width: none;
+}
+
 @utility tabular {
   font-variant-numeric: tabular-nums;
 }

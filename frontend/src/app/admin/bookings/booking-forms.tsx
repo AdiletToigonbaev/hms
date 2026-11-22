@@ -534,6 +534,8 @@ export function RescheduleForm({
   const [roomId, setRoomId] = useState(b.room.roomId);
   const [checking, startChecking] = useTransition();
   const [timeError, setTimeError] = useState<string | null>(null);
+  // Что выбрано сейчас (обновляется при смене даты/времени); перенос без изменений не предлагаем.
+  const [picked, setPicked] = useState<RescheduleInput | null>(null);
   const shown = (freeIds === null ? suitable : suitable.filter((r) => freeIds.includes(r.id))).sort((x, y) =>
     x.id === b.room.roomId ? -1 : y.id === b.room.roomId ? 1 : x.number.localeCompare(y.number, "ru", { numeric: true }),
   );
@@ -542,6 +544,7 @@ export function RescheduleForm({
   function refreshRooms() {
     if (!formRef.current) return;
     const input = read();
+    setPicked(input);
     startChecking(async () => {
       const result = await rescheduleRoomsAction(b.id, input);
       if (result.ok) {
@@ -564,6 +567,12 @@ export function RescheduleForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const startHour = Number(b.startsAt.slice(11, 13));
+  const unchanged =
+    roomId === b.room.roomId &&
+    (picked === null ||
+      (picked.kind === "Hourly"
+        ? picked.date === b.startsAt.slice(0, 10) && picked.startHour === startHour && picked.hours === b.hours
+        : picked.checkIn === b.checkIn && picked.checkOut === b.checkOut));
   const hoursOptions = Array.from({ length: Math.max(0, maxHours - minHours + 1) }, (_, i) => minHours + i);
 
   const e = state.fieldErrors ?? {};
@@ -648,7 +657,7 @@ export function RescheduleForm({
         <SubmitButton
           pending={busy}
           variant="outline"
-          disabled={busy || checking || (freeIds !== null && shown.length === 0)}
+          disabled={busy || checking || unchanged || (freeIds !== null && shown.length === 0)}
           onClick={(ev) => {
             ev.preventDefault();
             const input = read();
@@ -667,7 +676,7 @@ export function RescheduleForm({
           {t("reschedule")}
         </SubmitButton>
       </div>
-      <p className="text-xs text-muted-foreground">{t("rescheduleHint")}</p>
+      <p className="text-xs text-muted-foreground">{unchanged ? t("rescheduleUnchanged") : t("rescheduleHint")}</p>
       <ConfirmDialog
         open={plan !== null}
         onOpenChange={(open) => !open && setPlan(null)}
