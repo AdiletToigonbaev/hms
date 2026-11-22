@@ -18,11 +18,12 @@ public static class IdentityErrors
     public static readonly Error UserNotFound = Error.NotFound("user.not_found", "Пользователь не найден.");
     public static readonly Error StaffNotFound = Error.NotFound("staff.not_found", "Сотрудник не найден.");
     public static readonly Error CannotModifyOwner = Error.Forbidden("staff.cannot_modify_owner", "Учётную запись владельца нельзя изменить в разделе сотрудников.");
-    public static readonly Error OverridesOnlyForAdministrator = Error.BusinessRule("staff.permissions_not_configurable", "Индивидуальные права настраиваются только для администраторов.");
+    public static readonly Error OverridesOnlyForAdministrator = Error.BusinessRule("staff.permissions_not_configurable", "Права этой роли не настраиваются.");
+    public static readonly Error RoleNotConfigurable = Error.BusinessRule("role.not_configurable", "Права владельца не настраиваются: у него всегда все права.");
     public static readonly Error RoleNotFound = Error.NotFound("role.not_found", "Роль не найдена.");
 
     public static Error PermissionNotConfigurable(string code) =>
-        Error.BusinessRule("staff.permission_not_configurable", $"Разрешение «{code}» нельзя выдать администратору.");
+        Error.BusinessRule("staff.permission_not_configurable", $"Разрешение «{code}» нельзя выдать этой роли.");
 
     public static Error PasswordRejected(string description) =>
         Error.Validation("auth.password_rejected", description);

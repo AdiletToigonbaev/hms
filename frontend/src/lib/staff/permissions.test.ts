@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PermissionInfo } from "@/lib/api/types";
-import { computeOverrides, groupPermissions } from "./permissions";
+import { computeOverrides, computeRoleGrants, groupPermissions, roleChange } from "./permissions";
 
 const p = (code: string, group = "G"): PermissionInfo => ({ code, group, description: code, ownerOnly: false });
 const configurable = [p("booking.view"), p("booking.cancel"), p("finance.report.view"), p("refund.approve", "Финансы")];
@@ -34,5 +34,25 @@ describe("groupPermissions", () => {
       ["G", 3],
       ["Финансы", 1],
     ]);
+  });
+});
+
+describe("computeRoleGrants", () => {
+  it("берёт отмеченные права, лимит — только у прав с лимитом", () => {
+    const checked = new Set(["booking.view", "refund.approve"]);
+    expect(computeRoleGrants(configurable, checked, { "refund.approve": 300, "booking.view": 5 })).toEqual([
+      { code: "booking.view", limitAmount: null },
+      { code: "refund.approve", limitAmount: 300 },
+    ]);
+  });
+});
+
+describe("roleChange", () => {
+  it("показывает отличие от стандартных прав роли", () => {
+    const defaults = new Set(["booking.view", "booking.cancel"]);
+    const checked = new Set(["booking.view", "refund.approve"]);
+    expect(roleChange("booking.view", checked, defaults)).toBeNull();
+    expect(roleChange("refund.approve", checked, defaults)).toBe("added");
+    expect(roleChange("booking.cancel", checked, defaults)).toBe("removed");
   });
 });

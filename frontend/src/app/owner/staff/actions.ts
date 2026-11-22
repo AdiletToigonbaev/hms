@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { api } from "@/lib/api/server";
 import { toFormState, withValues, type FormState } from "@/lib/api/problem";
-import type { PermissionOverride, Staff } from "@/lib/api/types";
+import type { PermissionOverride, RoleGrant, Staff } from "@/lib/api/types";
 import { createStaffSchema, fieldErrors, PASSWORD_MIN } from "@/lib/validation/auth";
 
 // Каждое действие — отдельная точка входа (прямой POST), поэтому права проверяет API на каждом вызове.
@@ -108,5 +108,35 @@ export async function setPermissionsAction(_: FormState, form: FormData): Promis
     return toFormState(result.problem);
   }
   revalidatePath(`/owner/staff/${id}`);
+  return { ok: true };
+}
+
+const roleSchema = z.enum(["Administrator", "Housekeeper"]);
+const grantsSchema = z.array(z.object({ code: z.string().min(1), limitAmount: z.number().positive().nullable() }));
+
+/** Права роли: действуют на всех сотрудников роли сразу (кроме их личных отличий). */
+export async function setRolePermissionsAction(_: FormState, form: FormData): Promise<FormState> {
+  const role = roleSchema.parse(form.get("role"));
+  const parsed = grantsSchema.safeParse(JSON.parse(String(form.get("grants") ?? "[]")));
+  if (!parsed.success) return { ok: false, error: "validation.failed" };
+  const grants: RoleGrant[] = parsed.data;
+  const result = await api(`/roles/${role}/permissions`, { method: "PUT", body: { grants } });
+  if (!result.ok) {
+    handleAuth(result.status);
+    return toFormState(result.problem);
+  }
+  revalidatePath("/owner/staff", "layout");
+  return { ok: true };
+}
+
+/** Вернуть стандартные права роли. Личные права сотрудников не меняются. */
+export async function resetRolePermissionsAction(role: string): Promise<FormState> {
+  const parsedRole = roleSchema.parse(role);
+  const result = await api(`/roles/${parsedRole}/permissions/reset`, { method: "POST" });
+  if (!result.ok) {
+    handleAuth(result.status);
+    return toFormState(result.problem);
+  }
+  revalidatePath("/owner/staff", "layout");
   return { ok: true };
 }

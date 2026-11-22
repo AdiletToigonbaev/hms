@@ -99,6 +99,7 @@ internal sealed class IdentityModelConfigurator : IModelConfigurator
             e.ToTable("role_permissions", Schema);
             e.HasKey(x => new { x.RoleId, x.PermissionCode });
             e.Property(x => x.PermissionCode).HasMaxLength(100);
+            e.Property(x => x.LimitAmount).HasPrecision(14, 2);
             e.HasOne<HmsRole>().WithMany().HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<PermissionEntity>().WithMany().HasForeignKey(x => x.PermissionCode).OnDelete(DeleteBehavior.Cascade);
         });

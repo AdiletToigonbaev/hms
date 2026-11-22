@@ -29,6 +29,11 @@ public static class IdentityEndpoints
         access.MapGet("/roles", async (IRoleQueries q, CancellationToken ct) => Results.Ok(await q.ListRolesAsync(ct)));
         access.MapGet("/roles/{name}/permissions", async (string name, IRoleQueries q, CancellationToken ct) => (await q.GetRoleAsync(name, ct)).ToHttpResult());
         access.MapGet("/permissions", (IRoleQueries q) => Results.Ok(q.ListPermissions()));
+        access.MapGet("/roles/{name}/settings", async (string name, IRolePermissionsService s, CancellationToken ct) => (await s.GetAsync(name, ct)).ToHttpResult());
+        access.MapPut("/roles/{name}/permissions", async (string name, SetRolePermissionsRequest request, IRolePermissionsService s, CancellationToken ct) =>
+                (await s.SetAsync(name, request, ct)).ToHttpResult())
+            .WithValidation<SetRolePermissionsRequest>();
+        access.MapPost("/roles/{name}/permissions/reset", async (string name, IRolePermissionsService s, CancellationToken ct) => (await s.ResetAsync(name, ct)).ToHttpResult());
         return api;
     }
 

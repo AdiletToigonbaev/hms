@@ -1877,6 +1877,11 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("permission_code");
 
+                    b.Property<decimal?>("LimitAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("limit_amount");
+
                     b.HasKey("RoleId", "PermissionCode")
                         .HasName("pk_role_permissions");
 

@@ -6,6 +6,7 @@ import { Field } from "@/components/forms/field";
 import { FormAlert } from "@/components/forms/form-alert";
 import { SubmitButton } from "@/components/forms/submit-button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -79,6 +80,11 @@ export function PermissionsEditor({ id, permissions }: { id: string; permissions
   const [limits, setLimits] = useState<Record<string, number | null>>(() =>
     Object.fromEntries(permissions.overrides.map((o) => [o.code, o.limitAmount])),
   );
+  const roleLimit = (code: string) => permissions.roleLimits?.find((l) => l.code === code)?.limitAmount ?? null;
+  const resetToRole = () => {
+    setChecked(new Set(permissions.rolePermissions.filter((c) => permissions.configurable.some((p) => p.code === c))));
+    setLimits({});
+  };
 
   const overrides = computeOverrides(permissions.configurable, roleDefaults, checked, limits);
   const toggle = (code: string, on: boolean) =>
@@ -123,8 +129,9 @@ export function PermissionsEditor({ id, permissions }: { id: string; permissions
                       min={1}
                       step="0.01"
                       inputMode="decimal"
-                      className="h-7 w-32"
+                      className="h-7 w-40"
                       value={limits[p.code] ?? ""}
+                      placeholder={roleLimit(p.code) !== null ? t("roleLimitPlaceholder", { amount: roleLimit(p.code)! }) : t("noLimit")}
                       onChange={(e) =>
                         setLimits((prev) => ({ ...prev, [p.code]: e.target.value === "" ? null : Number(e.target.value) }))
                       }
@@ -136,8 +143,12 @@ export function PermissionsEditor({ id, permissions }: { id: string; permissions
           })}
         </fieldset>
       ))}
-      <div>
+      <div className="flex flex-wrap items-center gap-2">
         <SubmitButton pending={pending}>{t("savePermissions")}</SubmitButton>
+        <Button type="button" variant="outline" onClick={resetToRole} disabled={pending}>
+          {t("resetToRole")}
+        </Button>
+        <span className="text-xs text-muted-foreground">{t("resetToRoleHint")}</span>
       </div>
     </form>
   );

@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
@@ -42,10 +42,16 @@ export default async function StaffListPage({ searchParams }: PageProps<"/owner/
       <PageHeader
         title={t("title")}
         actions={
-          <Link href="/owner/staff/new" className={buttonVariants()}>
-          <Plus aria-hidden />
-          {t("add")}
-        </Link>
+          <>
+            <Link href="/owner/staff/roles" className={buttonVariants({ variant: "outline" })}>
+              <ShieldCheck aria-hidden />
+              {t("rolesTitle")}
+            </Link>
+            <Link href="/owner/staff/new" className={buttonVariants()}>
+              <Plus aria-hidden />
+              {t("add")}
+            </Link>
+          </>
         }
       />
 

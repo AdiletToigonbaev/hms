@@ -138,6 +138,24 @@ public sealed class StaffResetPasswordRequestValidator : AbstractValidator<Staff
     public StaffResetPasswordRequestValidator() => RuleFor(x => x.NewPassword).Password();
 }
 
+public sealed class SetRolePermissionsRequestValidator : AbstractValidator<SetRolePermissionsRequest>
+{
+    public SetRolePermissionsRequestValidator()
+    {
+        RuleFor(x => x.Grants).NotNull();
+        RuleFor(x => x.Grants)
+            .Must(list => list.Select(o => o.Code).Distinct(StringComparer.Ordinal).Count() == list.Count)
+            .When(x => x.Grants is not null)
+            .WithMessage("Каждое разрешение можно указать только один раз.");
+        RuleForEach(x => x.Grants).ChildRules(o =>
+        {
+            o.RuleFor(x => x.Code).NotEmpty();
+            o.RuleFor(x => x.LimitAmount).GreaterThan(0).When(x => x.LimitAmount is not null)
+                .WithMessage("Лимит должен быть больше нуля.");
+        });
+    }
+}
+
 public sealed class SetPermissionsRequestValidator : AbstractValidator<SetPermissionsRequest>
 {
     public SetPermissionsRequestValidator()

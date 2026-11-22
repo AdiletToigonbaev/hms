@@ -93,6 +93,22 @@ public sealed record StaffPermissionsDto(
     IReadOnlyList<string> RolePermissions,
     IReadOnlyList<PermissionOverrideDto> Overrides,
     IReadOnlyList<string> Effective,
-    IReadOnlyList<PermissionDto> Configurable);
+    IReadOnlyList<PermissionDto> Configurable,
+    IReadOnlyList<PermissionOverrideDto>? RoleLimits = null);
+
+/// <summary>Право роли: код и лимит суммы (для прав с лимитом).</summary>
+public sealed record RoleGrantDto(string Code, decimal? LimitAmount);
+
+/// <summary>Права роли для настройки владельцем: текущие, стандартные, доступные для выдачи; число сотрудников роли.</summary>
+public sealed record RolePermissionsDto(
+    string Role,
+    string DisplayName,
+    IReadOnlyList<RoleGrantDto> Grants,
+    IReadOnlyList<string> Defaults,
+    IReadOnlyList<PermissionDto> Configurable,
+    IReadOnlyList<string> Limited,
+    int StaffCount);
+
+public sealed record SetRolePermissionsRequest(IReadOnlyList<RoleGrantDto> Grants);
 
 public sealed record SetPermissionsRequest(IReadOnlyList<PermissionOverrideDto> Overrides);

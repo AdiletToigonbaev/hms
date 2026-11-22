@@ -70,7 +70,7 @@ test("владелец входит, создаёт администратора
 
   // Индивидуальное право: финансовые отчёты
   await page.getByRole("checkbox", { name: "Финансовые отчёты", exact: true }).click();
-  await expect(page.getByText("выдано")).toBeVisible();
+  await expect(page.getByText("выдано", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Сохранить права" }).click();
   await expect(page.getByText("Сохранено.").last()).toBeVisible();
 
