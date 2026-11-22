@@ -103,6 +103,21 @@ public class CalendarAndRulesTests(PostgresFixture db)
         (await FreeAsync(12)).Should().NotContain(first.Id);
     }
 
+    [Fact]
+    public async Task Reschedule_WithoutChanges_IsRejected()
+    {
+        var owner = await OwnerAsync();
+        var day = Clock.Today.AddDays(46);
+        var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
+        var booking = await BookingTestKit.CreateAsync(owner, BookingTestKit.Hourly(room.Id, day, 10, 2));
+
+        var same = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/reschedule/quote", BookingTestKit.MoveHourly(room.Id, day, 10, 2), Ct);
+        (await ProblemCodeAsync(same)).Should().Be("booking.reschedule_no_changes");
+
+        var later = await owner.PostAsJsonAsync($"/api/v1/bookings/{booking.Id}/reschedule/quote", BookingTestKit.MoveHourly(room.Id, day, 11, 2), Ct);
+        later.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
     private DateOnly Today => Clock.Today;
 
     private async Task<HttpClient> OwnerAsync() => _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);

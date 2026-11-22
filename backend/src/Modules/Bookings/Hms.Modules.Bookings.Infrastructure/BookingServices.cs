@@ -569,6 +569,11 @@ internal sealed class BookingService(
         }
 
         var stay = Stays.ForRoom(resolved.Value, await stays.SettingsAsync(ct), room);
+        if (stay.StartsAt == booking.StartsAt && stay.EndsAt == booking.EndsAt && room.Id == booking.CurrentRoom.RoomId)
+        {
+            return Error.Validation("booking.reschedule_no_changes", "Ничего не изменилось: выберите другую дату, время или номер.");
+        }
+
         if ((await stays.BusyRoomsAsync([room.Id], stay, booking.Id, ct)).Count > 0)
         {
             return BookingErrors.RoomUnavailable;
