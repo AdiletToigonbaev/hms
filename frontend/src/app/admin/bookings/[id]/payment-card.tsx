@@ -5,7 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { BookingBalance } from "@/lib/api/types";
 import { defaultPaymentType, paymentMethodLabel, paymentTypeLabel } from "@/lib/finance/labels";
 import { formatHotelLocal, formatMoney } from "@/lib/format";
+import { overpaymentRefund } from "@/lib/finance/overpayment";
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
 import { RegisterPaymentForm } from "../../payments/finance-forms";
 
 /** Оплата брони: к оплате, получено, остаток; платежи и возвраты; приём оплаты (если есть остаток и право). */
@@ -14,13 +16,16 @@ export async function PaymentCard({
   startsAt,
   now,
   canRegister,
+  canRefund = false,
 }: {
   balance: BookingBalance;
   startsAt: string;
   now: string;
   canRegister: boolean;
+  canRefund?: boolean;
 }) {
   const t = await getTranslations("Finance");
+  const over = overpaymentRefund(b);
   const rows = [
     { label: t("due"), value: b.due },
     { label: t("received"), value: b.received },
@@ -51,8 +56,32 @@ export async function PaymentCard({
           {b.prepaymentRequired > 0 && b.received < b.prepaymentRequired && (
             <p className="text-xs text-muted-foreground">{t("prepaymentHint", { amount: formatMoney(b.prepaymentRequired) })}</p>
           )}
-          {b.balance < 0 && <p className="text-xs text-status-reserved">{t("overpaidHint")}</p>}
         </dl>
+        {over && (
+          <div className="grid gap-2 rounded-xl border border-status-reserved/30 bg-status-reserved/5 p-3 text-sm">
+            {over.amount > 0 ? (
+              <>
+                <p>
+                  {over.pending > 0
+                    ? t("overpaidPartlyRequested", { pending: formatMoney(over.pending), amount: formatMoney(over.amount) })
+                    : t("overpaidHint")}
+                </p>
+                {canRefund && over.paymentId ? (
+                  <div>
+                    <Link href={`/admin/payments/${over.paymentId}?refund=${over.suggested}#refund`} className={buttonVariants({ size: "sm" })}>
+                      {t("refundOverpaid", { amount: formatMoney(over.suggested) })}
+                    </Link>
+                    {over.suggested < over.amount && <p className="mt-1 text-xs text-muted-foreground">{t("refundOverpaidSplit")}</p>}
+                  </div>
+                ) : (
+                  !canRefund && <p className="text-xs text-muted-foreground">{t("refundNoRight")}</p>
+                )}
+              </>
+            ) : (
+              <p>{t("overpaidRequested", { amount: formatMoney(over.pending) })}</p>
+            )}
+          </div>
+        )}
 
         {b.payments.length > 0 && (
           <section className="grid gap-2" aria-labelledby="payments-title">
@@ -62,7 +91,10 @@ export async function PaymentCard({
             <ul className="grid gap-1.5">
               {b.payments.map((p) => (
                 <li key={p.id}>
-                  <Link href={`/admin/payments/${p.id}`} className="grid gap-0.5 rounded-xl border px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-accent/40">
+                  <Link
+                    href={`/admin/payments/${p.id}`}
+                    className="grid gap-0.5 rounded-xl border px-3 py-2 text-sm transition hover:border-primary/40 hover:bg-accent/40"
+                  >
                     <span className="flex flex-wrap items-center justify-between gap-2">
                       <span className="font-medium">
                         {paymentTypeLabel[p.type]} · {paymentMethodLabel[p.method]}

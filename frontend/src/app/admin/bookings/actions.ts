@@ -239,3 +239,48 @@ export async function checkOutAction(_: FormState, form: FormData): Promise<Form
   revalidatePath("/admin");
   return { ok: true };
 }
+
+/**
+ * Номера, свободные для переноса брони на новое время (с учётом уборки; сама бронь номер не занимает) — считает API.
+ * Номер в запросе не нужен; при неверном времени возвращает ошибку, а не список.
+ */
+export async function rescheduleRoomsAction(id: string, input: RescheduleInput): Promise<RescheduleResult<string[]>> {
+  const bookingId = uuid.parse(id);
+  const body = rescheduleBody(input);
+  if (!body.ok) return body;
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(body.body)) if (k !== "roomId" && v !== undefined && v !== null) q.set(k, String(v));
+  const result = await api<{ roomIds: string[] }>(`/bookings/${bookingId}/reschedule/rooms?${q}`);
+  if (!result.ok) {
+    authGuard(result.status);
+    return { ok: false, state: toFormState(result.problem) };
+  }
+  return { ok: true, data: result.data.roomIds };
+}
+
+/** Переселение заселённого гостя: новый номер «Занят», прежний — на уборку. Цена — без изменения или с пересчётом остатка. */
+export async function moveGuestAction(_: FormState, form: FormData): Promise<FormState> {
+  const id = uuid.parse(form.get("id"));
+  const roomId = uuid.safeParse(form.get("roomId"));
+  if (!roomId.success) return { ok: false, fieldErrors: { roomId: "Выберите номер." } };
+  const key = idempotencyKey.safeParse(form.get("idempotencyKey"));
+  if (!key.success) return { ok: false, error: "idempotency.key_required" };
+  const reason = String(form.get("reason") ?? "")
+    .trim()
+    .slice(0, 500);
+  const version = form.get("version") ? Number(form.get("version")) : null;
+  const result = await api<Booking>(`/bookings/${id}/move`, {
+    method: "POST",
+    headers: { "Idempotency-Key": key.data },
+    body: { roomId: roomId.data, recalculate: form.get("price") === "recalculate", reason: reason || null, version },
+  });
+  if (!result.ok) {
+    authGuard(result.status);
+    return toFormState(result.problem);
+  }
+  revalidatePath(`/admin/bookings/${id}`);
+  revalidatePath("/admin/calendar");
+  revalidatePath("/admin/housekeeping");
+  revalidatePath("/admin");
+  return { ok: true };
+}

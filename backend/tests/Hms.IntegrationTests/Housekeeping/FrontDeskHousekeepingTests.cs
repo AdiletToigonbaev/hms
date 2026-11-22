@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Hms.IntegrationTests.Bookings;
 using Hms.IntegrationTests.Hotel;
 using Hms.Modules.Bookings.Application;
@@ -143,6 +144,11 @@ public class FrontDeskHousekeepingTests(PostgresFixture db)
         await CleanAsync(maid, task);
         (await RoomStatusAsync(owner, roomId)).Should().Be("Cleaning", "без настройки владельца номер ждёт проверки");
 
+        // Значок «ждут проверки» у администратора; уборщику счётчик недоступен.
+        var awaiting = await owner.GetFromJsonAsync<JsonElement>("/api/v1/housekeeping/awaiting-inspection-count", Ct);
+        awaiting.GetProperty("count").GetInt32().Should().BeGreaterThanOrEqualTo(1);
+        (await maid.GetAsync(new Uri("/api/v1/housekeeping/awaiting-inspection-count", UriKind.Relative), Ct)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
         var rejected = await ReadAsync(await owner.PostAsJsonAsync($"/api/v1/housekeeping/tasks/{task.Id}/inspect", new InspectTaskRequest(false, "Пыль на полке"), Ct));
         rejected.Status.Should().Be("Rejected");
         rejected.Checklist.Should().OnlyContain(i => !i.IsDone);
@@ -160,6 +166,52 @@ public class FrontDeskHousekeepingTests(PostgresFixture db)
 
         var history = (await maid.GetFromJsonAsync<List<HousekeepingTaskDto>>("/api/v1/housekeeping/my/history", Ct))!;
         history.Should().Contain(t => t.Id == task.Id);
+    }
+
+    [Fact]
+    public async Task MoveGuest_ToPricierRoom_WithAndWithoutRecalculation()
+    {
+        var owner = await OwnerAsync();
+        await SetAutoReleaseAsync(owner, false);
+        var (booking, oldRoomId) = await SoonBookingAsync(owner); // 3 ч по 500 = 1500
+        var pricier = await BookingTestKit.CreateRoomAsync(owner, 700m);
+        (await CheckInAsync(owner, booking.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var options = await owner.GetFromJsonAsync<JsonElement>($"/api/v1/bookings/{booking.Id}/move/options", Ct);
+        options.GetProperty("remainingUnits").GetInt32().Should().Be(3);
+        var option = options.GetProperty("rooms").EnumerateArray().Single(r => r.GetProperty("roomId").GetGuid() == pricier.Id);
+        option.GetProperty("difference").GetDecimal().Should().Be(600m, "3 ч × (700 − 500)");
+        options.GetProperty("rooms").EnumerateArray().Should().NotContain(r => r.GetProperty("roomId").GetGuid() == oldRoomId);
+
+        var moved = await PostIdempotentAsync(owner, $"/api/v1/bookings/{booking.Id}/move", new MoveGuestRequest(pricier.Id, true, "Гость попросил номер лучше", null));
+        moved.StatusCode.Should().Be(HttpStatusCode.OK, await moved.Content.ReadAsStringAsync(Ct));
+        var after = (await moved.Content.ReadFromJsonAsync<BookingDto>(Ct))!;
+        after.Room.RoomId.Should().Be(pricier.Id);
+        after.TotalAmount.Should().Be(2100m);
+        after.RoomChangeAmount.Should().Be(600m);
+        (await RoomStatusAsync(owner, pricier.Id)).Should().Be("Occupied");
+        (await RoomStatusAsync(owner, oldRoomId)).Should().Be("Cleaning");
+        (await TaskForRoomAsync(owner, oldRoomId)).Origin.Should().Be("CheckOut");
+
+        // Обратно без пересчёта — цена не меняется; выселение освобождает уже новый (текущий) номер.
+        var back = await PostIdempotentAsync(owner, $"/api/v1/bookings/{booking.Id}/move", new MoveGuestRequest(oldRoomId, false, null, null));
+        (await ProblemCodeAsync(back)).Should().Be("booking.move_room_unavailable", "старый номер ещё на уборке");
+
+        var (_, maidTokens) = await _api.CreateActiveStaffAsync(Roles.Housekeeper);
+        var maid = _api.Authorized(maidTokens.AccessToken);
+        (await maid.GetAsync(new Uri($"/api/v1/bookings/{booking.Id}/move/options", UriKind.Relative), Ct)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+
+        (await CheckOutAsync(owner, booking.Id, allowDebt: true)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await RoomStatusAsync(owner, pricier.Id)).Should().Be("Cleaning");
+    }
+
+    [Fact]
+    public async Task Move_NotCheckedIn_IsRejected()
+    {
+        var owner = await OwnerAsync();
+        var (booking, _) = await SoonBookingAsync(owner);
+        (await ProblemCodeAsync(await owner.GetAsync(new Uri($"/api/v1/bookings/{booking.Id}/move/options", UriKind.Relative), Ct)))
+            .Should().Be("booking.move_not_checked_in");
     }
 
     [Fact]

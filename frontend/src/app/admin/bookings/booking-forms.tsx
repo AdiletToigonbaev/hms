@@ -27,6 +27,7 @@ import {
   noShowBookingAction,
   quoteExtensionAction,
   quoteRescheduleAction,
+  rescheduleRoomsAction,
   rescheduleBookingAction,
   updateBookingAction,
 } from "./actions";
@@ -520,9 +521,6 @@ export function RescheduleForm({
   const [busy, startBusy] = useTransition();
   const hourly = b.kind === "Hourly";
   const suitable = rooms.filter((r) => r.isSellable && (!hourly || r.sellsHourly) && r.capacity >= b.adults + b.children);
-  const startHour = Number(b.startsAt.slice(11, 13));
-  const hoursOptions = Array.from({ length: Math.max(0, maxHours - minHours + 1) }, (_, i) => minHours + i);
-
   function read(): RescheduleInput {
     const f = new FormData(formRef.current!);
     const roomId = String(f.get("roomId") ?? "");
@@ -531,17 +529,54 @@ export function RescheduleForm({
       : { kind: "Nightly", roomId, checkIn: String(f.get("checkIn") ?? ""), checkOut: String(f.get("checkOut") ?? "") };
   }
 
+  // Свободные на выбранное время номера (считает API, с учётом уборки). null — ещё не загружены: показываем подходящие.
+  const [freeIds, setFreeIds] = useState<string[] | null>(null);
+  const [roomId, setRoomId] = useState(b.room.roomId);
+  const [checking, startChecking] = useTransition();
+  const [timeError, setTimeError] = useState<string | null>(null);
+  const shown = (freeIds === null ? suitable : suitable.filter((r) => freeIds.includes(r.id))).sort((x, y) =>
+    x.id === b.room.roomId ? -1 : y.id === b.room.roomId ? 1 : x.number.localeCompare(y.number, "ru", { numeric: true }),
+  );
+
+  /** После смены даты или времени — запросить свободные номера; занятый выбранный номер заменить первым свободным. */
+  function refreshRooms() {
+    if (!formRef.current) return;
+    const input = read();
+    startChecking(async () => {
+      const result = await rescheduleRoomsAction(b.id, input);
+      if (result.ok) {
+        setFreeIds(result.data);
+        setTimeError(null);
+        // Выбранный номер свободен — оставляем; иначе номер брони, если свободен; иначе первый свободный по номеру.
+        const free = suitable.filter((x) => result.data.includes(x.id)).sort((x, y) => x.number.localeCompare(y.number, "ru", { numeric: true }));
+        setRoomId((current) =>
+          result.data.includes(current) ? current : result.data.includes(b.room.roomId) ? b.room.roomId : (free[0]?.id ?? current),
+        );
+      } else {
+        setTimeError(result.state.fieldErrors ? Object.values(result.state.fieldErrors)[0] : (result.state.message ?? null));
+      }
+    });
+  }
+
+  useEffect(() => {
+    refreshRooms();
+    // Один раз при открытии формы — для текущего времени брони.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const startHour = Number(b.startsAt.slice(11, 13));
+  const hoursOptions = Array.from({ length: Math.max(0, maxHours - minHours + 1) }, (_, i) => minHours + i);
+
   const e = state.fieldErrors ?? {};
   return (
     <form ref={formRef} className="grid gap-3" noValidate onSubmit={(ev) => ev.preventDefault()}>
       <FormAlert state={state} success={t("rescheduled")} />
       {hourly ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          <DateRangePicker mode="single" size="compact" startName="date" defaultStart={b.startsAt.slice(0, 10)} today={today} min={today} startLabel={t("date")} />
+          <DateRangePicker mode="single" size="compact" startName="date" defaultStart={b.startsAt.slice(0, 10)} today={today} min={today} startLabel={t("date")} onChange={refreshRooms} />
           <div className="grid grid-cols-2 gap-2">
             <div className="grid gap-1.5">
               <Label htmlFor="rs-start">{t("startTime")}</Label>
-              <NativeSelect id="rs-start" name="startHour" defaultValue={String(startHour)}>
+              <NativeSelect id="rs-start" name="startHour" defaultValue={String(startHour)} onChange={refreshRooms}>
                 {Array.from({ length: 24 }, (_, h) => (
                   <option key={h} value={h}>
                     {String(h).padStart(2, "0")}:00
@@ -551,7 +586,7 @@ export function RescheduleForm({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="rs-hours">{t("hoursLabel")}</Label>
-              <NativeSelect id="rs-hours" name="hours" defaultValue={String(b.hours ?? minHours)}>
+              <NativeSelect id="rs-hours" name="hours" defaultValue={String(b.hours ?? minHours)} onChange={refreshRooms}>
                 {hoursOptions.map((h) => (
                   <option key={h} value={h}>
                     {h} ч
@@ -573,6 +608,7 @@ export function RescheduleForm({
           min={today}
           startLabel={t("checkIn")}
           endLabel={t("checkOut")}
+          onChange={(range) => range.end && refreshRooms()}
         />
       )}
       {(e.date || e.checkIn || e.checkOut || e.startHour || e.hours) && (
@@ -580,17 +616,39 @@ export function RescheduleForm({
           {e.date ?? e.checkIn ?? e.checkOut ?? e.startHour ?? e.hours}
         </p>
       )}
-      <SelectField name="roomId" id="rs-room" label={t("room")} defaultValue={b.room.roomId} error={e.roomId}>
-        {suitable.map((r) => (
+      <SelectField
+        name="roomId"
+        id="rs-room"
+        label={t("room")}
+        value={roomId}
+        onChange={(ev) => setRoomId(ev.target.value)}
+        error={e.roomId}
+        hint={checking ? t("rescheduleRoomsChecking") : freeIds !== null ? t("rescheduleRoomsHint", { n: shown.length }) : undefined}
+        aria-busy={checking}
+        disabled={freeIds !== null && shown.length === 0}
+      >
+        {shown.map((r) => (
           <option key={r.id} value={r.id}>
             № {r.number} · {r.roomTypeName}
+            {r.id === b.room.roomId ? ` · ${t("rescheduleCurrentRoom")}` : ""}
           </option>
         ))}
       </SelectField>
+      {freeIds !== null && shown.length === 0 && (
+        <p className="text-sm text-destructive" role="alert">
+          {t("rescheduleNoRooms")}
+        </p>
+      )}
+      {timeError && (
+        <p className="text-sm text-destructive" role="alert">
+          {timeError}
+        </p>
+      )}
       <div>
         <SubmitButton
           pending={busy}
           variant="outline"
+          disabled={busy || checking || (freeIds !== null && shown.length === 0)}
           onClick={(ev) => {
             ev.preventDefault();
             const input = read();

@@ -22,7 +22,8 @@ internal sealed class BookingFacts(DbContext db, IHotelContext hotel) : IBooking
             .Select(b => new
             {
                 Booking = b,
-                Room = b.Rooms.Select(r => new { r.RoomId, r.RoomTypeId }).First(),
+                Room = b.Rooms.OrderByDescending(r => r.StartsAt).Select(r => new { r.RoomId, r.RoomTypeId }).First(),
+                Segments = b.Rooms.Select(r => new { r.RoomId, r.StartsAt, r.EndsAt }).ToList(),
             })
             .ToListAsync(ct);
 
@@ -47,7 +48,8 @@ internal sealed class BookingFacts(DbContext db, IHotelContext hotel) : IBooking
                 b.StartsAt, b.EndsAt, b.Hours, b.Nights,
                 b.AccommodationAmount, b.DiscountAmount, b.ServicesAmount, b.ExtensionsAmount, b.EarlyDepartureCredit, b.TotalAmount, b.PenaltyAmount,
                 b.CreatedAt, b.CreatedBy, b.CancelledAt, Actor(b.Id, BookingStatus.Cancelled),
-                b.ActualCheckInAt, Actor(b.Id, BookingStatus.CheckedIn), b.ActualCheckOutAt, Actor(b.Id, BookingStatus.CheckedOut));
+                b.ActualCheckInAt, Actor(b.Id, BookingStatus.CheckedIn), b.ActualCheckOutAt, Actor(b.Id, BookingStatus.CheckedOut),
+                b.RoomChangeAmount, r.Segments.Select(x => new BookingRoomSegment(x.RoomId, x.StartsAt, x.EndsAt)).ToList());
         }).ToList();
     }
 

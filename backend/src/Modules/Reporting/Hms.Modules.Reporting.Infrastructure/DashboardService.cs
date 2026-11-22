@@ -96,6 +96,7 @@ internal sealed class DashboardService(
             await bookingFacts.PendingCountAsync(data.UtcNow, ct),
             allRooms.GroupBy(r => r.Status.ToString()).ToDictionary(g => g.Key, g => g.Count()),
             await housekeeping.OpenCountAsync(ct),
+            await housekeeping.AwaitingInspectionCountAsync(ct),
             occupancy,
             facts.Count(f => f.CreatedAt >= start && f.CreatedAt < end));
     }

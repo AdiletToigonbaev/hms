@@ -17,6 +17,12 @@ internal sealed class HousekeepingFacts(DbContext db, IHotelContext hotel) : IHo
             .ToListAsync(ct);
     }
 
+    public async Task<int> AwaitingInspectionCountAsync(CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await db.Set<HousekeepingTask>().CountAsync(t => t.HotelId == hotelId && t.Status == HousekeepingTaskStatus.Completed, ct);
+    }
+
     public async Task<int> OpenCountAsync(CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);

@@ -255,6 +255,11 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("rescheduled_at");
 
+                    b.Property<decimal>("RoomChangeAmount")
+                        .HasPrecision(14, 2)
+                        .HasColumnType("numeric(14,2)")
+                        .HasColumnName("room_change_amount");
+
                     b.Property<decimal>("ServicesAmount")
                         .HasPrecision(14, 2)
                         .HasColumnType("numeric(14,2)")

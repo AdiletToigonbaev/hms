@@ -383,7 +383,7 @@ export interface Booking {
   promoCode: string | null;
   price: PriceQuote | null;
   services: { serviceId: string; name: string; quantity: number; unitPrice: number; perNight: boolean; total: number }[];
-  allowedActions: ("confirm" | "cancel" | "extend" | "reschedule" | "noShow" | "checkIn" | "checkOut")[];
+  allowedActions: ("confirm" | "cancel" | "extend" | "reschedule" | "noShow" | "checkIn" | "checkOut" | "move")[];
   confirmedAt: string | null;
   cancelledAt: string | null;
   cancelReason: string | null;
@@ -408,6 +408,17 @@ export interface Booking {
   actualCheckOutAt: string | null;
   /** Перерасчёт при досрочном выезде — уже вычтен из стоимости. */
   earlyDepartureCredit: number;
+  /** Изменение стоимости при переселении (пересчёт оставшегося времени); может быть отрицательным. */
+  roomChangeAmount: number;
+}
+
+/** Куда можно переселить заселённого гостя; difference — изменение цены при пересчёте оставшегося времени. */
+export interface MoveOptions {
+  currentRoomNumber: string;
+  remainingUnits: number;
+  unit: "Hour" | "Night";
+  total: number;
+  rooms: { roomId: string; number: string; roomTypeName: string; difference: number }[];
 }
 
 /** Условия отмены сейчас (считает API по правилам гостиницы). */
@@ -1014,6 +1025,7 @@ export interface OperationsDashboard {
   pendingConfirmations: number;
   roomsByStatus: Record<string, number>;
   openCleaningTasks: number;
+  cleaningAwaitingInspection: number;
   occupancyToday: number;
   bookingsCreatedToday: number;
 }

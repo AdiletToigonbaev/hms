@@ -263,6 +263,9 @@ public sealed class Booking
     /// <summary>Перерасчёт при досрочном выезде (вычтен из стоимости): неиспользованные ночи/часы по правилам гостиницы.</summary>
     public decimal EarlyDepartureCredit { get; private set; }
 
+    /// <summary>Изменение стоимости при переселении (пересчёт оставшегося времени по цене нового номера); может быть отрицательным.</summary>
+    public decimal RoomChangeAmount { get; private set; }
+
     /// <summary>Когда бронь последний раз переносили: продления до этого момента уже вошли в новую цену.</summary>
     public DateTimeOffset? RescheduledAt { get; private set; }
 
@@ -288,6 +291,12 @@ public sealed class Booking
     public uint Version { get; private set; }
 
     public IReadOnlyList<BookingRoom> Rooms => _rooms;
+
+    /// <summary>
+    /// Номер, в котором гость сейчас (или будет): последний отрезок. После переселения у брони несколько отрезков —
+    /// прежние номера до момента переселения и текущий до выезда.
+    /// </summary>
+    public BookingRoom CurrentRoom => _rooms.OrderByDescending(x => x.StartsAt).First();
 
     public IReadOnlyList<BookingServiceLine> Services => _services;
 
@@ -470,10 +479,7 @@ public sealed class Booking
         {
             EndsAt = shortened.EndsAt;
             CheckOut = shortened.CheckOut;
-            foreach (var room in _rooms)
-            {
-                room.Extend(shortened);
-            }
+            CurrentRoom.Extend(shortened);
         }
 
         if (credit > 0)
@@ -484,6 +490,56 @@ public sealed class Booking
             AddHistory("early_departure", new { EndsAt = plannedEnd }, new { EndsAt, Credit = applied }, by, now, null);
         }
 
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Переселение заселённого гостя в другой номер. Прежний отрезок заканчивается сейчас (номер занят ещё на время уборки),
+    /// новый — с этого момента до выезда. Цена: без изменения (<paramref name="priceChange"/> = 0) или с пересчётом оставшегося времени.
+    /// </summary>
+    public Result MoveGuest(Guid roomId, Guid roomTypeId, DateOnly today, DateTimeOffset now, DateTimeOffset previousBlockedUntil,
+        DateTimeOffset newBlockedUntil, decimal priceChange, string? reason, Guid? by)
+    {
+        if (Status != BookingStatus.CheckedIn)
+        {
+            return Error.Conflict("booking.move_not_checked_in", "Переселить можно только заселённого гостя. До заселения бронь переносят.");
+        }
+
+        if (now >= EndsAt)
+        {
+            return Error.BusinessRule("booking.move_too_late", "Время брони уже закончилось — продлите бронь или выселите гостя.");
+        }
+
+        var current = CurrentRoom;
+        if (current.RoomId == roomId)
+        {
+            return Error.Validation("booking.move_same_room", "Гость уже в этом номере.");
+        }
+
+        var units = Kind == BookingKind.Hourly ? Hours ?? 0 : Nights;
+        var from = current.RoomId;
+        if (now <= current.StartsAt)
+        {
+            // Заселили раньше начала брони и переселяют до её начала — просто другой номер, без разделения.
+            current.Move(roomId, roomTypeId, new StayPeriod(Kind, current.CheckIn, current.CheckOut, current.StartsAt, current.EndsAt, newBlockedUntil, units));
+        }
+        else
+        {
+            current.Close(now, today, previousBlockedUntil);
+            _rooms.Add(new BookingRoom(Id, roomId, roomTypeId,
+                new StayPeriod(Kind, today < CheckOut ? today : CheckOut, CheckOut, now, EndsAt, newBlockedUntil < EndsAt ? EndsAt : newBlockedUntil, units), isBlocking: true));
+        }
+
+        // Стоимость не уходит в минус, даже если новый номер намного дешевле.
+        var change = Math.Max(priceChange, -TotalAmount);
+        if (change != 0)
+        {
+            RoomChangeAmount += change;
+            TotalAmount += change;
+        }
+
+        UpdatedAt = now;
+        AddHistory("room_moved", new { RoomId = from }, new { RoomId = roomId, PriceChange = change }, by, now, string.IsNullOrWhiteSpace(reason) ? null : reason.Trim());
         return Result.Success();
     }
 
@@ -523,7 +579,7 @@ public sealed class Booking
             return Error.Validation("booking.reschedule_kind", "Нельзя сменить вид брони (часы/сутки) — отмените и создайте новую.");
         }
 
-        var line = _rooms[0];
+        var line = CurrentRoom;
         var before = new { StartsAt, EndsAt, RoomId = line.RoomId, TotalAmount };
         CheckIn = stay.CheckIn;
         CheckOut = stay.CheckOut;
@@ -619,10 +675,7 @@ public sealed class Booking
             Hours = (Hours ?? 0) + addedUnits;
         }
 
-        foreach (var room in _rooms)
-        {
-            room.Extend(extended);
-        }
+        CurrentRoom.Extend(extended);
 
         ExtensionsAmount += amount;
         TotalAmount += amount;
@@ -719,6 +772,14 @@ public sealed class BookingRoom
         CheckOut = extended.CheckOut;
         EndsAt = extended.EndsAt;
         BlockedUntil = extended.BlockedUntil;
+    }
+
+    /// <summary>Гость переселён: отрезок заканчивается сейчас, номер занят ещё на время уборки.</summary>
+    internal void Close(DateTimeOffset now, DateOnly today, DateTimeOffset blockedUntil)
+    {
+        CheckOut = today < CheckIn ? CheckIn : today;
+        EndsAt = now;
+        BlockedUntil = blockedUntil < now ? now : blockedUntil;
     }
 }
 
@@ -866,3 +927,11 @@ public sealed record BookingPrice(
     string SnapshotJson);
 
 public sealed record BookingPriceServiceLine(Guid ServiceId, string Name, int Quantity, decimal UnitPrice, bool PerNight, decimal Total);
+
+/// <summary>Переселение с пересчётом: сколько оставшегося времени почасовой брони идёт в расчёт разницы цены.</summary>
+public static class RoomMoveTime
+{
+    /// <summary>Число получасов от <paramref name="from"/> до выезда, округлённое вверх; минимум один получас.</summary>
+    public static int RemainingHalfHours(DateTimeOffset from, DateTimeOffset endsAt) =>
+        Math.Max(1, (int)Math.Ceiling((endsAt - from).TotalMinutes / 30));
+}

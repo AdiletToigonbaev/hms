@@ -39,6 +39,8 @@ internal sealed class BookingsModelConfigurator : IModelConfigurator
             e.Property(x => x.Source).HasConversion<string>().HasMaxLength(10);
             e.Property(x => x.Kind).HasConversion<string>().HasMaxLength(10).HasDefaultValue(BookingKind.Nightly).HasSentinel(BookingKind.Nightly);
             e.Property(x => x.ExtensionsAmount).HasPrecision(14, 2);
+            e.Property(x => x.RoomChangeAmount).HasPrecision(14, 2);
+            e.Ignore(x => x.CurrentRoom);
             e.Property(x => x.GuestName).HasMaxLength(200).IsRequired();
             e.Property(x => x.GuestPhone).HasMaxLength(32);
             e.Property(x => x.GuestEmail).HasMaxLength(256);
@@ -188,7 +190,7 @@ internal sealed class BookingCharges(DbContext db, Hms.Modules.Hotel.Contracts.I
                 b.EndsAt,
                 b.TotalAmount,
                 b.PenaltyAmount,
-                RoomId = b.Rooms.Select(r => r.RoomId).FirstOrDefault(),
+                RoomId = b.Rooms.OrderByDescending(r => r.StartsAt).Select(r => r.RoomId).FirstOrDefault(),
             })
             .ToListAsync(ct);
         var roomInfo = await rooms.GetManyAsync(rows.Select(r => r.RoomId).Distinct(), ct);

@@ -9,7 +9,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { nightsLabel } from "@/lib/bookings/status";
 import {
@@ -47,6 +47,8 @@ interface DateRangePickerProps {
   endLabel?: string;
   maxNights?: number;
   size?: "default" | "compact";
+  /** Выбор изменился (например, чтобы обновить список свободных номеров). Не вызывается при первом показе. */
+  onChange?: (range: Range) => void;
   className?: string;
 }
 
@@ -67,6 +69,7 @@ export function DateRangePicker({
   maxNights,
   size = "default",
   className,
+  onChange,
 }: DateRangePickerProps) {
   const t = useTranslations("DatePicker");
   const allowSameDay = mode === "period";
@@ -74,6 +77,16 @@ export function DateRangePicker({
     start: defaultStart,
     end: defaultEnd,
   });
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
+    onChange?.(range);
+    // Сообщаем только об изменении выбора; новая функция-обработчик повторный вызов не нужна.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
   const [open, setOpen] = useState(false);
   const [hover, setHover] = useState<IsoDate | null>(null);
   const [view, setView] = useState<IsoDate>(monthStart(defaultStart ?? today));

@@ -191,9 +191,21 @@ internal sealed class ReportService(
         var periodHours = (decimal)(d.End - d.Start).TotalHours;
         var rows = d.Rooms.OrderBy(r => r.Number, StringComparer.Ordinal).Select(room =>
         {
-            var stays = d.Bookings.Where(b => b.RoomId == room.Id).ToList();
-            var sold = stays.Where(b => Sold.Contains(b.Status)).ToList();
-            var hours = sold.Sum(b => (decimal)Kpi.Overlap(b.StartsAt, b.EndsAt, d.Start, d.End).TotalHours);
+            // По отрезкам: переселённый гость считается в каждом номере за своё время, выручка делится по времени.
+            var segments = d.Bookings
+                .SelectMany(b => (b.Segments is { Count: > 0 } list ? list : [new BookingRoomSegment(b.RoomId, b.StartsAt, b.EndsAt)])
+                    .Where(x => x.RoomId == room.Id).Select(x => (Booking: b, Segment: x)))
+                .ToList();
+            var stays = segments.Select(x => x.Booking).Distinct().ToList();
+            var hours = segments.Where(x => Sold.Contains(x.Booking.Status))
+                .Sum(x => (decimal)Kpi.Overlap(x.Segment.StartsAt, x.Segment.EndsAt, d.Start, d.End).TotalHours);
+            var accrued = segments.Sum(x =>
+            {
+                var whole = (decimal)Kpi.Overlap(x.Booking.StartsAt, x.Booking.EndsAt, d.Start, d.End).TotalSeconds;
+                var part = (decimal)Kpi.Overlap(x.Segment.StartsAt, x.Segment.EndsAt, d.Start, d.End).TotalSeconds;
+                var share = x.Booking.Segments is not { Count: > 1 } ? 1m : whole == 0 ? 0m : part / whole;
+                return Kpi.Accrued([data.ToStay(x.Booking)], d.Start, d.End, d.Days) * share;
+            });
             var roomCleanings = cleanings.Where(c => c.RoomId == room.Id).ToList();
             var minutes = roomCleanings.Where(c => c.StartedAt is not null && c.CompletedAt is not null)
                 .Select(c => (decimal)(c.CompletedAt!.Value - c.StartedAt!.Value).TotalMinutes).ToList();
@@ -202,7 +214,7 @@ internal sealed class ReportService(
                 stays.Count(b => b.StartsAt >= d.Start && b.StartsAt < d.End && b.Status != BookingStatus.Expired && b.Status != BookingStatus.Cancelled),
                 Math.Round(hours, 1),
                 room.Status == Rooms.Contracts.RoomStatus.OutOfService || periodHours == 0 ? 0m : Math.Round(hours / periodHours, 4),
-                Math.Round(Kpi.Accrued(stays.Select(data.ToStay), d.Start, d.End, d.Days), 2),
+                Math.Round(accrued, 2),
                 roomCleanings.Count,
                 minutes.Count == 0 ? null : Math.Round(minutes.Average(), 0)];
         }).ToList();

@@ -135,7 +135,12 @@ public sealed record BookingFact(
     DateTimeOffset? ActualCheckInAt,
     Guid? CheckedInBy,
     DateTimeOffset? ActualCheckOutAt,
-    Guid? CheckedOutBy);
+    Guid? CheckedOutBy,
+    decimal RoomChangeAmount = 0m,
+    IReadOnlyList<BookingRoomSegment>? Segments = null);
+
+/// <summary>Отрезок проживания в одном номере (после переселения у брони их несколько). Время — UTC.</summary>
+public sealed record BookingRoomSegment(Guid RoomId, DateTimeOffset StartsAt, DateTimeOffset EndsAt);
 
 /// <summary>Факты броней для отчётов и дашбордов (только чтение).</summary>
 public interface IBookingFacts

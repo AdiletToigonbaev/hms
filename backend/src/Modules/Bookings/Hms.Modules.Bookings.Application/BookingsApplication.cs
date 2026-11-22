@@ -127,6 +127,9 @@ public sealed record RescheduleBookingRequest(
     int? Hours,
     uint? Version = null) : IStayInput;
 
+/// <summary>Новое время для переноса (вид брони тот же): посуточно — CheckIn/CheckOut, почасово — Date, StartHour, Hours.</summary>
+public sealed record RescheduleRoomsQuery(string? Kind, DateOnly? CheckIn, DateOnly? CheckOut, DateOnly? Date, int? StartHour, int? Hours) : IStayInput;
+
 /// <summary>Что получится после переноса: новое время, номер и цена по текущим ценам.</summary>
 public sealed record RescheduleQuoteDto(string StartsAt, string EndsAt, Guid RoomId, string RoomNumber, decimal OldTotal, decimal NewTotal, PriceQuote Price);
 
@@ -193,7 +196,8 @@ public sealed record BookingDto(
     bool PenaltyWaived = false,
     string? ActualCheckInAt = null,
     string? ActualCheckOutAt = null,
-    decimal EarlyDepartureCredit = 0m);
+    decimal EarlyDepartureCredit = 0m,
+    decimal RoomChangeAmount = 0m);
 
 public sealed record BookingListItemDto(
     Guid Id,
@@ -319,6 +323,12 @@ public interface IBookingService
     Task<Result<RescheduleQuoteDto>> QuoteRescheduleAsync(Guid id, RescheduleBookingRequest request, CancellationToken ct);
 
     Task<Result<BookingDto>> RescheduleAsync(Guid id, RescheduleBookingRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// Номера, куда можно перенести бронь на новое время: в продаже, вмещают гостей, для почасовой — с ценой часа,
+    /// свободны с учётом уборки. Сама переносимая бронь номер не занимает.
+    /// </summary>
+    Task<Result<IReadOnlyList<Guid>>> RescheduleRoomsAsync(Guid id, RescheduleRoomsQuery query, CancellationToken ct);
 
     Task<Result<ExtensionQuoteDto>> QuoteExtensionAsync(Guid id, int units, CancellationToken ct);
 
@@ -525,6 +535,11 @@ public interface IFrontDeskService
     Task<Result<CheckOutPreviewDto>> CheckOutPreviewAsync(Guid bookingId, CancellationToken ct);
 
     Task<Result<BookingDto>> CheckOutAsync(Guid bookingId, CheckOutRequest request, CancellationToken ct);
+
+    /// <summary>Куда можно переселить заселённого гостя и сколько изменится цена при пересчёте.</summary>
+    Task<Result<MoveOptionsDto>> MoveOptionsAsync(Guid bookingId, CancellationToken ct);
+
+    Task<Result<BookingDto>> MoveAsync(Guid bookingId, MoveGuestRequest request, CancellationToken ct);
 }
 
 // ---- Кабинет гостя: свои брони (Sprint 8) ----
@@ -615,4 +630,27 @@ public sealed class GuestCreateBookingRequestValidator : AbstractValidator<Guest
 public sealed class GuestCancelRequestValidator : AbstractValidator<GuestCancelRequest>
 {
     public GuestCancelRequestValidator() => RuleFor(x => x.Reason).MaximumLength(500).WithMessage("Причина — не длиннее 500 символов.");
+}
+
+// ---- Переселение заселённого гостя ----
+
+/// <summary>Номер, куда можно переселить гостя: свободен и готов сейчас и до выезда (с учётом уборки).</summary>
+public sealed record MoveRoomOptionDto(Guid RoomId, string Number, string RoomTypeName, decimal Difference);
+
+/// <summary>
+/// Варианты переселения. <see cref="RemainingUnits"/> — оставшиеся часы (вверх до получаса, например 2.5)/ночи (с которых считается разница в цене);
+/// <c>Difference</c> у номера — сколько добавится (или убавится) при пересчёте по цене нового номера.
+/// </summary>
+public sealed record MoveOptionsDto(string CurrentRoomNumber, decimal RemainingUnits, string Unit, decimal Total, IReadOnlyList<MoveRoomOptionDto> Rooms);
+
+/// <param name="Recalculate">Пересчитать оставшееся время по цене нового номера; иначе цена не меняется.</param>
+public sealed record MoveGuestRequest(Guid RoomId, bool Recalculate, string? Reason, uint? Version);
+
+public sealed class MoveGuestRequestValidator : AbstractValidator<MoveGuestRequest>
+{
+    public MoveGuestRequestValidator()
+    {
+        RuleFor(x => x.RoomId).NotEmpty().WithMessage("Выберите номер.");
+        RuleFor(x => x.Reason).MaximumLength(500).WithMessage("Причина — не длиннее 500 символов.");
+    }
 }

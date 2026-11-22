@@ -61,9 +61,19 @@ async function Operations() {
             <span className="tabular font-medium">{n}</span>
           </span>
         ))}
-        <Link href="/admin/housekeeping" className="ml-auto text-primary underline-offset-4 hover:underline">
-          {t("openCleaning", { n: d.openCleaningTasks })}
-        </Link>
+        <span className="ml-auto flex flex-wrap items-center gap-3">
+          {d.cleaningAwaitingInspection > 0 && (
+            <Link
+              href="/admin/housekeeping"
+              className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              {t("awaitingInspection", { n: d.cleaningAwaitingInspection })}
+            </Link>
+          )}
+          <Link href="/admin/housekeeping" className="text-primary underline-offset-4 hover:underline">
+            {t("openCleaning", { n: d.openCleaningTasks })}
+          </Link>
+        </span>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <TodayList title={t("arrivals")} icon={<LogIn className="size-4 text-primary" aria-hidden />} items={d.arrivals} time="start" empty={t("noArrivals")} />
