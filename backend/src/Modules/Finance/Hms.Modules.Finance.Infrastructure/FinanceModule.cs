@@ -25,6 +25,7 @@ public static class FinanceModule
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IRefundService, RefundService>();
         services.AddScoped<IMyFinanceService, MyFinanceService>();
+        services.AddScoped<IFinanceFacts, FinanceFacts>();
         services.AddScoped<IExpenseService, ExpenseService>();
         services.AddScoped<IPaymentQueries, PaymentQueries>();
         services.AddValidatorsFromAssemblyContaining<RegisterPaymentRequestValidator>(includeInternalTypes: true);

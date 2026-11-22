@@ -38,6 +38,9 @@
   --color-olive: var(--olive);
 
   /* Статусы номеров/броней/уборки — отдельная шкала, всегда дублируется текстом */
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-grid: var(--chart-grid);
   --color-status-available: var(--status-available);
   --color-status-reserved: var(--status-reserved);
   --color-status-occupied: var(--status-occupied);
@@ -84,6 +87,10 @@
   --sidebar-border: #e6dccf;
   --sidebar-ring: #d08a64;
 
+  /* Графики (проверено валидатором палитры: цветовая слепота, контраст): 1 — начислено, 2 — поступления. */
+  --chart-1: #b5562f;
+  --chart-2: #2a78d6;
+  --chart-grid: #ece5dc;
   --status-available: #2f7d4f;
   --status-reserved: #b7791f;
   --status-occupied: #2f5f9e;
@@ -124,6 +131,9 @@
     --sidebar-border: #3d362f;
     --sidebar-ring: #c97a52;
 
+    --chart-1: #d0784d;
+    --chart-2: #3987e5;
+    --chart-grid: #3a342e;
     --status-available: #6cc08f;
     --status-reserved: #e2b25c;
     --status-occupied: #79a6e0;

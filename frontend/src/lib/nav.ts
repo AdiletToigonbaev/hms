@@ -1,10 +1,10 @@
 import type { NavItem } from "@/components/layout/nav-links";
 import type { Role } from "@/lib/api/types";
 
-type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "payments" | "refunds" | "expenses" | "housekeeping" | "hkHistory" | "hkRequests" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome" | "accountPayments" | "accountProfile" | "toSite") => string;
+type Translate = (key: "ownerHome" | "adminHome" | "bookings" | "calendar" | "payments" | "refunds" | "expenses" | "reports" | "audit" | "housekeeping" | "hkHistory" | "hkRequests" | "guests" | "pricing" | "rooms" | "roomTypes" | "staff" | "settings" | "integrations" | "hkHome" | "accountHome" | "accountPayments" | "accountProfile" | "toSite") => string;
 
 /** Меню персонала по ролям: владелец видит и свои разделы, и разделы администратора. */
-export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
+export function staffNav(roles: readonly Role[], t: Translate, permissions: readonly string[] = []): NavItem[] {
   const isOwner = roles.includes("Owner");
   const items: NavItem[] = [
     isOwner
@@ -17,6 +17,8 @@ export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
     { href: "/admin/payments", label: t("payments"), icon: "payments" },
     { href: "/admin/refunds", label: t("refunds"), icon: "refunds" },
     { href: "/admin/expenses", label: t("expenses"), icon: "expenses" },
+    // Отчёты — владельцу и сотруднику с правом «Финансовые отчёты» (доступ к каждому отчёту проверяет API).
+    ...(isOwner || permissions.includes("finance.report.view") ? [{ href: "/admin/reports", label: t("reports"), icon: "reports" as const }] : []),
     { href: "/admin/rooms", label: t("rooms"), icon: "rooms" },
     { href: "/admin/room-types", label: t("roomTypes"), icon: "roomTypes" },
   ];
@@ -24,6 +26,7 @@ export function staffNav(roles: readonly Role[], t: Translate): NavItem[] {
     items.push(
       { href: "/owner/pricing", label: t("pricing"), icon: "pricing" },
       { href: "/owner/staff", label: t("staff"), icon: "staff" },
+      { href: "/owner/audit", label: t("audit"), icon: "audit" },
       { href: "/owner/settings", label: t("settings"), icon: "settings" },
       { href: "/owner/integrations", label: t("integrations"), icon: "integrations" },
     );

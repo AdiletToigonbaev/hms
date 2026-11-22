@@ -101,3 +101,54 @@ public interface IBookingCharges
     /// <summary>Брони, по которым есть что платить (стоимость или штраф больше нуля).</summary>
     Task<IReadOnlyList<BookingCharge>> ListWithDueAsync(CancellationToken ct);
 }
+
+/// <summary>
+/// Бронь для отчётов (модуль Reporting): суммы, время, кто создал/заселил/выселил/отменил. Время — UTC.
+/// Без персональных данных гостя: только <see cref="GuestId"/>.
+/// </summary>
+/// <param name="Kind">Hourly | Nightly.</param>
+/// <param name="Source">Admin | Web.</param>
+public sealed record BookingFact(
+    Guid BookingId,
+    string Number,
+    string Kind,
+    string Source,
+    BookingStatus Status,
+    Guid RoomId,
+    Guid RoomTypeId,
+    Guid? GuestId,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    int? Hours,
+    int Nights,
+    decimal AccommodationAmount,
+    decimal DiscountAmount,
+    decimal ServicesAmount,
+    decimal ExtensionsAmount,
+    decimal EarlyDepartureCredit,
+    decimal TotalAmount,
+    decimal PenaltyAmount,
+    DateTimeOffset CreatedAt,
+    Guid? CreatedBy,
+    DateTimeOffset? CancelledAt,
+    Guid? CancelledBy,
+    DateTimeOffset? ActualCheckInAt,
+    Guid? CheckedInBy,
+    DateTimeOffset? ActualCheckOutAt,
+    Guid? CheckedOutBy);
+
+/// <summary>Факты броней для отчётов и дашбордов (только чтение).</summary>
+public interface IBookingFacts
+{
+    /// <summary>
+    /// Брони, затрагивающие период [from, to): проживание пересекается с периодом, создана, отменена,
+    /// заселена или выселена в периоде.
+    /// </summary>
+    Task<IReadOnlyList<BookingFact>> ListAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>Категория номера по броням (фильтр отчётов по категории для платежей прошлых броней).</summary>
+    Task<IReadOnlyDictionary<Guid, Guid>> RoomTypesAsync(IReadOnlyCollection<Guid> bookingIds, CancellationToken ct);
+
+    /// <summary>Брони, ждущие подтверждения (с сайта и без подтверждения), которые ещё не закончились.</summary>
+    Task<int> PendingCountAsync(DateTimeOffset now, CancellationToken ct);
+}

@@ -28,6 +28,7 @@ public static class BookingsModule
         services.AddScoped<BookingService>();
         services.AddScoped<IBookingService>(sp => sp.GetRequiredService<BookingService>());
         services.AddScoped<IGuestBookingService, GuestBookingService>();
+        services.AddScoped<IBookingFacts, BookingFacts>();
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<IFrontDeskService, FrontDeskService>();
         services.AddScoped<IBookingLifecycle, BookingLifecycle>();
@@ -105,6 +106,11 @@ public static class BookingsModule
             .RequirePermission(Permissions.CheckOutPerform);
         g.MapPost("/{id:guid}/check-out", async (Guid id, CheckOutRequest r, IFrontDeskService s, CancellationToken ct) => (await s.CheckOutAsync(id, r, ct)).ToHttpResult())
             .WithIdempotency("booking.check_out").RequirePermission(Permissions.CheckOutPerform);
+
+        // Счётчик для значка в меню «Бронирования»: брони, ждущие подтверждения.
+        g.MapGet("/pending-count", async (IBookingFacts facts, Hms.Platform.Time.IHotelClock clock, CancellationToken ct) =>
+                Results.Ok(new { pending = await facts.PendingCountAsync(clock.UtcNow, ct) }))
+            .RequirePermission(Permissions.BookingView);
 
         // Кабинет гостя: только свои брони (проверка владения — в сервисе; чужая бронь — 404).
         var me = api.MapGroup("/me/bookings").WithTags("Account").RequireAuthorization();

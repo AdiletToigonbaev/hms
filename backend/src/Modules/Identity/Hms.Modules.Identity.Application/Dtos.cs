@@ -10,7 +10,8 @@ public sealed record RegisterRequest(
     string? Phone,
     string Password,
     bool AcceptPersonalData,
-    bool AcceptWhatsApp);
+    bool AcceptWhatsApp,
+    string? ReturnPath = null);
 
 public sealed record RegisterResponse(Guid UserId, bool EmailConfirmationRequired);
 

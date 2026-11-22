@@ -9,3 +9,16 @@ public interface IHousekeepingTasks
     /// </summary>
     Task<Guid> CreateAfterCheckOutAsync(Guid roomId, Guid bookingId, DateTimeOffset dueAt, CancellationToken ct);
 }
+
+/// <summary>Задача уборки для отчётов (по сотрудникам, по номерам). Время — UTC.</summary>
+public sealed record CleaningFact(Guid TaskId, Guid RoomId, string Status, string Origin, Guid? AssignedTo, Guid? InspectedBy,
+    DateTimeOffset CreatedAt, DateTimeOffset? StartedAt, DateTimeOffset? CompletedAt, DateTimeOffset? InspectedAt);
+
+public interface IHousekeepingFacts
+{
+    /// <summary>Задачи, созданные или завершённые в [from, to) (удалённые не включаются).</summary>
+    Task<IReadOnlyList<CleaningFact>> ListAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>Открытые задачи уборки сейчас (не принятые и не удалённые).</summary>
+    Task<int> OpenCountAsync(CancellationToken ct);
+}

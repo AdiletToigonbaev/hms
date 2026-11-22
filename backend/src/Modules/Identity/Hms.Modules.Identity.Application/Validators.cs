@@ -36,6 +36,9 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
         RuleFor(x => x.Phone).Phone().When(x => !string.IsNullOrWhiteSpace(x.Phone));
         RuleFor(x => x.Password).Password();
         RuleFor(x => x.AcceptPersonalData).Equal(true).WithMessage("Необходимо согласие на обработку персональных данных.");
+        // Куда вернуть гостя после подтверждения email: только путь этого сайта (без открытого перенаправления).
+        RuleFor(x => x.ReturnPath).Must(p => p is null || (p.Length <= 500 && p.StartsWith('/') && !p.StartsWith("//", StringComparison.Ordinal) && !p.StartsWith("/\\", StringComparison.Ordinal)))
+            .WithMessage("Некорректный адрес возврата.");
     }
 }
 

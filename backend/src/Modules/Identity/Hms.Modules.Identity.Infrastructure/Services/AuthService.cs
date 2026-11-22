@@ -86,7 +86,7 @@ internal sealed class AuthService(
                 After: new { consents = new { personalData = request.AcceptPersonalData, whatsApp = request.AcceptWhatsApp, source = "portal.registration", at = now } },
                 ActorUserId: user.Id));
 
-            await EnqueueConfirmationAsync(user);
+            await EnqueueConfirmationAsync(user, request.ReturnPath);
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
@@ -296,10 +296,16 @@ internal sealed class AuthService(
         return Result.Success();
     }
 
-    private async Task EnqueueConfirmationAsync(HmsUser user)
+    private async Task EnqueueConfirmationAsync(HmsUser user, string? returnPath = null)
     {
         var token = await users.GenerateEmailConfirmationTokenAsync(user);
-        emails.Enqueue(IdentityEmails.ConfirmEmail(user.Email!, user.FullName, BuildLink("/confirm-email", user.Id, token)));
+        var link = BuildLink("/confirm-email", user.Id, token);
+        if (!string.IsNullOrEmpty(returnPath))
+        {
+            link += $"&next={Uri.EscapeDataString(returnPath)}";
+        }
+
+        emails.Enqueue(IdentityEmails.ConfirmEmail(user.Email!, user.FullName, link));
     }
 
     private string BuildLink(string path, Guid userId, string token) =>

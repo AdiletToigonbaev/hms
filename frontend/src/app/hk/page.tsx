@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states/states";
 import { MaidTaskCard } from "@/app/admin/housekeeping/hk-forms";
 import { api } from "@/lib/api/server";
+import { AutoRefresh } from "@/components/auto-refresh";
 import type { HousekeepingTask } from "@/lib/api/types";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -27,6 +28,7 @@ async function MyTasks() {
   const free = tasks.data.filter((x) => x.assignedTo === null);
   return (
     <div className="mx-auto grid w-full max-w-lg gap-6">
+      <AutoRefresh seconds={30} />
       <h1 className="text-2xl">{t("myTitle")}</h1>
       {tasks.data.length === 0 && <EmptyState icon={Sparkles} title={t("myEmpty")} description={t("myEmptyHint")} />}
       {mine.length > 0 && (

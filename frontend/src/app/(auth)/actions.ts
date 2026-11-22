@@ -50,7 +50,8 @@ export async function registerAction(_: FormState, form: FormData): Promise<Form
   });
   if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, REGISTER_FIELDS);
 
-  const result = await api("/auth/register", { method: "POST", body: parsed.data, anonymous: true });
+  const returnPath = safeNextPath(form.get("next") as string | null);
+  const result = await api("/auth/register", { method: "POST", body: { ...parsed.data, returnPath }, anonymous: true });
   if (!result.ok) return withValues(toFormState(result.problem), form, REGISTER_FIELDS);
   return { ok: true };
 }

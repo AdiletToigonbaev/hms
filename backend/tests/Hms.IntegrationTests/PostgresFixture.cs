@@ -141,7 +141,7 @@ public sealed partial class PostgresFixture : IAsyncLifetime
         }
     }
 
-    [GeneratedRegex(@"https://hotel\.test(?<path>/[a-z-]+)\?userId=(?<userId>[0-9a-f-]{36})&token=(?<token>[^\s]+)")]
+    [GeneratedRegex(@"https://hotel\.test(?<path>/[a-z-]+)\?userId=(?<userId>[0-9a-f-]{36})&token=(?<token>[^\s&]+)")]
     private static partial Regex LinkRegex();
 }
 
