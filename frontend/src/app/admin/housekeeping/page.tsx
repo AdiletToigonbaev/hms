@@ -12,6 +12,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { formatHotelLocal } from "@/lib/format";
 import { maintenanceSeverityLabel, maintenanceStatusLabel, maintenanceTypeLabel } from "@/lib/housekeeping/labels";
 import { cn } from "@/lib/utils";
+import { AutoRefresh } from "@/components/auto-refresh";
 import {
   AssignForm,
   ChecklistTemplateForm,
@@ -49,6 +50,7 @@ async function HousekeepingContent({ searchParams }: Pick<PageProps<"/admin/hous
 
   return (
     <div className="grid gap-6">
+      <AutoRefresh seconds={45} />
       <PageHeader title={t("title")} description={t("description")} />
       <nav aria-label={t("title")} className="flex flex-wrap gap-1.5">
         {visibleTabs.map((x) => (

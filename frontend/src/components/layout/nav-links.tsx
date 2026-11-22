@@ -6,7 +6,9 @@ import {
   Building2,
   CalendarRange,
   ClipboardList,
+  ScrollText,
   DoorOpen,
+  FileBarChart,
   History,
   Wrench,
   LayoutDashboard,
@@ -44,6 +46,8 @@ const icons = {
   account: ClipboardList,
   hotel: Building2,
   history: History,
+  reports: FileBarChart,
+  audit: ScrollText,
   maintenance: Wrench,
 } satisfies Record<string, LucideIcon>;
 
@@ -55,6 +59,9 @@ export interface NavItem {
   icon: NavIcon;
   /** Подсвечивать только при точном совпадении (для «Обзор» раздела). */
   exact?: boolean;
+  /** Число-значок (например, брони, ждущие подтверждения). */
+  badge?: number;
+  badgeLabel?: string;
 }
 
 export function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
@@ -78,7 +85,12 @@ export function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?:
               )}
             >
               <Icon className="size-[18px] shrink-0" aria-hidden />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.badge ? (
+                <span className="tabular min-w-6 rounded-full bg-primary px-1.5 text-center text-xs leading-5 text-primary-foreground" aria-label={item.badgeLabel}>
+                  {item.badge}
+                </span>
+              ) : null}
             </Link>
           </li>
         );

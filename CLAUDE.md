@@ -13,7 +13,8 @@
 - **Sprint 6 (Finance: ручные платежи, сторно, долги и штрафы, возвраты с лимитом, расходы) — завершён**, в `main`.
 - **Sprint 7 (заселение, выселение, досрочный выезд, уборка, заявки о неисправностях) — завершён**, в `main`.
 - **Sprint 8 (публичный сайт, бронирование гостем, кабинет гостя, SEO) — завершён**, в `main`.
-- Следующий: Sprint 9 (дашборды, отчёты, KPI) — только после «подтверждаю».
+- **Sprint 9 (дашборды владельца и администратора, 8 отчётов, выгрузка Excel/PDF) — завершён**, в `main`.
+- Следующий: Sprint 10 (сообщения: шаблоны, напоминания, email, WhatsApp-адаптер) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -131,6 +132,8 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Номер брони «Ч-2111-07» — `BookingNumbers.Format` (домен) + счётчик за день `booking_number_counters` (атомарный upsert); уникален вместе с `NumberYear`.
 - Стойка: `IFrontDeskService` (Bookings) — заселение/выселение одной транзакцией: статус номера через `IRoomStatusChanger` (Rooms.Contracts), задача уборки через `IHousekeepingTasks` (Housekeeping.Contracts), получено по брони — `IPaymentQueries.ReceivedForBookingAsync`. Уборка — модуль Housekeeping (задачи с чек-листом, шаблон, заявки); уборщик видит только свои и свободные задачи, без ПД гостя; экран уборщика — `/hk` (мобильный).
 - Кабинет гостя: `/me/*` — только свои данные через `ICurrentGuest` (Guests.Contracts); чужое — 404. Брони гостя — `IGuestBookingService` (Bookings), оплаты/возвраты — `IMyFinanceService` (Finance), профиль/согласия/удаление аккаунта — `IGuestAccount` (Guests). Сайт: `components/site/*` (`SiteShell` — шапка/подвал в Suspense), параметры поиска — `lib/site/stay.ts`; адрес сайта — `PUBLIC_WEB_URL` (`lib/site/url.ts`).
+- Отчёты: модуль Reporting читает факты через контракты (`IBookingFacts`, `IFinanceFacts`, `IHousekeepingFacts`); формулы — чистые функции `Reporting.Domain.Kpi` (database-design §17); отчёт — единая `ReportTable` (сайт, Excel, PDF). Графики — `components/charts/charts.tsx` (без библиотек; цвета `--chart-1/2` проверены валидатором палитры), фильтр периода — `components/dashboard/period-filter.tsx`. Меню получает права пользователя (`staffNav(roles, t, permissions)`).
+- Рабочие экраны с меняющимися данными (рабочий стол, «Уборка», список броней, `/hk`) — `<AutoRefresh seconds={…} />` (router.refresh, не мешает вводу). Значки в меню — `NavItem.badge` (считает `AreaShell`). Журнал действий — `/owner/audit`, подписи действий — `lib/audit/labels.ts` (новый код аудита — добавить подпись).
 - Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.

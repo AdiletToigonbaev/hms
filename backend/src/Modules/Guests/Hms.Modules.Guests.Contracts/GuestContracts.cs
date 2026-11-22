@@ -20,6 +20,9 @@ public interface IGuestDirectory
 {
     Task<GuestRef?> GetAsync(Guid guestId, CancellationToken ct);
 
+    /// <summary>Карточки по списку (отчёты владельца).</summary>
+    Task<IReadOnlyDictionary<Guid, GuestRef>> GetManyAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct);
+
     /// <summary>
     /// Карточка по телефону (иначе по email); если нет — новая. Изменения добавляются в текущую единицу работы
     /// (сохраняет вызывающий модуль вместе с бронью).

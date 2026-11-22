@@ -19,14 +19,16 @@ export function ConfirmEmailForm() {
   const params = useSearchParams();
   const userId = params.get("userId");
   const token = params.get("token");
+  const next = params.get("next") ?? "";
+  const loginHref = next.startsWith("/") && !next.startsWith("//") ? `/login?next=${encodeURIComponent(next)}` : "/login";
   const [state, action, pending] = useActionState<FormState, FormData>(confirmEmailAction, {});
 
   if (!userId || !token) return <p className="text-sm text-destructive">{t("invalidLink")}</p>;
   if (state.ok) {
     return (
       <div className="grid gap-3" role="status">
-        <p className="text-sm">{t("confirmedText")}</p>
-        <Link href="/login" className="text-sm underline underline-offset-4">
+        <p className="text-sm">{next ? t("confirmedTextNext") : t("confirmedText")}</p>
+        <Link href={loginHref} className="text-sm underline underline-offset-4">
           {t("toLogin")}
         </Link>
       </div>

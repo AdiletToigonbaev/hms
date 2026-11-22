@@ -24,6 +24,7 @@ public static class HousekeepingModule
         services.AddScoped<IHousekeepingService, HousekeepingService>();
         services.AddScoped<IMaintenanceService, MaintenanceService>();
         services.AddScoped<IHousekeepingTasks, HousekeepingTasks>();
+        services.AddScoped<IHousekeepingFacts, HousekeepingFacts>();
         services.AddValidatorsFromAssemblyContaining<CreateTaskRequestValidator>(includeInternalTypes: true);
         return services;
     }

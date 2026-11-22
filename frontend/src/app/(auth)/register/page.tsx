@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { RegisterForm } from "./register-form";
 
@@ -18,7 +19,9 @@ export default async function RegisterPage() {
         <CardDescription>{t("registerDescription")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <RegisterForm />
+        <Suspense>
+          <RegisterForm />
+        </Suspense>
       </CardContent>
     </Card>
   );

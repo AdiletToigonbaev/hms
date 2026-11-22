@@ -84,6 +84,13 @@ internal sealed class GuestDirectory(DbContext db, IHotelContext hotel, TimeProv
         return g is null ? null : new GuestRef(g.Id, g.FullName, g.Phone, g.Email, g.IsAnonymized);
     }
 
+    public async Task<IReadOnlyDictionary<Guid, GuestRef>> GetManyAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        return await db.Set<Guest>().AsNoTracking().Where(x => x.HotelId == hotelId && guestIds.Contains(x.Id))
+            .ToDictionaryAsync(g => g.Id, g => new GuestRef(g.Id, g.FullName, g.Phone, g.Email, g.AnonymizedAt != null), ct);
+    }
+
     public async Task<Result<GuestRef>> FindOrCreateAsync(GuestContact contact, CancellationToken ct)
     {
         var phone = string.IsNullOrWhiteSpace(contact.Phone) ? null : PhoneNumber.Parse(contact.Phone);

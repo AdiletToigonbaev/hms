@@ -17,6 +17,7 @@ import { hotelTimeZone } from "@/i18n/config";
 import { addDays, bookingStatusLabel, bookingStatuses, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { cn } from "@/lib/utils";
 import { formatHotelTime, formatMoney, formatStayDate } from "@/lib/format";
+import { AutoRefresh } from "@/components/auto-refresh";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Bookings"))("title") };
@@ -67,6 +68,7 @@ export default async function BookingsPage({ searchParams }: PageProps<"/admin/b
 
   return (
     <div className="grid gap-6">
+      <AutoRefresh seconds={60} />
       <PageHeader
         title={t("title")}
         description={t("description")}

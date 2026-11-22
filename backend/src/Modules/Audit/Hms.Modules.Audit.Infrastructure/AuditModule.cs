@@ -49,7 +49,8 @@ public sealed record AuditLogDto(
     JsonElement? After,
     string? Ip,
     string? UserAgent,
-    string? CorrelationId);
+    string? CorrelationId,
+    string? UserName = null);
 
 public static class AuditModule
 {
@@ -73,6 +74,7 @@ public static class AuditModule
 
     private static async Task<IResult> ListAsync(
         DbContext db,
+        IUserDirectory users,
         DateTimeOffset? from,
         DateTimeOffset? to,
         Guid? userId,
@@ -85,14 +87,17 @@ public static class AuditModule
     {
         var request = new PageRequest(page, pageSize);
         var query = db.Set<AuditLog>().AsNoTracking();
-        if (from is not null)
+        // Время с любым часовым поясом (например, +06:00 гостиницы) — PostgreSQL хранит UTC.
+        if (from is { } fromUtc)
         {
-            query = query.Where(x => x.At >= from);
+            var start = fromUtc.ToUniversalTime();
+            query = query.Where(x => x.At >= start);
         }
 
-        if (to is not null)
+        if (to is { } toUtc)
         {
-            query = query.Where(x => x.At < to);
+            var end = toUtc.ToUniversalTime();
+            query = query.Where(x => x.At < end);
         }
 
         if (userId is not null)
@@ -122,7 +127,10 @@ public static class AuditModule
             .Take(request.PageSize)
             .ToListAsync(ct);
 
-        return Results.Ok(new PagedResult<AuditLogDto>(items.Select(ToDto).ToList(), request.Page, request.PageSize, total));
+        // Имя сотрудника для показа (удалённые аккаунты — без имени, остаётся id).
+        var names = await users.GetNamesAsync(items.Select(x => x.UserId).OfType<Guid>().Distinct(), ct);
+        return Results.Ok(new PagedResult<AuditLogDto>(
+            items.Select(x => ToDto(x) with { UserName = x.UserId is { } u ? names.GetValueOrDefault(u) : null }).ToList(), request.Page, request.PageSize, total));
     }
 
     private static async Task<IResult> GetAsync(Guid id, DbContext db, CancellationToken ct)

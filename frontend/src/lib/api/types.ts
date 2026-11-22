@@ -940,3 +940,97 @@ export interface PortalConsents {
   whatsApp: boolean;
   whatsAppAt: string | null;
 }
+
+// ---- Отчёты и дашборды (Sprint 9) ----
+
+export interface Kpi {
+  accruedRevenue: number;
+  cashIn: number;
+  refundsPaid: number;
+  netRevenue: number;
+  expenses: number;
+  netProfit: number;
+  accruedProfit: number;
+  occupancy: number;
+  roomNightsSold: number;
+  adr: number | null;
+  revPar: number;
+  hoursSold: number;
+  avgHourPrice: number | null;
+  revenuePerRoomHour: number;
+  totalBookings: number;
+  cancelledBookings: number;
+  noShowBookings: number;
+  cancellationRate: number;
+  avgStayNights: number | null;
+  avgStayHours: number | null;
+  turnover: number;
+}
+
+export interface DayPoint {
+  date: string;
+  accruedRevenue: number;
+  cashIn: number;
+  expenses: number;
+  occupancy: number;
+  arrivals: number;
+}
+
+export interface OwnerDashboard {
+  from: string;
+  to: string;
+  availableRooms: number;
+  kpi: Kpi;
+  outstanding: number;
+  outstandingBookings: number;
+  refundsRequested: number;
+  refundsRequestedCount: number;
+  daily: DayPoint[];
+  cashByMethod: Record<string, number>;
+  bookingsByStatus: Record<string, number>;
+  revenueByRoomType: { name: string; amount: number }[];
+  expensesByCategory: { name: string; amount: number }[];
+  bookingsByKind: Record<string, number>;
+  fromHour: number | null;
+  toHour: number | null;
+}
+
+export interface TodayBooking {
+  bookingId: string;
+  number: string;
+  kind: "Hourly" | "Nightly";
+  status: BookingStatus;
+  startsAt: string;
+  endsAt: string;
+  roomNumber: string;
+  guestName: string | null;
+}
+
+export interface OperationsDashboard {
+  date: string;
+  arrivals: TodayBooking[];
+  departures: TodayBooking[];
+  inHouse: number;
+  pendingConfirmations: number;
+  roomsByStatus: Record<string, number>;
+  openCleaningTasks: number;
+  occupancyToday: number;
+  bookingsCreatedToday: number;
+}
+
+export type ReportColumnType = "text" | "money" | "int" | "number" | "percent" | "date" | "datetime";
+
+export interface ReportTable {
+  type: string;
+  title: string;
+  from: string;
+  to: string;
+  filters: string[];
+  summary: { label: string; value: number | null; type: ReportColumnType; hint: string | null; example: string | null }[];
+  columns: { key: string; title: string; type: ReportColumnType }[];
+  rows: (string | number | null)[][];
+  totals: (string | number | null)[] | null;
+  note: string | null;
+  fromHour: number | null;
+  toHour: number | null;
+}

@@ -5,6 +5,7 @@ import { Brand } from "@/components/brand";
 import { LogoutButton } from "@/components/logout-button";
 import { NavLinks, type NavItem } from "@/components/layout/nav-links";
 import type { Role } from "@/lib/api/types";
+import { api } from "@/lib/api/server";
 import { requireUser } from "@/lib/auth/session";
 import { getHotelInfo } from "@/lib/hotel";
 
@@ -14,7 +15,7 @@ interface AreaShellProps {
   roles: readonly Role[];
   title: string;
   /** Меню: список или функция от ролей пользователя (меню персонала зависит от роли). */
-  nav: NavItem[] | ((roles: readonly Role[]) => NavItem[]);
+  nav: NavItem[] | ((roles: readonly Role[], permissions: readonly string[]) => NavItem[]);
   children: ReactNode;
 }
 
@@ -32,7 +33,17 @@ const roleLabel: Record<Role, string> = {
 export async function AreaShell({ roles, title, nav, children }: AreaShellProps) {
   const [user, hotel] = await Promise.all([requireUser(roles), getHotelInfo()]);
   const role = user.roles[0] ?? "Guest";
-  const items = typeof nav === "function" ? nav(user.roles) : nav;
+  const baseItems = typeof nav === "function" ? nav(user.roles, user.permissions) : nav;
+  // Значок у «Бронирований»: брони с сайта и без подтверждения, которые ждут администратора.
+  const pending =
+    user.permissions.includes("booking.view") && baseItems.some((i) => i.href === "/admin/bookings")
+      ? await api<{ pending: number }>("/bookings/pending-count")
+      : null;
+  const items = baseItems.map((i) =>
+    i.href === "/admin/bookings" && pending?.ok && pending.data.pending > 0
+      ? { ...i, badge: pending.data.pending, badgeLabel: `Ждут подтверждения: ${pending.data.pending}` }
+      : i,
+  );
 
   const userBlock = (
     <div className="flex items-center justify-between gap-2 rounded-xl bg-sidebar-accent/50 p-3">

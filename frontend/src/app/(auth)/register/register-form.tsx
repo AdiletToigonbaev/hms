@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import { Field } from "@/components/forms/field";
@@ -15,13 +16,16 @@ import { registerAction } from "../actions";
 export function RegisterForm() {
   const t = useTranslations("Auth");
   const [state, action, pending] = useActionState<FormState, FormData>(registerAction, {});
+  // Пришли с брони на сайте — после подтверждения email и входа гость вернётся к ней.
+  const next = useSearchParams().get("next") ?? "";
+  const loginHref = next.startsWith("/") && !next.startsWith("//") ? `/login?next=${encodeURIComponent(next)}` : "/login";
 
   if (state.ok) {
     return (
       <div className="grid gap-3" role="status">
         <h2 className="font-medium">{t("registeredTitle")}</h2>
         <p className="text-sm text-muted-foreground">{t("registeredText")}</p>
-        <Link href="/login" className="text-sm underline underline-offset-4">
+        <Link href={loginHref} className="text-sm underline underline-offset-4">
           {t("toLogin")}
         </Link>
       </div>
@@ -32,6 +36,7 @@ export function RegisterForm() {
   const values = state.values ?? {};
   return (
     <form action={action} className="grid gap-4" noValidate>
+      <input type="hidden" name="next" value={next} />
       <FormAlert state={state} />
       <Field name="fullName" label={t("fullName")} autoComplete="name" required defaultValue={values.fullName} error={errors.fullName} />
       <Field name="email" type="email" label={t("email")} autoComplete="email" required defaultValue={values.email} error={errors.email} />
@@ -62,7 +67,7 @@ export function RegisterForm() {
       <SubmitButton pending={pending}>{t("submitRegister")}</SubmitButton>
       <p className="text-sm">
         {t("haveAccount")}{" "}
-        <Link href="/login" className="underline underline-offset-4">
+        <Link href={loginHref} className="underline underline-offset-4">
           {t("toLogin")}
         </Link>
       </p>

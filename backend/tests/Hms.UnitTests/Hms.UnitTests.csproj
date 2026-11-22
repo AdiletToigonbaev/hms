@@ -9,5 +9,6 @@
     <ProjectReference Include="..\..\src\Modules\Guests\Hms.Modules.Guests.Infrastructure\Hms.Modules.Guests.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Finance\Hms.Modules.Finance.Infrastructure\Hms.Modules.Finance.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Housekeeping\Hms.Modules.Housekeeping.Infrastructure\Hms.Modules.Housekeeping.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\Hms.Modules.Reporting.Infrastructure\Hms.Modules.Reporting.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    <PackageReference Include="ClosedXML" />
+    <PackageReference Include="PDFsharp-MigraDoc" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Hms.Modules.Reporting.Application\Hms.Modules.Reporting.Application.csproj" />
+    <ProjectReference Include="..\..\..\Hms.Platform\Hms.Platform.csproj" />
+    <ProjectReference Include="..\..\Audit\Hms.Modules.Audit.Contracts\Hms.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Identity\Hms.Modules.Identity.Contracts\Hms.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Hotel\Hms.Modules.Hotel.Contracts\Hms.Modules.Hotel.Contracts.csproj" />
+    <ProjectReference Include="..\..\Bookings\Hms.Modules.Bookings.Contracts\Hms.Modules.Bookings.Contracts.csproj" />
+    <ProjectReference Include="..\..\Rooms\Hms.Modules.Rooms.Contracts\Hms.Modules.Rooms.Contracts.csproj" />
+    <ProjectReference Include="..\..\Finance\Hms.Modules.Finance.Contracts\Hms.Modules.Finance.Contracts.csproj" />
+    <ProjectReference Include="..\..\Guests\Hms.Modules.Guests.Contracts\Hms.Modules.Guests.Contracts.csproj" />
+    <ProjectReference Include="..\..\Housekeeping\Hms.Modules.Housekeeping.Contracts\Hms.Modules.Housekeeping.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Шрифт с кириллицей для PDF (OFL): вшит в сборку, на сервере системные шрифты не нужны. -->
+    <EmbeddedResource Include="Fonts\*.ttf" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hms.UnitTests" />
+    <InternalsVisibleTo Include="Hms.IntegrationTests" />
+  </ItemGroup>
+</Project>

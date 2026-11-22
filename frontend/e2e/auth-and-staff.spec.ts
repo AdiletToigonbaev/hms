@@ -86,7 +86,7 @@ test("владелец входит, создаёт администратора
   await admin.getByLabel("Новый пароль").fill("admin-own-password-1");
   await admin.getByRole("button", { name: "Сменить пароль" }).click();
   await expect(admin).toHaveURL(/\/admin$/);
-  await expect(admin.getByRole("heading", { name: "Рабочий стол администратора" })).toBeVisible();
+  await expect(admin.getByRole("heading", { level: 1, name: "Рабочий стол" })).toBeVisible();
 
   // Администратору закрыт раздел владельца
   await admin.goto("/owner/staff");
