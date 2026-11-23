@@ -8,8 +8,7 @@ import { Label } from "@/components/ui/label";
 import { stayQuery, type StaySearch } from "@/lib/site/stay";
 import { MAX_NIGHTS } from "@/lib/validation/bookings";
 import { cn } from "@/lib/utils";
-
-const pad = (n: number) => String(n).padStart(2, "0");
+import { HourlyStartFields } from "./hourly-start-fields";
 
 /**
  * Поиск на сайте: «По часам» (по умолчанию) или «По суткам». Обычная форма GET на /book — работает и без JavaScript,
@@ -39,8 +38,6 @@ export async function StaySearchForm({
     { hourly: false, label: t("kindNightly"), icon: MoonStar },
   ];
   const tall = "h-12 rounded-xl";
-  // Сегодня — только часы после текущего.
-  const firstHour = stay.date === today ? Math.min(nowHour + 1, 23) : 0;
   return (
     <div className={cn("grid gap-4 rounded-2xl border bg-card p-4 shadow-sm sm:p-5", className)}>
       <nav aria-label={t("kind")} className="inline-flex w-fit rounded-xl border bg-secondary/60 p-1">
@@ -72,20 +69,7 @@ export async function StaySearchForm({
         {stay.hourly ? (
           <>
             <input type="hidden" name="kind" value="hourly" />
-            <div className="grid gap-1.5">
-              <span className="text-sm font-medium">{t("date")}</span>
-              <DateRangePicker key={stay.date} mode="single" startName="date" defaultStart={stay.date} today={today} min={today} startLabel={t("date")} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="startHour">{t("startTime")}</Label>
-              <NativeSelect id="startHour" name="startHour" defaultValue={String(stay.startHour)} className={tall}>
-                {Array.from({ length: 24 }, (_, h) => h).map((h) => (
-                  <option key={h} value={h} disabled={h < firstHour}>
-                    {pad(h)}:00
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
+            <HourlyStartFields key={`${stay.date}-${stay.startHour}`} defaultDate={stay.date} defaultHour={stay.startHour} today={today} nowHour={nowHour} className={tall} />
             <div className="grid gap-1.5">
               <Label htmlFor="hours">{t("hours")}</Label>
               <NativeSelect id="hours" name="hours" defaultValue={String(stay.hours)} className={tall}>

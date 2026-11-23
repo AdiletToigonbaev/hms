@@ -103,6 +103,7 @@ public sealed record RoomStatusHistoryDto(
 public sealed record RoomQuery(Guid? RoomTypeId, string? Status, int? Floor, bool? IncludeArchived, string? Search);
 
 /// <summary>Категория в публичном каталоге: без служебных полей; цена «от» — минимальная по номерам категории.</summary>
+/// <param name="Rooms">Номера категории в продаже — гость выбирает конкретный номер (решение 2026-11-23).</param>
 public sealed record PublicRoomTypeDto(
     Guid Id,
     string Name,
@@ -113,7 +114,19 @@ public sealed record PublicRoomTypeDto(
     decimal PriceFrom,
     IReadOnlyList<AmenityDto> Amenities,
     IReadOnlyList<PhotoDto> Photos,
-    decimal? HourlyPriceFrom = null);
+    decimal? HourlyPriceFrom,
+    IReadOnlyList<PublicRoomDto> Rooms);
+
+/// <summary>Номер на сайте: значения номера, а где не заданы — категории. Фото — только свои (пусто — сайт показывает фото категории).</summary>
+public sealed record PublicRoomDto(
+    Guid Id,
+    string Number,
+    int? Floor,
+    int Capacity,
+    int BedsCount,
+    string BedType,
+    string? Description,
+    IReadOnlyList<PhotoDto> Photos);
 
 // ---- Сервисы ----
 

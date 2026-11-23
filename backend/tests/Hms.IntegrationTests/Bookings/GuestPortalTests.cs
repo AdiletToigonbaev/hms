@@ -39,8 +39,8 @@ public class GuestPortalTests(PostgresFixture db)
         return await client.SendAsync(message, Ct);
     }
 
-    private GuestCreateBookingRequest Hourly(Guid roomTypeId, int daysAhead = 30, int hour = 12, int hours = 2) =>
-        new(roomTypeId, "Hourly", null, null, Clock.Today.AddDays(daysAhead), hour, hours, 2, 0, null, null, "Поздний заезд");
+    private GuestCreateBookingRequest Hourly(Guid roomId, int daysAhead = 30, int hour = 12, int hours = 2) =>
+        new(roomId, "Hourly", null, null, Clock.Today.AddDays(daysAhead), hour, hours, 2, 0, null, null, "Поздний заезд");
 
     private static async Task<MyBookingDto> CreateAsync(HttpClient guest, GuestCreateBookingRequest request)
     {
@@ -63,20 +63,20 @@ public class GuestPortalTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task WebBooking_IsPendingWithHold_ByCategory_AndVisibleOnlyToOwner()
+    public async Task WebBooking_IsPendingWithHold_ForChosenRoom_AndVisibleOnlyToOwner()
     {
         var owner = await OwnerAsync();
         await SetAutoConfirmAsync(owner, false);
         var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
         var (guest, email) = await GuestAsync();
 
-        var booking = await CreateAsync(guest, Hourly(room.RoomTypeId));
+        var booking = await CreateAsync(guest, Hourly(room.Id));
 
         booking.Status.Should().Be("Pending");
         booking.HoldUntil.Should().NotBeNull("неподтверждённая веб-бронь держит номер ограниченное время");
         booking.TotalAmount.Should().Be(1000m);
         booking.RoomTypeId.Should().Be(room.RoomTypeId);
-        booking.RoomNumber.Should().BeNull("номер комнаты гость видит после заселения");
+        booking.RoomNumber.Should().Be(room.Number, "гость сам выбрал номер на сайте");
         booking.AllowedActions.Should().Contain("cancel");
 
         // Администратор видит веб-бронь с контактом гостя из профиля.
@@ -115,9 +115,9 @@ public class GuestPortalTests(PostgresFixture db)
         {
             var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
             var (guest, _) = await GuestAsync();
-            (await CreateAsync(guest, Hourly(room.RoomTypeId, 31))).Status.Should().Be("Confirmed");
+            (await CreateAsync(guest, Hourly(room.Id, 31))).Status.Should().Be("Confirmed");
 
-            var anonymous = await PostIdempotentAsync(_api.Anonymous(), "/api/v1/me/bookings", Hourly(room.RoomTypeId, 32));
+            var anonymous = await PostIdempotentAsync(_api.Anonymous(), "/api/v1/me/bookings", Hourly(room.Id, 32));
             anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         }
         finally
@@ -127,18 +127,26 @@ public class GuestPortalTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task WebBooking_TakesNextFreeRoom_ThenCategoryIsFull()
+    public async Task WebBooking_ChosenRoomTaken_IsConflict_WithoutSubstitutingAnotherRoom()
     {
         var owner = await OwnerAsync();
         var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
         var (guest, _) = await GuestAsync();
-        var request = Hourly(room.RoomTypeId, 33);
+        var request = Hourly(room.Id, 33);
 
-        await CreateAsync(guest, request);
+        (await CreateAsync(guest, request)).RoomNumber.Should().Be(room.Number);
         var second = await PostIdempotentAsync(guest, "/api/v1/me/bookings", request);
 
-        // В категории один номер — второй раз на то же время свободных нет.
-        (await ProblemCodeAsync(second)).Should().Be("booking.room_type_unavailable");
+        // Номер выбран гостем: занят — 409, другой номер система не подставляет.
+        (await ProblemCodeAsync(second)).Should().Be("booking.room_unavailable");
+
+        // Расчёт цены на сайте для занятого номера — тоже 409; несуществующий номер — 404.
+        var quote = new PublicQuoteRequest(room.Id, null, null, 2, 0, null, null, "Hourly", request.Date, request.StartHour, request.Hours);
+        (await ProblemCodeAsync(await _api.Anonymous().PostAsJsonAsync("/api/v1/public/bookings/quote", quote, Ct))).Should().Be("booking.room_unavailable");
+        (await _api.Anonymous().PostAsJsonAsync("/api/v1/public/bookings/quote", quote with { RoomId = Guid.NewGuid() }, Ct))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var free = await _api.Anonymous().PostAsJsonAsync("/api/v1/public/bookings/quote", quote with { Date = request.Date!.Value.AddDays(1) }, Ct);
+        free.StatusCode.Should().Be(HttpStatusCode.OK, await free.Content.ReadAsStringAsync(Ct));
     }
 
     [Fact]
@@ -147,7 +155,7 @@ public class GuestPortalTests(PostgresFixture db)
         var owner = await OwnerAsync();
         var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
         var (guest, _) = await GuestAsync();
-        var booking = await CreateAsync(guest, Hourly(room.RoomTypeId, 34));
+        var booking = await CreateAsync(guest, Hourly(room.Id, 34));
         (await owner.PostAsync(new Uri($"/api/v1/bookings/{booking.Id}/confirm", UriKind.Relative), null, Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
         await PayAsync(owner, booking.Id, 1000m);
 
@@ -192,7 +200,7 @@ public class GuestPortalTests(PostgresFixture db)
         var owner = await OwnerAsync();
         var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
         var (guest, _) = await GuestAsync();
-        var booking = await CreateAsync(guest, Hourly(room.RoomTypeId, 35));
+        var booking = await CreateAsync(guest, Hourly(room.Id, 35));
         booking.AllowedActions.Should().NotContain("extend", "неподтверждённую бронь не продлевают");
         var confirmed = await owner.PostAsync(new Uri($"/api/v1/bookings/{booking.Id}/confirm", UriKind.Relative), null, Ct);
         confirmed.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -217,7 +225,7 @@ public class GuestPortalTests(PostgresFixture db)
 
         var phone = UniquePhone();
         (await guest.PutAsJsonAsync("/api/v1/me", new UpdateMeRequest("Айбек Профильный", phone), Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
-        var booking = await CreateAsync(guest, Hourly(room.RoomTypeId, 36));
+        var booking = await CreateAsync(guest, Hourly(room.Id, 36));
         var staffView = (await owner.GetFromJsonAsync<BookingDto>($"/api/v1/bookings/{booking.Id}", Ct))!;
         staffView.GuestName.Should().Be("Айбек Профильный");
         staffView.GuestPhone.Should().NotBeNull();

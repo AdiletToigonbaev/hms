@@ -52,7 +52,7 @@ test("сайт: категория в каталоге, бронь, регист
   await page.getByRole("button", { name: "Создать" }).click();
   await expect(page.getByRole("heading", { level: 1, name: `Номер комнаты ${suffix}` })).toBeVisible();
 
-  // Гость без аккаунта (отдельный браузер): каталог → бронь → регистрация → письмо → вход → снова та же бронь
+  // Гость без аккаунта (отдельный браузер): каталог → выбор номера → бронь → регистрация → письмо → вход → снова та же бронь
   const guestContext = await browser.newContext();
   const guest = await guestContext.newPage();
   const email = `portal-${Date.now()}@hms.local`;
@@ -62,7 +62,10 @@ test("сайт: категория в каталоге, бронь, регист
   await expect(guest.getByText("700,00 сом").first()).toBeVisible();
 
   await guest.goto(`/book?kind=hourly&date=${date}&startHour=11&hours=2&adults=2&children=0&roomTypeId=${typeId}`);
+  await expect(guest.getByRole("heading", { level: 1, name: "Свободные номера" })).toBeVisible();
+  await guest.getByRole("article", { name: new RegExp(`^Номер ${suffix}`) }).getByRole("link", { name: "Выбрать", exact: true }).click();
   await expect(guest.getByRole("heading", { level: 1, name: "Подтверждение брони" })).toBeVisible();
+  await expect(guest.getByRole("heading", { level: 2, name: new RegExp(`^Номер ${suffix}`) })).toBeVisible();
   await expect(guest.getByText("1 400,00 сом").first()).toBeVisible();
   await guest.getByRole("link", { name: "Регистрация", exact: true }).click();
   await expect(guest).toHaveURL(/\/register\?next=/);
@@ -86,9 +89,10 @@ test("сайт: категория в каталоге, бронь, регист
   await guest.getByLabel("Пожелания").fill("Поздний заезд");
   await guest.getByRole("button", { name: "Забронировать", exact: true }).click();
 
-  // Кабинет: бронь ждёт подтверждения администратором, номер комнаты гостю не показывается
+  // Кабинет: бронь ждёт подтверждения администратором; номер комнаты — тот, что выбрал гость
   await expect(guest).toHaveURL(/\/account\/bookings\//);
   await expect(guest.getByRole("heading", { level: 1, name: typeName })).toBeVisible();
+  await expect(guest.getByText(`номер ${suffix}`).first()).toBeVisible();
   await expect(guest.getByText("Ожидает подтверждения").first()).toBeVisible();
   await expect(guest.getByText(/Бронь создана/)).toBeVisible();
 

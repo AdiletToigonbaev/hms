@@ -881,6 +881,20 @@ export interface PublicRoomType {
   hourlyPriceFrom: number | null;
   amenities: Amenity[];
   photos: Photo[];
+  /** Номера категории в продаже — гость выбирает конкретный номер. */
+  rooms: PublicRoom[];
+}
+
+/** Номер на сайте: свои значения или категории; фото — только свои (пусто — показываем фото категории). */
+export interface PublicRoom {
+  id: string;
+  number: string;
+  floor: number | null;
+  capacity: number;
+  bedsCount: number;
+  bedType: string;
+  description: string | null;
+  photos: Photo[];
 }
 
 /** Свободные категории на запрошенное время: количество и цена «от» за весь срок. */
@@ -893,6 +907,16 @@ export interface PublicAvailability {
   totalFrom: number;
   kind: "Hourly" | "Nightly";
   units: number;
+  /** Свободные номера категории; цена — без промокода и услуг. */
+  rooms: PublicAvailableRoom[];
+}
+
+export interface PublicAvailableRoom {
+  roomId: string;
+  number: string;
+  floor: number | null;
+  capacity: number;
+  total: number;
 }
 
 // ---- Кабинет гостя (Sprint 8) ----

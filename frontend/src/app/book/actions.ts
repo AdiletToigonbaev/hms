@@ -7,12 +7,12 @@ import { api } from "@/lib/api/server";
 import type { MyBooking } from "@/lib/api/types";
 import { stayApiBody } from "@/lib/site/stay";
 
-// Бронь гостя с сайта. Цену и свободный номер определяет API; браузер передаёт только выбор гостя.
+// Бронь гостя с сайта: номер выбирает гость, цену и занятость проверяет API.
 
 const idempotencyKey = z.string().regex(/^[A-Za-z0-9_-]{8,100}$/);
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const staySchema = z.object({
-  roomTypeId: z.string().uuid(),
+  roomId: z.string().uuid(),
   hourly: z.boolean(),
   date: isoDate,
   startHour: z.number().int().min(0).max(23),
@@ -36,7 +36,7 @@ export async function createWebBookingAction(stayJson: string, _: FormState, for
     headers: { "Idempotency-Key": key.data },
     body: {
       ...stayApiBody(stay.data),
-      roomTypeId: stay.data.roomTypeId,
+      roomId: stay.data.roomId,
       comment: comment || null,
       promoCode: promoCode || null,
     },

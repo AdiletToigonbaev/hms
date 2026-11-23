@@ -210,7 +210,9 @@ public class RoomsTests(PostgresFixture db)
 
         var catalog = (await _api.Anonymous().GetFromJsonAsync<List<PublicRoomTypeDto>>("/api/v1/public/room-types", Ct))!;
 
-        catalog.Should().ContainSingle(t => t.Id == sellable.Id).Which.PriceFrom.Should().Be(4500m);
+        var type = catalog.Should().ContainSingle(t => t.Id == sellable.Id).Which;
+        type.PriceFrom.Should().Be(4500m);
+        type.Rooms.Should().HaveCount(2, "гость выбирает конкретный номер — каталог показывает номера в продаже");
         catalog.Should().NotContain(t => t.Id == empty.Id, "категория без номеров в продаже не показывается");
         (await _api.Anonymous().GetAsync(new Uri($"/api/v1/public/room-types/{empty.Id}", UriKind.Relative), Ct))
             .StatusCode.Should().Be(HttpStatusCode.NotFound);

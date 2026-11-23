@@ -54,11 +54,12 @@ internal sealed class AvailabilityService(IRoomDirectory rooms, Stays stays) : I
         var nights = hourly ? 0 : q.CheckOut!.Value.DayNumber - q.CheckIn!.Value.DayNumber;
         var units = hourly ? q.Hours!.Value : nights;
 
-        // Сайту — только категории, количество и цена «от»: номера комнат и занятость конкретных номеров не раскрываются.
+        // Сайту — свободные номера по категориям: гость выбирает конкретный номер (решение 2026-11-23). Цена — без промокода и услуг.
         return found.Value
             .GroupBy(r => (r.RoomTypeId, r.RoomTypeName))
             .Select(g => new PublicAvailabilityDto(g.Key.RoomTypeId, g.Key.RoomTypeName, g.Max(r => r.Capacity), g.Count(), nights, g.Min(r => r.Quote.Total),
-                hourly ? StayKinds.Hourly : StayKinds.Nightly, units))
+                hourly ? StayKinds.Hourly : StayKinds.Nightly, units,
+                g.Select(r => new PublicAvailableRoomDto(r.RoomId, r.Number, r.Floor, r.Capacity, r.Quote.Total)).ToList()))
             .OrderBy(t => t.TotalFrom)
             .ToList();
     }
@@ -85,21 +86,38 @@ internal sealed class AvailabilityService(IRoomDirectory rooms, Stays stays) : I
         return stay.IsFailure ? stay.Error : await stays.PriceAsync(room, stay.Value, r.PromoCode, r.Services ?? [], ct);
     }
 
+    /// <summary>Цена выбранного гостем номера: только номер в продаже и свободный на это время (с учётом уборки).</summary>
     public async Task<Result<PriceQuote>> QuotePublicAsync(PublicQuoteRequest r, CancellationToken ct)
     {
+        var room = await rooms.GetAsync(r.RoomId, ct);
+        if (room is null || !room.IsSellable)
+        {
+            return BookingErrors.RoomNotFound;
+        }
+
+        if (r.Adults + r.Children > room.Capacity)
+        {
+            return BookingErrors.CapacityExceeded(room.Capacity);
+        }
+
+        if (r.IsHourly() && !room.SellsHourly)
+        {
+            return BookingErrors.RoomNotHourly;
+        }
+
         var stay = await stays.ResolveAsync(r, ct);
         if (stay.IsFailure)
         {
             return stay.Error;
         }
 
-        var free = await FreeRoomsAsync(stay.Value, r.Adults + r.Children, r.RoomTypeId, ct);
-        var cheapest = free
-            .OrderBy(x => r.IsHourly() ? x.HourlyPriceOverride ?? x.HourlyBasePrice : x.PriceOverride ?? x.BasePrice)
-            .FirstOrDefault();
-        return cheapest is null
-            ? BookingErrors.RoomTypeUnavailable
-            : await stays.PriceAsync(cheapest, stay.Value, r.PromoCode, r.Services ?? [], ct);
+        var settings = await stays.SettingsAsync(ct);
+        if ((await stays.BusyRoomsAsync([room.Id], Stays.ForRoom(stay.Value, settings, room), null, ct)).Count > 0)
+        {
+            return BookingErrors.RoomUnavailable;
+        }
+
+        return await stays.PriceAsync(room, stay.Value, r.PromoCode, r.Services ?? [], ct);
     }
 
     /// <summary>Номера в продаже (для часов — с ценой часа), вмещающие гостей и не занятые на это время с учётом уборки.</summary>

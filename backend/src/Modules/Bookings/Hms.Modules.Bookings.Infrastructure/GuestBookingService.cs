@@ -3,7 +3,6 @@ using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Bookings.Domain;
 using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Hotel.Contracts;
-using Hms.Modules.Rooms.Contracts;
 using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,14 +15,10 @@ namespace Hms.Modules.Bookings.Infrastructure;
 internal sealed class GuestBookingService(
     DbContext db,
     IHotelContext hotel,
-    IRoomDirectory rooms,
     ICurrentGuest currentGuest,
     BookingService bookings,
     Stays stays) : IGuestBookingService
 {
-    /// <summary>Сколько раз пробовать другой свободный номер категории, если выбранный успели занять.</summary>
-    private const int RoomAttempts = 3;
-
     private static readonly BookingStatus[] Current =
         [BookingStatus.Pending, BookingStatus.AwaitingPayment, BookingStatus.Confirmed, BookingStatus.CheckedIn];
 
@@ -36,46 +31,15 @@ internal sealed class GuestBookingService(
             return NoGuestCard;
         }
 
-        var stay = await stays.ResolveAsync(r, ct);
-        if (stay.IsFailure)
-        {
-            return stay.Error;
-        }
-
-        // Номер подбирает система: свободные номера категории, сначала дешёвые. Номер комнаты гостю не показывается до заселения.
+        // Номер выбирает гость (решение 2026-11-23). Занят — 409 booking.room_unavailable: другой номер без спроса не подставляем.
+        // Проверки номера и времени — в общем коде создания брони.
         var settings = await stays.SettingsAsync(ct);
-        var hourly = stay.Value.Kind == BookingKind.Hourly;
-        var candidates = (await rooms.ListSellableAsync(r.RoomTypeId, ct))
-            .Where(x => x.Capacity >= r.Adults + r.Children && (!hourly || x.SellsHourly))
-            .OrderBy(x => hourly ? x.HourlyPriceOverride ?? x.HourlyBasePrice : x.PriceOverride ?? x.BasePrice)
-            .ThenBy(x => x.Number, StringComparer.Ordinal)
-            .ToList();
-        var attempts = 0;
-        foreach (var room in candidates)
-        {
-            if ((await stays.BusyRoomsAsync([room.Id], Stays.ForRoom(stay.Value, settings, room), null, ct)).Count > 0)
-            {
-                continue;
-            }
-
-            var created = await bookings.CreateWebAsync(
-                new CreateBookingRequest(room.Id, r.CheckIn, r.CheckOut, r.Adults, r.Children, guest.FullName, guest.Phone, guest.Email,
-                    string.IsNullOrWhiteSpace(r.Comment) ? null : r.Comment.Trim(), r.PromoCode, r.Services,
-                    settings.AutoConfirmWebBookings, r.Kind, r.Date, r.StartHour, r.Hours, guest.Id),
-                ct);
-            if (created.IsSuccess)
-            {
-                return ToGuest(created.Value);
-            }
-
-            // Номер заняли параллельно — пробуем следующий; любая другая ошибка (промокод, правила) — сразу гостю.
-            if (created.Error.Code != BookingErrors.RoomUnavailable.Code || ++attempts >= RoomAttempts)
-            {
-                return created.Error.Code == BookingErrors.RoomUnavailable.Code ? BookingErrors.RoomTypeUnavailable : created.Error;
-            }
-        }
-
-        return BookingErrors.RoomTypeUnavailable;
+        var created = await bookings.CreateWebAsync(
+            new CreateBookingRequest(r.RoomId, r.CheckIn, r.CheckOut, r.Adults, r.Children, guest.FullName, guest.Phone, guest.Email,
+                string.IsNullOrWhiteSpace(r.Comment) ? null : r.Comment.Trim(), r.PromoCode, r.Services,
+                settings.AutoConfirmWebBookings, r.Kind, r.Date, r.StartHour, r.Hours, guest.Id),
+            ct);
+        return created.Map(ToGuest);
     }
 
     public async Task<IReadOnlyList<MyBookingDto>> ListAsync(GuestBookingQuery q, CancellationToken ct)
@@ -159,10 +123,9 @@ internal sealed class GuestBookingService(
             actions.Add("extend");
         }
 
-        var inRoom = b.Status is nameof(BookingStatus.CheckedIn) or nameof(BookingStatus.CheckedOut);
         return new MyBookingDto(
             b.Id, b.Number, b.Status, b.Kind, b.StartsAt, b.EndsAt, b.Hours, b.Nights,
-            b.Room.RoomTypeId, b.Room.RoomTypeName, inRoom ? b.Room.Number : null, b.Adults, b.Children, b.Price,
+            b.Room.RoomTypeId, b.Room.RoomTypeName, b.Room.Number, b.Adults, b.Children, b.Price,
             b.Extensions.Select(x => new MyBookingExtensionDto(x.Kind, x.Quantity, x.NewEndsAt, x.Amount)).ToList(),
             b.TotalAmount, b.PenaltyAmount, b.PenaltyKind, b.EarlyDepartureCredit, b.HoldUntil, b.CancelReason, b.CreatedAt,
             actions, b.Version);
