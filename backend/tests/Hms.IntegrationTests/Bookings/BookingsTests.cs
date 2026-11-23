@@ -202,7 +202,7 @@ public class BookingsTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Availability_ExcludesBookedRooms_PublicHidesRoomNumbers()
+    public async Task Availability_ExcludesBookedRooms_PublicListsFreeRoomsByCategory()
     {
         var owner = await OwnerAsync();
         var (type, free) = await CreateRoomAsync(owner, 2500m);
@@ -218,9 +218,10 @@ public class BookingsTests(PostgresFixture db)
 
         var publicJson = await _api.Anonymous().GetStringAsync(
             $"/api/v1/public/availability?checkIn={day:yyyy-MM-dd}&checkOut={day.AddDays(2):yyyy-MM-dd}&adults=2&roomTypeId={type.Id}", Ct);
-        publicJson.Should().NotContain(free.Number).And.NotContain(free.Id.ToString());
+        publicJson.Should().NotContain(busy.Id.ToString(), "занятый номер на сайте не показывается");
         var types = System.Text.Json.JsonSerializer.Deserialize<List<PublicAvailabilityDto>>(publicJson, System.Text.Json.JsonSerializerOptions.Web)!;
         types.Should().ContainSingle().Which.Should().BeEquivalentTo(new { RoomTypeId = type.Id, AvailableCount = 1, Nights = 2, TotalFrom = 5000m });
+        types[0].Rooms.Should().ContainSingle().Which.Should().BeEquivalentTo(new { RoomId = free.Id, free.Number, Total = 5000m });
 
         var invalid = await _api.Anonymous().GetAsync(new Uri($"/api/v1/public/availability?checkIn={day:yyyy-MM-dd}&checkOut={day:yyyy-MM-dd}", UriKind.Relative), Ct);
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);

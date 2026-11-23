@@ -3,7 +3,7 @@ import { isIsoDate } from "@/lib/calendar";
 import { hourlySchema, staySchema } from "@/lib/validation/bookings";
 
 /**
- * Параметры поиска на сайте (адресная строка): вид брони, время, гости, категория.
+ * Параметры поиска на сайте (адресная строка): вид брони, время, гости, категория (фильтр) и выбранный номер.
  * По умолчанию — почасовая бронь с ближайшего часа (основной поток гостиницы).
  */
 export interface StaySearch {
@@ -16,6 +16,8 @@ export interface StaySearch {
   adults: number;
   children: number;
   roomTypeId: string | null;
+  /** Номер, выбранный гостем (решение 2026-11-23): шаг подтверждения брони. */
+  roomId: string | null;
 }
 
 type Params = Record<string, string | string[] | undefined>;
@@ -41,6 +43,7 @@ export function readStay(params: Params, today: string, nowHour: number, minHour
   const adults = clamp(Number(str(params.adults)), 1, 10, 2);
   const children = clamp(Number(str(params.children)), 0, 10, 0);
   const type = str(params.roomTypeId);
+  const room = str(params.roomId);
   return {
     hourly: str(params.kind) !== "nightly",
     date,
@@ -51,6 +54,7 @@ export function readStay(params: Params, today: string, nowHour: number, minHour
     adults,
     children,
     roomTypeId: type && uuid.test(type) ? type : null,
+    roomId: room && uuid.test(room) ? room : null,
   };
 }
 
@@ -58,7 +62,7 @@ function clamp(value: number, min: number, max: number, fallback: number) {
   return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
 }
 
-/** Параметры адресной строки сайта (для ссылок «изменить», «выбрать категорию», возврата после входа). */
+/** Параметры адресной строки сайта (для ссылок «изменить», «выбрать номер», возврата после входа). */
 export function stayQuery(s: StaySearch, extra: Record<string, string> = {}): URLSearchParams {
   const q = new URLSearchParams(
     s.hourly
@@ -68,12 +72,13 @@ export function stayQuery(s: StaySearch, extra: Record<string, string> = {}): UR
   q.set("adults", String(s.adults));
   q.set("children", String(s.children));
   if (s.roomTypeId) q.set("roomTypeId", s.roomTypeId);
+  if (s.roomId) q.set("roomId", s.roomId);
   for (const [k, v] of Object.entries(extra)) q.set(k, v);
   return q;
 }
 
 /** Запрос к API (/public/availability, /public/bookings/quote, /me/bookings). */
-export function stayApiBody(s: StaySearch) {
+export function stayApiBody(s: Omit<StaySearch, "roomTypeId" | "roomId">) {
   return s.hourly
     ? { kind: "Hourly", date: s.date, startHour: s.startHour, hours: s.hours, adults: s.adults, children: s.children }
     : { kind: "Nightly", checkIn: s.checkIn, checkOut: s.checkOut, adults: s.adults, children: s.children };

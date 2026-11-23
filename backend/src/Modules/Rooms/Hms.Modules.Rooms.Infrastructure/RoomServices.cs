@@ -362,13 +362,21 @@ internal sealed class RoomCatalog(DbContext db, IHotelContext hotel, RoomsStore 
     /// <summary>Категория показывается, если в ней есть хотя бы один номер в продаже (не в архиве и не «вне продажи»).</summary>
     private async Task<PublicRoomTypeDto?> ToDtoAsync(RoomType t, CancellationToken ct)
     {
-        var prices = await db.Set<Room>().AsNoTracking()
+        var sellable = await db.Set<Room>().AsNoTracking()
             .Where(r => r.RoomTypeId == t.Id && !r.IsArchived && r.Status != RoomStatus.OutOfService)
-            .Select(r => new { Night = r.PriceOverride ?? t.BasePrice, Hour = r.HourlyPriceOverride ?? t.HourlyPrice })
             .ToListAsync(ct);
-        if (prices.Count == 0)
+        if (sellable.Count == 0)
         {
             return null;
+        }
+
+        var prices = sellable.Select(r => new { Night = r.PriceOverride ?? t.BasePrice, Hour = r.HourlyPriceOverride ?? t.HourlyPrice }).ToList();
+        var rooms = new List<PublicRoomDto>(sellable.Count);
+        foreach (var r in sellable.OrderBy(r => r.Floor ?? int.MaxValue).ThenBy(r => r.Number, StringComparer.Ordinal))
+        {
+            rooms.Add(new PublicRoomDto(
+                r.Id, r.Number, r.Floor, r.Capacity ?? t.Capacity, r.BedsCount ?? t.BedsCount, (r.BedType ?? t.BedType).ToString(), r.Description,
+                await store.PhotosAsync(null, r.Id, ct)));
         }
 
         var amenityIds = t.Amenities.Select(a => a.AmenityId).ToList();
@@ -378,6 +386,6 @@ internal sealed class RoomCatalog(DbContext db, IHotelContext hotel, RoomsStore 
             .ToListAsync(ct);
         return new PublicRoomTypeDto(
             t.Id, t.Name, t.Description, t.Capacity, t.BedsCount, t.BedType.ToString(), prices.Min(p => p.Night), amenities, await store.PhotosAsync(t.Id, null, ct),
-            prices.Where(p => p.Hour != null).Select(p => p.Hour).Min());
+            prices.Where(p => p.Hour != null).Select(p => p.Hour).Min(), rooms);
     }
 }

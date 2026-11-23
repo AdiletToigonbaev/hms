@@ -48,9 +48,21 @@ public sealed record AvailabilityQuery(
 /// <summary>Свободный номер с расчётом стоимости (для персонала).</summary>
 public sealed record AvailableRoomDto(Guid RoomId, string Number, int? Floor, Guid RoomTypeId, string RoomTypeName, int Capacity, PriceQuote Quote);
 
-/// <summary>Свободная категория (для сайта): без номеров комнат, только количество и цена «от».</summary>
+/// <summary>Свободная категория для сайта со списком её свободных номеров — гость выбирает конкретный номер (решение 2026-11-23).</summary>
 /// <param name="Units">Ночи (посуточно) или часы (почасово).</param>
-public sealed record PublicAvailabilityDto(Guid RoomTypeId, string RoomTypeName, int Capacity, int AvailableCount, int Nights, decimal TotalFrom, string Kind = StayKinds.Nightly, int Units = 0);
+public sealed record PublicAvailabilityDto(
+    Guid RoomTypeId,
+    string RoomTypeName,
+    int Capacity,
+    int AvailableCount,
+    int Nights,
+    decimal TotalFrom,
+    string Kind,
+    int Units,
+    IReadOnlyList<PublicAvailableRoomDto> Rooms);
+
+/// <summary>Свободный номер на сайте: цена без промокода и услуг (итог — в расчёте <c>/public/bookings/quote</c>).</summary>
+public sealed record PublicAvailableRoomDto(Guid RoomId, string Number, int? Floor, int Capacity, decimal Total);
 
 public sealed record QuoteRequest(
     Guid RoomId,
@@ -66,7 +78,7 @@ public sealed record QuoteRequest(
     int? Hours = null) : IStayInput;
 
 public sealed record PublicQuoteRequest(
-    Guid RoomTypeId,
+    Guid RoomId,
     DateOnly? CheckIn,
     DateOnly? CheckOut,
     int Adults,
@@ -347,7 +359,6 @@ public static class BookingErrors
     public static readonly Error RoomNotSellable = Error.BusinessRule("booking.room_not_sellable", "Номер не продаётся: в архиве или «вне продажи».");
     public static readonly Error RoomNotHourly = Error.BusinessRule("booking.room_not_hourly", "Номер не продаётся по часам: у категории и номера не задана цена часа.");
     public static readonly Error RoomNotFound = Error.NotFound("booking.room_not_found", "Номер не найден.");
-    public static readonly Error RoomTypeUnavailable = Error.Conflict("booking.room_type_unavailable", "Свободных номеров этой категории на это время нет.");
     public static readonly Error PastDates = Error.BusinessRule("booking.past_dates", "Дата заезда уже прошла.");
     public static readonly Error StartInPast = Error.BusinessRule("booking.start_in_past", "Время начала уже прошло.");
     public static readonly Error ConcurrencyConflict = Error.Conflict("concurrency.conflict", "Бронь изменил другой пользователь. Обновите страницу и повторите.");
@@ -426,7 +437,7 @@ public sealed class PublicQuoteRequestValidator : AbstractValidator<PublicQuoteR
 {
     public PublicQuoteRequestValidator()
     {
-        RuleFor(x => x.RoomTypeId).NotEmpty();
+        RuleFor(x => x.RoomId).NotEmpty();
         StayRules.Apply(this);
         RuleFor(x => x.Adults).InclusiveBetween(1, 20).WithMessage("Взрослых — от 1 до 20.");
         RuleFor(x => x.Children).InclusiveBetween(0, 20);
@@ -578,9 +589,9 @@ public sealed record MyBookingDto(
 
 public sealed record MyBookingExtensionDto(string Kind, int Quantity, string NewEndsAt, decimal Amount);
 
-/// <summary>Бронь гостя на сайте: категория (номер подберёт система), время, гости. Контакт — из профиля.</summary>
+/// <summary>Бронь гостя на сайте: выбранный гостем номер, время, гости. Контакт — из профиля.</summary>
 public sealed record GuestCreateBookingRequest(
-    Guid RoomTypeId,
+    Guid RoomId,
     string? Kind,
     DateOnly? CheckIn,
     DateOnly? CheckOut,
@@ -619,7 +630,7 @@ public sealed class GuestCreateBookingRequestValidator : AbstractValidator<Guest
 {
     public GuestCreateBookingRequestValidator()
     {
-        RuleFor(x => x.RoomTypeId).NotEmpty().WithMessage("Выберите категорию номера.");
+        RuleFor(x => x.RoomId).NotEmpty().WithMessage("Выберите номер.");
         RuleFor(x => x.Adults).InclusiveBetween(1, 10).WithMessage("Взрослых — от 1 до 10.");
         RuleFor(x => x.Children).InclusiveBetween(0, 10).WithMessage("Детей — от 0 до 10.");
         RuleFor(x => x.Comment).MaximumLength(500).WithMessage("Комментарий — не длиннее 500 символов.");
