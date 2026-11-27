@@ -10,8 +10,10 @@ import { hotelTimeZone } from "@/i18n/config";
 import { api } from "@/lib/api/server";
 import type { PublicHotelInfo, PublicRoomType } from "@/lib/api/types";
 import { hotelToday } from "@/lib/bookings/status";
+import { OG_IMAGE } from "@/lib/brand-image";
 import { getHotelInfo } from "@/lib/hotel";
 import { hotelHour, readStay, stayQuery } from "@/lib/site/stay";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   const [hotel, t] = await Promise.all([getHotelInfo(), getTranslations("Site")]);
@@ -20,7 +22,14 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { absolute: t("metaTitle", { name: hotel.name }) },
     description,
     alternates: { canonical: "/" },
-    openGraph: { title: hotel.name, description, type: "website", locale: "ru_RU" },
+    openGraph: {
+      title: hotel.name,
+      description,
+      type: "website",
+      locale: "ru_RU",
+      siteName: hotel.name,
+      images: [{ ...OG_IMAGE, alt: hotel.name }],
+    },
   };
 }
 
@@ -53,10 +62,11 @@ export default function Home({ searchParams }: PageProps<"/">) {
 }
 
 async function HomeContent({ searchParams }: Pick<PageProps<"/">, "searchParams">) {
+  const now = await requestNow();
   const params = await searchParams;
   const [t, hotel, types] = await Promise.all([getTranslations("Site"), getHotelInfo(), api<PublicRoomType[]>("/public/room-types", { anonymous: true })]);
-  const today = hotelToday(hotelTimeZone);
-  const nowHour = hotelHour(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
+  const nowHour = hotelHour(hotelTimeZone, now);
   const stay = readStay(params, today, nowHour, hotel.hourlyMinHours, hotel.hourlyMaxHours);
   const cancelHint = hotel.hasLatePenalties
     ? t("ruleCancelHours", { n: Math.round(hotel.hourlyFreeCancelMinutes / 60) })

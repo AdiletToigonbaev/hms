@@ -1,9 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { api } from "@/lib/api/server";
+import { HOTEL_NAME_TAG } from "@/lib/hotel";
 import { toFormState, withValues, type FormState } from "@/lib/api/problem";
 import type { HotelSettings, Integration } from "@/lib/api/types";
 import { settingsUpdateBody } from "@/lib/settings/rules";
@@ -65,6 +66,8 @@ export async function saveHotelAction(_: FormState, form: FormData): Promise<For
     if (!saved.ok) return withValues(toFormState(saved.problem), form, HOTEL_FIELDS);
   }
   revalidatePath("/owner/settings");
+  // Название во вкладках и превью ссылок — сразу новое (кэш getCachedHotelName).
+  updateTag(HOTEL_NAME_TAG);
   return { ok: true };
 }
 

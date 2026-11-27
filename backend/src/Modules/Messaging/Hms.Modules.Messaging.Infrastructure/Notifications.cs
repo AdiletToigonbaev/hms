@@ -272,6 +272,7 @@ internal sealed partial class DeliverOutboxHandler(
     IWhatsAppClient client,
     WhatsAppGateway gateway,
     IEmailSender email,
+    IEmailComposer composer,
     NotificationDispatcher dispatcher,
     IHotelClock clock,
     ILogger<DeliverOutboxHandler> logger) : OutboxHandler<DeliverPayload>
@@ -339,7 +340,8 @@ internal sealed partial class DeliverOutboxHandler(
     {
         try
         {
-            await email.SendAsync(new EmailMessage(message.Recipient!, message.Subject ?? string.Empty, TemplateText.ToHtml(message.Body), message.Body), ct);
+            var content = new EmailMessage(message.Recipient!, message.Subject ?? string.Empty, TemplateText.ToHtml(message.Body), message.Body);
+            await email.SendAsync(await composer.ComposeAsync(content, ct), ct);
             message.MarkSent(null, clock.UtcNow);
         }
         catch (PermanentOutboxException ex)

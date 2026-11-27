@@ -17,6 +17,7 @@ import { hotelTimeZone } from "@/i18n/config";
 import { addDays, bookingStatusLabel, bookingStatuses, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { cn } from "@/lib/utils";
 import { formatHotelTime, formatMoney, formatStayDate } from "@/lib/format";
+import { requestNow } from "@/lib/time/request-now";
 import { AutoRefresh } from "@/components/auto-refresh";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -26,10 +27,11 @@ export async function generateMetadata(): Promise<Metadata> {
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 export default async function BookingsPage({ searchParams }: PageProps<"/admin/bookings">) {
+  const now = await requestNow();
   const params = await searchParams;
   const search = typeof params.search === "string" ? params.search.slice(0, 100) : "";
   const status = typeof params.status === "string" && (bookingStatuses as string[]).includes(params.status) ? params.status : "";
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   // Без параметров — брони на сегодня: в почасовой гостинице это основной рабочий вид.
   const defaultToday = Object.keys(params).length === 0;
   const from = typeof params.from === "string" && isoDate.test(params.from) ? params.from : defaultToday ? today : "";

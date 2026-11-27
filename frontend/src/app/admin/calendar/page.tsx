@@ -13,6 +13,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { hotelToday } from "@/lib/bookings/status";
 import { isIsoDate, shiftDays, weekdayIndex } from "@/lib/calendar";
 import { cn } from "@/lib/utils";
+import { requestNow } from "@/lib/time/request-now";
 import { CalendarBoard } from "./calendar-board";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -24,8 +25,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * «Неделя» — 7 дней с понедельника, для посуточных броней. Данные и правила — от API.
  */
 export default async function CalendarPage({ searchParams }: PageProps<"/admin/calendar">) {
+  const now = await requestNow();
   const params = await searchParams;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   const view = params.view === "week" ? "week" : "day";
   const date = isIsoDate(params.date) ? params.date : today;
   const from = view === "week" ? shiftDays(date, -weekdayIndex(date)) : date;

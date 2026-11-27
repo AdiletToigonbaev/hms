@@ -4,8 +4,13 @@ import { cn } from "@/lib/utils";
  * Знак гостиницы. Логотипа пока нет — монограмма из первой буквы названия (docs/design/design-direction.md).
  * Когда появится логотип, он подставляется только здесь.
  */
+/** Буква монограммы — одна и та же в шапке, иконке сайта и картинке для ссылок (lib/brand-image.tsx). */
+export function brandLetter(name: string): string {
+  return name.trim().charAt(0).toUpperCase() || "Г";
+}
+
 export function Brand({ name, className, compact }: { name: string; className?: string; compact?: boolean }) {
-  const letter = name.trim().charAt(0).toUpperCase() || "Г";
+  const letter = brandLetter(name);
   return (
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <span

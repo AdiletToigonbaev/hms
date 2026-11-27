@@ -27,7 +27,8 @@ x-api-env: &api-env
   Email__Username: ${SMTP_USERNAME:-}
   Email__Password: ${SMTP_PASSWORD:-}
   Email__FromAddress: ${SMTP_FROM_ADDRESS:?Задайте SMTP_FROM_ADDRESS}
-  Email__FromName: ${SMTP_FROM_NAME:-Гостиница}
+  # Имя отправителя: пусто — название гостиницы из настроек.
+  Email__FromName: ${SMTP_FROM_NAME:-}
   Integrations__WhatsApp__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
   Integrations__WhatsApp__AppSecret: ${WHATSAPP_APP_SECRET:-}
   Integrations__WhatsApp__VerifyToken: ${WHATSAPP_VERIFY_TOKEN:-}

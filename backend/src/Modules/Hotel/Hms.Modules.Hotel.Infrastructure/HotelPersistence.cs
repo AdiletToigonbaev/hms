@@ -162,6 +162,20 @@ internal sealed partial class HotelSeeder(DbContext db, TimeProvider time, IConf
     private static partial void LogCreated(ILogger logger, Guid hotelId);
 }
 
+/// <summary>
+/// Название и контакты гостиницы для оформления писем (Platform <see cref="Hms.Platform.Email.IEmailComposer"/>).
+/// Адрес сайта — тот же, что в ссылках из писем (Identity:PublicWebUrl).
+/// </summary>
+internal sealed class HotelEmailBrandProvider(IHotelProfile profile, Microsoft.Extensions.Configuration.IConfiguration configuration)
+    : Hms.Platform.Email.IEmailBrandProvider
+{
+    public async Task<Hms.Platform.Email.EmailBrand> GetAsync(CancellationToken ct)
+    {
+        var hotel = await profile.GetAsync(ct);
+        return new Hms.Platform.Email.EmailBrand(hotel.Name, hotel.Address, hotel.Phone, configuration["Identity:PublicWebUrl"]);
+    }
+}
+
 /// <summary>Профиль гостиницы и настройка WhatsApp для модуля Messaging (без кэша: читаются при отправке, редко).</summary>
 internal sealed class HotelProfileReader(DbContext db, IHotelContext context) : IHotelProfile
 {

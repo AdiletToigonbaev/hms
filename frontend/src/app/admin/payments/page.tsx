@@ -18,6 +18,7 @@ import { isIsoDate } from "@/lib/calendar";
 import { paymentMethodLabel, paymentMethods, paymentTypeLabel } from "@/lib/finance/labels";
 import { formatHotelLocal, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Finance"))("paymentsTitle") };
@@ -56,8 +57,9 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/admin/p
 }
 
 async function Payments({ params, tabs }: { params: Record<string, string | string[] | undefined>; tabs: React.ReactNode }) {
+  const now = await requestNow();
   const t = await getTranslations("Finance");
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   const from = isIsoDate(params.from) ? params.from : today;
   const to = isIsoDate(params.to) ? params.to : from;
   const method = typeof params.method === "string" && (paymentMethods as string[]).includes(params.method) ? params.method : "";

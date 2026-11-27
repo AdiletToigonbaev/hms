@@ -24,6 +24,7 @@ public static class HotelModule
         services.AddScoped<IHotelService, HotelService>();
         services.AddScoped<IIntegrationService, IntegrationService>();
         services.AddScoped<IHotelProfile, HotelProfileReader>();
+        services.AddScoped<Hms.Platform.Email.IEmailBrandProvider, HotelEmailBrandProvider>();
         services.AddValidatorsFromAssemblyContaining<UpdateHotelRequestValidator>(includeInternalTypes: true);
         return services;
     }

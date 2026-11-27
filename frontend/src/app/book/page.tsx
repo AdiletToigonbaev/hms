@@ -20,6 +20,7 @@ import { formatMoney, formatStayDate } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { bedTypeLabel } from "@/lib/rooms/status";
 import { hotelHour, readStay, stayApiBody, stayApiQuery, stayQuery, staySummary, validateStay, type StaySearch } from "@/lib/site/stay";
+import { requestNow } from "@/lib/time/request-now";
 import { WebBookingForm } from "./book-form";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -49,10 +50,11 @@ interface RoomChoice {
 }
 
 async function BookContent({ searchParams }: Pick<PageProps<"/book">, "searchParams">) {
+  const now = await requestNow();
   const params = await searchParams;
   const [t, errors, hotel] = await Promise.all([getTranslations("Site"), getTranslations("Errors"), getHotelInfo()]);
-  const today = hotelToday(hotelTimeZone);
-  const nowHour = hotelHour(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
+  const nowHour = hotelHour(hotelTimeZone, now);
   const stay = readStay(params, today, nowHour, hotel.hourlyMinHours, hotel.hourlyMaxHours);
   const summary = staySummary(stay, formatStayDate, nightsLabel);
   const apiError = (code: string | undefined, title: string | undefined) => {

@@ -21,6 +21,7 @@ import { formatMoney, formatStayDate } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { cn } from "@/lib/utils";
 import { MAX_NIGHTS, hourlySchema, staySchema } from "@/lib/validation/bookings";
+import { requestNow } from "@/lib/time/request-now";
 import { CreateBookingForm, type StayParams } from "../booking-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -32,19 +33,20 @@ const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : u
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Текущий час по времени гостиницы — раньше начать почасовую бронь сегодня нельзя. */
-function hotelHour(timeZone: string): number {
-  return Number(new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(new Date()));
+function hotelHour(timeZone: string, now: Date): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(now));
 }
 
 export default async function NewBookingPage({ searchParams }: PageProps<"/admin/bookings/new">) {
+  const now = await requestNow();
   const params = await searchParams;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   // Почасовая бронь — основной поток гостиницы, поэтому вид по умолчанию; посуточная — ?kind=nightly.
   const hourly = str(params.kind) !== "nightly";
   const hotelInfo = await getHotelInfo();
   const minHours = hotelInfo.hourlyMinHours;
   const maxHours = hotelInfo.hourlyMaxHours;
-  const nowHour = hotelHour(hotelTimeZone);
+  const nowHour = hotelHour(hotelTimeZone, now);
 
   const raw = {
     checkIn: str(params.checkIn) ?? today,

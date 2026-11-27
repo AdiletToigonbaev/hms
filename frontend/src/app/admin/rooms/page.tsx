@@ -14,6 +14,7 @@ import { formatMoney } from "@/lib/format";
 import { hotelTimeZone } from "@/i18n/config";
 import { hotelToday } from "@/lib/bookings/status";
 import { groupByFloor, roomBookingHint, roomStatusLabel } from "@/lib/rooms/status";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Rooms"))("title") };
@@ -22,6 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
 const statuses: RoomStatus[] = ["Available", "Occupied", "Cleaning", "Maintenance", "OutOfService"];
 
 export default async function RoomsBoardPage({ searchParams }: PageProps<"/admin/rooms">) {
+  const now = await requestNow();
   const params = await searchParams;
   const status = typeof params.status === "string" && (statuses as string[]).includes(params.status) ? params.status : "";
   const typeId = typeof params.type === "string" && /^[0-9a-f-]{36}$/i.test(params.type) ? params.type : "";
@@ -37,7 +39,7 @@ export default async function RoomsBoardPage({ searchParams }: PageProps<"/admin
     api<RoomType[]>("/room-types"),
   ]);
   const canManage = user?.permissions.includes("room.manage") ?? false;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
 
   if (!rooms.ok || !types.ok) {
     return <ErrorState title={errors("unknown")} />;

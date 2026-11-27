@@ -149,18 +149,21 @@ public static partial class TemplateText
             : null;
     }
 
-    /// <summary>Простой HTML для письма: текст экранируется, абзацы и переносы сохраняются, ссылки кликабельны.</summary>
+    /// <summary>
+    /// Содержимое письма в HTML: текст экранируется, абзацы и переносы сохраняются, ссылки кликабельны (терракотовые).
+    /// Шрифт, шапку и подвал добавляет оформление писем (Platform IEmailComposer).
+    /// </summary>
     public static string ToHtml(string text)
     {
-        var sb = new StringBuilder("<div style=\"font-family:Arial,sans-serif;font-size:15px;line-height:1.5;color:#2b2620\">");
+        var sb = new StringBuilder();
         foreach (var paragraph in text.Split("\n\n"))
         {
             var encoded = System.Net.WebUtility.HtmlEncode(paragraph).Replace("\n", "<br>", StringComparison.Ordinal);
-            encoded = Url().Replace(encoded, m => $"<a href=\"{m.Value}\">{m.Value}</a>");
-            sb.Append("<p>").Append(encoded).Append("</p>");
+            encoded = Url().Replace(encoded, m => $"<a href=\"{m.Value}\" style=\"color:#b5562f\">{m.Value}</a>");
+            sb.Append("<p style=\"margin:0 0 14px\">").Append(encoded).Append("</p>");
         }
 
-        return sb.Append("</div>").ToString();
+        return sb.ToString();
     }
 
     public static string Money(decimal amount) =>

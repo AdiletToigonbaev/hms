@@ -25,6 +25,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { bookingStatusLabel, hotelNowLocal, hotelToday, nightsLabel } from "@/lib/bookings/status";
 import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
+import { requestNow } from "@/lib/time/request-now";
 import { BookingActions, BookingDetailsForm, ExtendBookingForm, RescheduleForm } from "../booking-forms";
 import { CheckInForm, CheckOutForm, MoveGuestForm } from "./front-desk-card";
 import { PaymentCard } from "./payment-card";
@@ -39,6 +40,7 @@ function statusOf(values: Record<string, unknown> | null): BookingStatus | null 
 }
 
 export default async function BookingPage({ params, searchParams }: PageProps<"/admin/bookings/[id]">) {
+  const now = await requestNow();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const created = (await searchParams).created === "1";
@@ -62,7 +64,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
       ? (`ev_${e}` as "ev_created")
       : null;
   const hourly = b.kind === "Hourly";
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
 
   // Условия отмены и штраф за неявку — на сейчас (считает API); номера для переноса — из календаря.
   const needsTerms = b.allowedActions.includes("cancel") || b.allowedActions.includes("noShow");
@@ -181,7 +183,7 @@ export default async function BookingPage({ params, searchParams }: PageProps<"/
             </CardContent>
           </Card>
 
-          {balance?.ok && <PaymentCard balance={balance.data} startsAt={b.startsAt} now={hotelNowLocal(hotelTimeZone)} canRegister={can("payment.register")} canRefund={can("refund.request")} />}
+          {balance?.ok && <PaymentCard balance={balance.data} startsAt={b.startsAt} now={hotelNowLocal(hotelTimeZone, now)} canRegister={can("payment.register")} canRefund={can("refund.request")} />}
 
           <Card>
             <CardHeader>

@@ -60,6 +60,24 @@ public class AuditAndOutboxTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task Email_IsBranded_WithHotelNameFromSettings()
+    {
+        var hotel = await _api.Anonymous().GetFromJsonAsync<JsonElement>("/api/v1/public/hotel-info", Ct);
+        var hotelName = hotel.GetProperty("name").GetString()!;
+
+        var (email, _) = await _api.RegisterConfirmedGuestAsync();
+
+        // Письмо подтверждения: содержимое от Identity, оформление — IEmailComposer при отправке.
+        var letter = db.Emails.Sent.First(m => m.To == email);
+        letter.FromName.Should().Be(hotelName, "имя отправителя по умолчанию — название гостиницы");
+        letter.HtmlBody.Should().StartWith("<!doctype html>")
+            .And.Contain(System.Net.WebUtility.HtmlEncode(hotelName))
+            .And.Contain("background:#b5562f")
+            .And.Contain("/confirm-email");
+        letter.TextBody.Should().EndWith($"—\n{hotelName}\nhttps://hotel.test\n");
+    }
+
+    [Fact]
     public async Task Outbox_SensitivePayload_IsClearedAfterDelivery()
     {
         var (email, _) = await _api.RegisterConfirmedGuestAsync();
@@ -79,10 +97,12 @@ public class AuditAndOutboxTests(PostgresFixture db)
     public async Task Outbox_TransientFailure_RetriesWithBackoff_ThenDelivers()
     {
         var to = UniqueEmail("retry");
-        var id = await EnqueueEmailAsync(to);
+        // Отказ включается ДО постановки в очередь: outbox параллельного теста может забрать письмо сразу.
         db.Emails.FailWith = m => m.To == to ? new InvalidOperationException("SMTP недоступен") : null;
+        Guid id;
         try
         {
+            id = await EnqueueEmailAsync(to);
             await db.ProcessOutboxAsync();
             var failed = await FindAsync(id);
             failed.Status.Should().Be(OutboxStatus.Pending);
@@ -105,20 +125,20 @@ public class AuditAndOutboxTests(PostgresFixture db)
     public async Task Outbox_PermanentFailure_StopsRetrying()
     {
         var to = UniqueEmail("permanent");
-        var id = await EnqueueEmailAsync(to);
+        // Отказ включается ДО постановки в очередь: outbox параллельного теста может забрать письмо сразу.
         db.Emails.FailWith = m => m.To == to ? new PermanentOutboxException("Адрес отклонён") : null;
         try
         {
+            var id = await EnqueueEmailAsync(to);
             await db.ProcessOutboxAsync();
+            var message = await FindAsync(id);
+            message.Status.Should().Be(OutboxStatus.Failed);
+            message.Attempts.Should().Be(1);
         }
         finally
         {
             db.Emails.FailWith = null;
         }
-
-        var message = await FindAsync(id);
-        message.Status.Should().Be(OutboxStatus.Failed);
-        message.Attempts.Should().Be(1);
     }
 
     [Fact]

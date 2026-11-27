@@ -14,6 +14,7 @@ import { api } from "@/lib/api/server";
 import type { OwnerDashboard, RoomType } from "@/lib/api/types";
 import { hotelToday } from "@/lib/bookings/status";
 import { formatMoney } from "@/lib/format";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Dashboard"))("ownerTitle") };
@@ -35,8 +36,9 @@ export default function OwnerDashboardPage({ searchParams }: PageProps<"/owner">
 }
 
 async function Dashboard({ searchParams }: Pick<PageProps<"/owner">, "searchParams">) {
+  const now = await requestNow();
   const params = await searchParams;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   const period = ["day", "week", "month", "year"].includes(str(params.period) ?? "") ? str(params.period)! : null;
   const from = iso.test(str(params.from) ?? "") ? str(params.from)! : null;
   const to = iso.test(str(params.to) ?? "") ? str(params.to)! : null;

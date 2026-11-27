@@ -16,6 +16,7 @@ import { hotelToday } from "@/lib/bookings/status";
 import { isIsoDate } from "@/lib/calendar";
 import { paymentMethodLabel } from "@/lib/finance/labels";
 import { formatMoney, formatStayDate } from "@/lib/format";
+import { requestNow } from "@/lib/time/request-now";
 import { CategoryManager, ExpenseForm } from "../payments/finance-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -26,8 +27,9 @@ const uuid = /^[0-9a-f-]{36}$/i;
 
 /** Расходы: сотрудник вносит и видит свои; владелец — все, по категориям, правит и аннулирует. */
 export default async function ExpensesPage({ searchParams }: PageProps<"/admin/expenses">) {
+  const now = await requestNow();
   const params = await searchParams;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   const from = isIsoDate(params.from) ? params.from : `${today.slice(0, 8)}01`;
   const to = isIsoDate(params.to) ? params.to : today;
   const categoryId = typeof params.category === "string" && uuid.test(params.category) ? params.category : "";

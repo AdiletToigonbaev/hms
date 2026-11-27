@@ -20,6 +20,7 @@ import { bookingStatusLabel, bookingStatuses, hotelToday } from "@/lib/bookings/
 import { paymentMethodLabel, paymentMethods } from "@/lib/finance/labels";
 import { formatHotelLocal, formatMoney, formatStayDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Reports"))("title") };
@@ -76,6 +77,7 @@ export default function ReportsPage({ searchParams }: PageProps<"/admin/reports"
 }
 
 async function Reports({ searchParams }: Pick<PageProps<"/admin/reports">, "searchParams">) {
+  const now = await requestNow();
   const params = await searchParams;
   const user = await getCurrentUser();
   const perms = user?.permissions ?? [];
@@ -83,7 +85,7 @@ async function Reports({ searchParams }: Pick<PageProps<"/admin/reports">, "sear
   const available = reports.filter((r) => isOwnerView || (r.finance && perms.includes("finance.report.view")));
   const type: ReportType = available.find((r) => r.type === str(params.type))?.type ?? available[0]?.type ?? "financial";
   const canExport = perms.includes("report.export");
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
 
   const period = ["day", "week", "month", "year"].includes(str(params.period) ?? "") ? str(params.period)! : null;
   const from = iso.test(str(params.from) ?? "") ? str(params.from)! : null;

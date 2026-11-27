@@ -33,7 +33,7 @@ public class TemplateTextTests
     public void ToHtml_EncodesText_AndLinksUrls()
     {
         var html = TemplateText.ToHtml("<b>Бронь</b>\nСсылка: https://example.com/a");
-        html.Should().Contain("&lt;b&gt;Бронь&lt;/b&gt;<br>").And.Contain("<a href=\"https://example.com/a\">");
+        html.Should().Contain("&lt;b&gt;Бронь&lt;/b&gt;<br>").And.Contain("<a href=\"https://example.com/a\" style=");
     }
 
     [Fact]

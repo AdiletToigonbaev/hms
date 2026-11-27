@@ -15,6 +15,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { formatHotelDateTime } from "@/lib/format";
 import { formatPhone, messageKindLabel, messageStatusLabel, windowLeft } from "@/lib/messaging/labels";
 import { cn } from "@/lib/utils";
+import { requestNow } from "@/lib/time/request-now";
 import { RetryMessageButton } from "./message-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -89,6 +90,7 @@ interface ViewProps {
 }
 
 async function ConversationsView({ search, operator, page, link, chip }: ViewProps & { search: string; operator: boolean }) {
+  const now = await requestNow();
   const [t, errors] = await Promise.all([getTranslations("Messages"), getTranslations("Errors")]);
   const query = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
   if (search) query.set("search", search);
@@ -114,7 +116,7 @@ async function ConversationsView({ search, operator, page, link, chip }: ViewPro
         <>
           <ul className="grid gap-2">
             {result.data.items.map((c) => {
-              const left = c.windowOpen ? windowLeft(c.windowClosesAt) : null;
+              const left = c.windowOpen ? windowLeft(c.windowClosesAt, now) : null;
               return (
                 <li key={c.id}>
                   <Link

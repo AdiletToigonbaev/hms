@@ -13,10 +13,12 @@ import { mediaUrl } from "@/lib/api/media";
 import { api } from "@/lib/api/server";
 import type { PublicRoomType } from "@/lib/api/types";
 import { hotelToday } from "@/lib/bookings/status";
+import { OG_IMAGE } from "@/lib/brand-image";
 import { formatMoney } from "@/lib/format";
 import { getHotelInfo } from "@/lib/hotel";
 import { bedTypeLabel } from "@/lib/rooms/status";
 import { hotelHour, readStay } from "@/lib/site/stay";
+import { requestNow } from "@/lib/time/request-now";
 
 const uuid = /^[0-9a-f-]{36}$/i;
 
@@ -35,7 +37,13 @@ export async function generateMetadata({ params }: PageProps<"/rooms/[id]">): Pr
     title: type.name,
     description,
     alternates: { canonical: `/rooms/${type.id}` },
-    openGraph: { title: `${type.name} · ${hotel.name}`, description, images: type.photos[0] ? [mediaUrl(type.photos[0].fileId)] : undefined },
+    openGraph: {
+      title: `${type.name} · ${hotel.name}`,
+      description,
+      siteName: hotel.name,
+      // Фото категории; без фото — общая картинка гостиницы.
+      images: type.photos[0] ? [mediaUrl(type.photos[0].fileId)] : [{ ...OG_IMAGE, alt: hotel.name }],
+    },
   };
 }
 
@@ -50,11 +58,12 @@ export default function RoomTypePage({ params, searchParams }: PageProps<"/rooms
 }
 
 async function RoomTypeContent({ params, searchParams }: PageProps<"/rooms/[id]">) {
+  const now = await requestNow();
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const [t, type, hotel] = await Promise.all([getTranslations("Site"), loadType(id), getHotelInfo()]);
   if (!type) notFound();
-  const today = hotelToday(hotelTimeZone);
-  const nowHour = hotelHour(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
+  const nowHour = hotelHour(hotelTimeZone, now);
   const stay = { ...readStay(query, today, nowHour, hotel.hourlyMinHours, hotel.hourlyMaxHours), roomTypeId: type.id };
   // Только почасовая продажа недоступна — сразу посуточный поиск.
   if (type.hourlyPriceFrom === null) stay.hourly = false;

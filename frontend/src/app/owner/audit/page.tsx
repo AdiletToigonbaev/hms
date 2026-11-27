@@ -18,6 +18,7 @@ import { auditEntityHref, auditGroups, auditLabel } from "@/lib/audit/labels";
 import { addDays, hotelToday } from "@/lib/bookings/status";
 import { formatHotelDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { requestNow } from "@/lib/time/request-now";
 
 export async function generateMetadata(): Promise<Metadata> {
   return { title: (await getTranslations("Audit"))("title") };
@@ -58,8 +59,9 @@ export default function AuditPage({ searchParams }: PageProps<"/owner/audit">) {
 }
 
 async function AuditContent({ searchParams }: Pick<PageProps<"/owner/audit">, "searchParams">) {
+  const now = await requestNow();
   const params = await searchParams;
-  const today = hotelToday(hotelTimeZone);
+  const today = hotelToday(hotelTimeZone, now);
   const from = iso.test(str(params.from) ?? "") ? str(params.from)! : addDays(today, -6);
   const to = iso.test(str(params.to) ?? "") ? str(params.to)! : today;
   const userId = uuid.test(str(params.userId) ?? "") ? str(params.userId)! : "";

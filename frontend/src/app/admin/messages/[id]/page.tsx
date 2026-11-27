@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { api } from "@/lib/api/server";
 import type { Conversation, Message, Paged, SendOptions } from "@/lib/api/types";
 import { formatPhone, windowLeft } from "@/lib/messaging/labels";
+import { requestNow } from "@/lib/time/request-now";
 import { ResolveConversationButton, SendMessageForm } from "../message-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,6 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /** Диалог WhatsApp с номером: переписка, автоответы, ответ администратора, закрытие обращения. */
 export default async function ConversationPage({ params }: PageProps<"/admin/messages/[id]">) {
+  const now = await requestNow();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
@@ -29,7 +31,7 @@ export default async function ConversationPage({ params }: PageProps<"/admin/mes
   ]);
   if (!conversation.ok) notFound();
   const c = conversation.data;
-  const left = c.windowOpen ? windowLeft(c.windowClosesAt) : null;
+  const left = c.windowOpen ? windowLeft(c.windowClosesAt, now) : null;
 
   return (
     <div className="grid gap-6">

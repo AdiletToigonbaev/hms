@@ -28,15 +28,13 @@ internal static class IdentityEmails
     {
         var name = WebUtility.HtmlEncode(fullName);
         var href = WebUtility.HtmlEncode(link);
+        // Только содержимое: шапку с названием гостиницы и подвал с контактами добавляет IEmailComposer (Platform).
         var html = $"""
-            <!doctype html>
-            <html lang="ru"><body style="font-family:Arial,sans-serif;color:#111;line-height:1.5">
-            <p>Здравствуйте, {name}!</p>
-            <p>{WebUtility.HtmlEncode(intro)}</p>
-            <p><a href="{href}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;text-decoration:none;border-radius:6px">{WebUtility.HtmlEncode(action)}</a></p>
-            <p style="font-size:13px;color:#555">Если кнопка не работает, скопируйте ссылку в браузер:<br>{href}</p>
-            <p style="font-size:13px;color:#555">{WebUtility.HtmlEncode(footer)}</p>
-            </body></html>
+            <p style="margin:0 0 14px">Здравствуйте, {name}!</p>
+            <p style="margin:0 0 22px">{WebUtility.HtmlEncode(intro)}</p>
+            <p style="margin:0 0 22px">{EmailLayout.Button(link, action)}</p>
+            <p style="margin:0 0 10px;font-size:13px;color:#6e625a">Если кнопка не работает, скопируйте ссылку в браузер:<br><a href="{href}" style="{EmailLayout.LinkStyle};word-break:break-all">{href}</a></p>
+            <p style="margin:0;font-size:13px;color:#6e625a">{WebUtility.HtmlEncode(footer)}</p>
             """;
         var text = $"""
             Здравствуйте, {fullName}!

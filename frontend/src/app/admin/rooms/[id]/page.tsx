@@ -13,6 +13,7 @@ import { formatHotelDateTime, formatMoney } from "@/lib/format";
 import { hotelTimeZone } from "@/i18n/config";
 import { hotelToday } from "@/lib/bookings/status";
 import { roomBookingHint, roomStatusLabel } from "@/lib/rooms/status";
+import { requestNow } from "@/lib/time/request-now";
 import { PhotoManager, RoomDangerZone, RoomForm, StatusChangeForm } from "../room-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -20,6 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RoomPage({ params }: PageProps<"/admin/rooms/[id]">) {
+  const now = await requestNow();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
@@ -46,8 +48,8 @@ export default async function RoomPage({ params }: PageProps<"/admin/rooms/[id]"
             {t("number")} {r.number}
           </h1>
           <RoomStatusBadge status={r.displayStatus} />
-          {roomBookingHint(r, hotelToday(hotelTimeZone)) && (
-            <span className="text-sm font-medium text-status-reserved">{roomBookingHint(r, hotelToday(hotelTimeZone))}</span>
+          {roomBookingHint(r, hotelToday(hotelTimeZone, now)) && (
+            <span className="text-sm font-medium text-status-reserved">{roomBookingHint(r, hotelToday(hotelTimeZone, now))}</span>
           )}
           {r.isArchived && <Badge variant="outline">{t("archived")}</Badge>}
         </div>

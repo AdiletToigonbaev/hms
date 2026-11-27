@@ -7,6 +7,7 @@ using Hms.Platform.Security;
 using Hms.Platform.Time;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Microsoft.Extensions.DependencyInjection;
 
@@ -39,6 +40,9 @@ public static class PlatformServiceCollectionExtensions
         services.AddScoped<IEmailOutbox, EmailOutbox>();
         services.AddScoped<IOutboxHandler, SendEmailOutboxHandler>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<IEmailComposer, EmailComposer>();
+        // Сведения о гостинице для писем — модуль Hotel регистрирует свою реализацию (последняя регистрация побеждает).
+        services.TryAddScoped<IEmailBrandProvider, DefaultEmailBrandProvider>();
 
         services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.Section));
         services.AddSingleton<IFileStorage, LocalFileStorage>();

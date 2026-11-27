@@ -11,6 +11,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { hotelToday } from "@/lib/bookings/status";
 import { paymentMethodLabel } from "@/lib/finance/labels";
 import { formatHotelDateTime, formatMoney, formatStayDate } from "@/lib/format";
+import { requestNow } from "@/lib/time/request-now";
 import { ExpenseForm, VoidExpenseForm } from "../../payments/finance-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -18,6 +19,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function ExpensePage({ params }: PageProps<"/admin/expenses/[id]">) {
+  const now = await requestNow();
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const [t, user, result, categories] = await Promise.all([
@@ -59,7 +61,7 @@ export default async function ExpensePage({ params }: PageProps<"/admin/expenses
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ExpenseForm categories={categories.ok ? categories.data : []} today={hotelToday(hotelTimeZone)} expense={e} />
+              <ExpenseForm categories={categories.ok ? categories.data : []} today={hotelToday(hotelTimeZone, now)} expense={e} />
             </CardContent>
           </Card>
           <Card>

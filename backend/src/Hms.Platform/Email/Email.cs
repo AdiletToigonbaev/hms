@@ -8,7 +8,14 @@ using MimeKit;
 
 namespace Hms.Platform.Email;
 
-public sealed record EmailMessage(string To, string Subject, string HtmlBody, string TextBody);
+/// <summary>
+/// Письмо. Модули передают содержимое (фрагмент HTML без &lt;html&gt;), оформление добавляет <see cref="IEmailComposer"/>
+/// перед отправкой. <see cref="FromName"/> заполняет он же (null в старых записях outbox — имя из настроек почты).
+/// </summary>
+public sealed record EmailMessage(string To, string Subject, string HtmlBody, string TextBody)
+{
+    public string? FromName { get; init; }
+}
 
 public sealed class EmailOptions
 {
@@ -27,7 +34,8 @@ public sealed class EmailOptions
 
     public string FromAddress { get; set; } = "no-reply@hms.local";
 
-    public string FromName { get; set; } = "HMS";
+    /// <summary>Имя отправителя. Пусто — название гостиницы из настроек (<see cref="IEmailComposer"/>).</summary>
+    public string? FromName { get; set; }
 }
 
 /// <summary>Немедленная отправка письма. Бизнес-код использует <see cref="IEmailOutbox"/>, а не этот интерфейс.</summary>
@@ -48,7 +56,7 @@ internal sealed class EmailOutbox(IOutbox outbox) : IEmailOutbox
         outbox.Enqueue(SendEmailOutboxHandler.MessageType, message, dedupKey);
 }
 
-internal sealed class SendEmailOutboxHandler(IEmailSender sender) : OutboxHandler<EmailMessage>
+internal sealed class SendEmailOutboxHandler(IEmailSender sender, IEmailComposer composer) : OutboxHandler<EmailMessage>
 {
     public const string MessageType = "email.send";
 
@@ -57,8 +65,8 @@ internal sealed class SendEmailOutboxHandler(IEmailSender sender) : OutboxHandle
     // Письма содержат одноразовые ссылки (подтверждение email, сброс пароля) — после отправки не храним.
     public override bool IsSensitive => true;
 
-    protected override Task HandleAsync(EmailMessage payload, CancellationToken cancellationToken) =>
-        sender.SendAsync(payload, cancellationToken);
+    protected override async Task HandleAsync(EmailMessage payload, CancellationToken cancellationToken) =>
+        await sender.SendAsync(await composer.ComposeAsync(payload, cancellationToken), cancellationToken);
 }
 
 internal sealed partial class SmtpEmailSender(IOptions<EmailOptions> options, ILogger<SmtpEmailSender> logger) : IEmailSender
@@ -79,7 +87,7 @@ internal sealed partial class SmtpEmailSender(IOptions<EmailOptions> options, IL
         }
 
         using var mime = new MimeMessage();
-        mime.From.Add(new MailboxAddress(settings.FromName, settings.FromAddress));
+        mime.From.Add(new MailboxAddress(message.FromName ?? settings.FromName ?? string.Empty, settings.FromAddress));
         mime.To.Add(to);
         mime.Subject = message.Subject;
         mime.Body = new BodyBuilder { HtmlBody = message.HtmlBody, TextBody = message.TextBody }.ToMessageBody();
