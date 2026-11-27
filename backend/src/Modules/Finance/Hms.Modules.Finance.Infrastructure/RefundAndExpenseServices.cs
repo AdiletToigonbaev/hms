@@ -4,6 +4,7 @@ using Hms.Modules.Finance.Contracts;
 using Hms.Modules.Finance.Domain;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Platform.Security;
 using Hms.Platform.Time;
 using Hms.SharedKernel;
@@ -23,6 +24,7 @@ internal sealed class RefundService(
     IUserAccessProvider access,
     IPermissionLimits limits,
     IAuditTrail audit,
+    IGuestNotifications notifications,
     IHotelClock clock) : IRefundService
 {
     public async Task<RefundPageDto> ListAsync(RefundQuery q, CancellationToken ct)
@@ -115,6 +117,11 @@ internal sealed class RefundService(
             currentUser.UserId,
             clock.UtcNow);
         audit.Record(new AuditEntry(action, "Refund", id.ToString(), After: new { refund.Amount, Status = refund.Status.ToString(), refund.DecisionComment }));
+        if (refund.Status == RefundStatus.Paid && payment.GuestId is { } guestId)
+        {
+            notifications.Enqueue(new GuestNotification(NotificationEvent.RefundPaid, guestId, refund.BookingId, refund.Id, refund.Amount));
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);

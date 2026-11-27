@@ -90,6 +90,13 @@ export const auditActionLabel: Record<string, string> = {
   "maintenance.created": "Заявка о неисправности",
   "maintenance.updated": "Изменена заявка о неисправности",
   "report.exported": "Выгружен отчёт",
+  "auth.phone_confirmed": "Подтверждён телефон (код WhatsApp)",
+  "message.sent": "Отправлено сообщение гостю",
+  "message.retried": "Повторная отправка сообщения",
+  "conversation.resolved": "Закрыто обращение в WhatsApp",
+  "template.updated": "Изменён шаблон сообщения",
+  "messaging.settings.updated": "Изменены настройки сообщений",
+  "autoreplies.updated": "Изменён автоответчик",
 };
 
 /** Группы действий для фильтра (префикс кода). */
@@ -108,6 +115,7 @@ export const auditGroups: { prefix: string; label: string }[] = [
   { prefix: "hotel.", label: "Настройки гостиницы" },
   { prefix: "auth.", label: "Входы и пароли" },
   { prefix: "report.", label: "Выгрузки отчётов" },
+  { prefix: "message", label: "Сообщения" },
 ];
 
 export function auditLabel(action: string): string {

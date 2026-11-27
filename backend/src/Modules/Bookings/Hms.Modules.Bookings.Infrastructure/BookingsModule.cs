@@ -32,6 +32,7 @@ public static class BookingsModule
         services.AddScoped<IBookingService>(sp => sp.GetRequiredService<BookingService>());
         services.AddScoped<IGuestBookingService, GuestBookingService>();
         services.AddScoped<IBookingFacts, BookingFacts>();
+        services.AddScoped<IBookingNotices, BookingNotices>();
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<IFrontDeskService, FrontDeskService>();
         services.AddScoped<IBookingLifecycle, BookingLifecycle>();

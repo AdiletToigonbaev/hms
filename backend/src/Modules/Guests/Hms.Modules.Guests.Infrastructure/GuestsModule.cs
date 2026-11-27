@@ -123,7 +123,7 @@ internal sealed class GuestDirectory(DbContext db, IHotelContext hotel, TimeProv
 /// <summary>Регистрация на сайте: существующая карточка (по email или телефону) привязывается к аккаунту, иначе создаётся новая.</summary>
 internal sealed class GuestRegistration(DbContext db, IHotelContext hotel, TimeProvider time) : IGuestRegistration
 {
-    public async Task RegisterPortalGuestAsync(Guid userId, GuestContact contact, bool personalDataConsent, bool whatsAppConsent, CancellationToken ct)
+    public async Task<Guid> RegisterPortalGuestAsync(Guid userId, GuestContact contact, bool personalDataConsent, bool whatsAppConsent, CancellationToken ct)
     {
         var hotelId = await hotel.GetHotelIdAsync(ct);
         var now = time.GetUtcNow();
@@ -151,6 +151,8 @@ internal sealed class GuestRegistration(DbContext db, IHotelContext hotel, TimeP
         {
             guest.RecordConsent(ConsentType.WhatsApp, true, ConsentSource.Portal, userId, now);
         }
+
+        return guest.Id;
     }
 }
 
@@ -180,6 +182,7 @@ public static class GuestsModule
     {
         services.AddSingleton<IModelConfigurator, GuestsModelConfigurator>();
         services.AddScoped<IGuestDirectory, GuestDirectory>();
+        services.AddScoped<IGuestMessaging, GuestMessaging>();
         services.AddScoped<ICurrentGuest, CurrentGuest>();
         services.AddScoped<IGuestAccount, GuestAccount>();
         services.AddScoped<IGuestRegistration, GuestRegistration>();
@@ -220,4 +223,41 @@ public static class GuestsModule
             .RequirePermission(Permissions.GuestAnonymize);
         return api;
     }
+}
+
+/// <summary>Контакты и согласие на WhatsApp для модуля Messaging.</summary>
+internal sealed class GuestMessaging(DbContext db, IHotelContext hotel, TimeProvider time) : IGuestMessaging
+{
+    public async Task<GuestMessagingProfile?> GetAsync(Guid guestId, CancellationToken ct) =>
+        (await GetManyAsync([guestId], ct)).GetValueOrDefault(guestId);
+
+    public async Task<IReadOnlyDictionary<Guid, GuestMessagingProfile>> GetManyAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        var guests = await db.Set<Guest>().AsNoTracking().Include(g => g.Consents)
+            .Where(g => g.HotelId == hotelId && guestIds.Contains(g.Id))
+            .ToListAsync(ct);
+        return guests.ToDictionary(g => g.Id, ToProfile);
+    }
+
+    public async Task<GuestMessagingProfile?> FindByWhatsAppAsync(string phoneE164, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        // Сначала по отдельному номеру WhatsApp, затем по основному телефону; при дублях — самая свежая карточка.
+        var guest = await db.Set<Guest>().AsNoTracking().Include(g => g.Consents)
+            .Where(g => g.HotelId == hotelId && g.AnonymizedAt == null && (g.WhatsAppPhone == phoneE164 || (g.WhatsAppPhone == null && g.Phone == phoneE164)))
+            .OrderByDescending(g => g.WhatsAppPhone == phoneE164).ThenByDescending(g => g.UpdatedAt)
+            .FirstOrDefaultAsync(ct);
+        return guest is null ? null : ToProfile(guest);
+    }
+
+    public async Task<bool> RevokeWhatsAppConsentAsync(Guid guestId, CancellationToken ct)
+    {
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        var guest = await db.Set<Guest>().Include(g => g.Consents).FirstOrDefaultAsync(g => g.Id == guestId && g.HotelId == hotelId, ct);
+        return guest is not null && guest.RecordConsent(ConsentType.WhatsApp, granted: false, ConsentSource.WhatsApp, by: null, time.GetUtcNow());
+    }
+
+    private static GuestMessagingProfile ToProfile(Guest g) =>
+        new(g.Id, g.FullName, g.WhatsAppPhone ?? g.Phone, g.Email, g.CurrentConsent(ConsentType.WhatsApp)?.Granted == true, g.IsAnonymized);
 }

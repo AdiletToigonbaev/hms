@@ -251,22 +251,33 @@
 | POST | /webhooks/optima | P (проверка подлинности по документации банка) | ⏳ |
 | POST | /refunds/{id}/refund-online | A (`refund.approve`), **IK** — возврат через банк | ⏳ |
 
-## 14. WhatsApp
+## 14. Сообщения и WhatsApp (Sprint 10)
 | Метод | Путь | Доступ | Ст. |
 |---|---|---|---|
-| GET | /whatsapp/conversations | A (`whatsapp.send`) | ✔ |
-| GET | /whatsapp/conversations/{guestId}/messages | A (`whatsapp.send`) | ✔ |
-| POST | /whatsapp/conversations/{guestId}/resolve | A (`whatsapp.send`; закрыть передачу оператору) | ✔ |
-| POST | /whatsapp/messages | A (`whatsapp.send`; вне окна — только шаблон); реальная отправка ⏳ | ✔ |
-| POST | /whatsapp/messages/{id}/retry | A (`whatsapp.send`) | ✔ |
-| GET | /whatsapp/templates | A, O | ✔ |
-| POST | /whatsapp/templates | O (`whatsapp.templates.manage`) | ✔ |
-| PUT | /whatsapp/templates/{id} | O | ✔ |
-| POST | /whatsapp/templates/{id}/sync-status | O — статус модерации в Meta | ⏳ |
-| GET | /whatsapp/auto-replies | O | ✔ |
-| PUT | /whatsapp/auto-replies | O (меню, FAQ, тексты) | ✔ |
-| GET | /webhooks/whatsapp | P (verify challenge) | ⏳ |
-| POST | /webhooks/whatsapp | P (проверка подписи) | ⏳ |
+| GET | /messages?guestId=&bookingId=&conversationId=&channel=&status=&kind=&page= | A (`whatsapp.send`) — история всех сообщений (email и WhatsApp) | ✔ |
+| GET | /messages/send-options?guestId=\|conversationId= | A (`whatsapp.send`) — что можно отправить гостю (email, WhatsApp, окно 24 ч, шаблон) | ✔ |
+| POST | /messages | A (`whatsapp.send`), **IK** `{ guestId?, conversationId?, bookingId?, channel: Email\|WhatsApp, text, subject? }` | ✔ |
+| POST | /messages/{id}/retry | A (`whatsapp.send`) — повтор неотправленного | ✔ |
+| GET | /whatsapp/conversations?needsOperator=&search=&page= | A (`whatsapp.send`) | ✔ |
+| GET | /whatsapp/conversations/needs-operator-count | A — значок в меню | ✔ |
+| GET | /whatsapp/conversations/{id} | A | ✔ |
+| POST | /whatsapp/conversations/{id}/read \| /resolve | A — прочитано / закрыть обращение к администратору | ✔ |
+| GET | /messaging/templates | O (`whatsapp.templates.manage`), A (`whatsapp.send`) | ✔ |
+| PUT | /messaging/templates/{code}/{language} | O `{ emailSubject, emailBody, whatsAppBody, whatsAppName?, whatsAppStatus, isActive, version }` | ✔ |
+| GET | /messaging/templates/{code}/{language}/preview | O, A — на данных-примерах | ✔ |
+| GET/PUT | /messaging/settings | O — время напоминаний, автоответчик, тексты; состояние WhatsApp | ✔ |
+| GET/PUT | /messaging/auto-replies | O — меню (1–9 пунктов) целиком | ✔ |
+| POST | /messaging/auto-replies/test | O `{ text, firstContact }` — ответ автоответчика без WhatsApp | ✔ |
+| GET | /webhooks/whatsapp | P — подтверждение адреса (`hub.mode`, `hub.verify_token`, `hub.challenge`) | ✔ |
+| POST | /webhooks/whatsapp | P — подпись `X-Hub-Signature-256`; тело до 3 МБ; повтор отсекается | ✔ |
+| GET | /auth/confirmation-channels | P → `{ email, whatsApp }` | ✔ |
+| POST | /auth/confirm-phone \| /auth/resend-code | P (лимит как у входа) `{ userId, code }` / `{ userId }` | ✔ |
+
+Отклонения от плана Sprint 1: шаблоны — `/messaging/templates` (общие для email и WhatsApp, набор кодов фиксирован, создавать новые нельзя); история — `/messages` (оба канала), диалог — по `id` диалога (номер WhatsApp может быть не связан с карточкой гостя). `sync-status` шаблонов с Meta — Sprint 12 (сейчас статус модерации отмечает владелец).
+
+**Уведомления** (ТЗ §11) ставятся в outbox в той же транзакции, что и событие: бронь подтверждена (в т.ч. создана сразу подтверждённой), отменена или истекла (шаблон «Бронь отменена»), оплата принята, возврат выплачен, заселение, выселение, регистрация (только WhatsApp). Напоминания о заезде/выезде — фоновая задача (`MessagingJobs:Enabled`, раз в минуту). Канал: WhatsApp, если гость дал согласие, WhatsApp подключён и шаблон одобрен в Meta; иначе email; окончательная ошибка WhatsApp — письмо-замена. Нет канала — запись «Не отправлялось». Повтор события не создаёт второе сообщение (ключ дедупликации).
+
+**Регистрация кодом в WhatsApp**: `POST /auth/register` += `confirmBy: Email|WhatsApp` (WhatsApp — нужен телефон и согласие; если WhatsApp недоступен — `422 whatsapp.unavailable`); ответ += `confirmationChannel`. Код 6 цифр, 10 минут, 5 попыток, новый — не чаще раза в минуту (`auth.code_too_soon`); хранится только хэш. Вход без подтверждения — `403 auth.phone_not_confirmed`. Ошибки: `auth.invalid_code`, `whatsapp.no_consent`, `whatsapp.outside_window`, `message.no_email`, `message.no_phone`, `template.unknown_variable`, `integration.phone_number_id_required`.
 
 ## 15. Dashboards / Reporting
 | Метод | Путь | Доступ | Ст. |

@@ -157,3 +157,32 @@ public interface IBookingFacts
     /// <summary>Брони, ждущие подтверждения (с сайта и без подтверждения), которые ещё не закончились.</summary>
     Task<int> PendingCountAsync(DateTimeOffset now, CancellationToken ct);
 }
+
+/// <summary>Бронь для текста уведомления гостю (модуль Messaging). Время — UTC; номер — текущий (после переселения — последний).</summary>
+/// <param name="Kind">Hourly | Nightly.</param>
+public sealed record BookingNotice(
+    Guid BookingId,
+    string Number,
+    BookingStatus Status,
+    string Kind,
+    Guid? GuestId,
+    string GuestName,
+    Guid RoomId,
+    DateTimeOffset StartsAt,
+    DateTimeOffset EndsAt,
+    decimal TotalAmount,
+    decimal PenaltyAmount,
+    string? CancelReason,
+    DateTimeOffset CreatedAt);
+
+/// <summary>Брони для уведомлений и напоминаний (только чтение).</summary>
+public interface IBookingNotices
+{
+    Task<BookingNotice?> GetAsync(Guid bookingId, CancellationToken ct);
+
+    /// <summary>Подтверждённые брони с началом в [from, to) — напоминание о заезде.</summary>
+    Task<IReadOnlyList<BookingNotice>> StartingAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+
+    /// <summary>Заселённые брони с окончанием в [from, to) — напоминание о выезде.</summary>
+    Task<IReadOnlyList<BookingNotice>> EndingAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct);
+}

@@ -159,13 +159,14 @@ internal sealed class IntegrationService(
     DbContext db,
     IHotelContext context,
     IConfiguration configuration,
+    IWhatsAppConnectionCheck whatsApp,
     IEmailOutbox emails,
     ICurrentUser currentUser,
     IAuditTrail audit,
     TimeProvider time) : IIntegrationService
 {
-    // Адаптер есть только у email (SMTP). Банки и WhatsApp — после официальной документации и доступов.
-    private static readonly HashSet<IntegrationProvider> AdapterImplemented = [IntegrationProvider.Email];
+    // Адаптеры: email (SMTP) и WhatsApp Cloud API (Sprint 10, по официальной документации Meta). Банки — после документации и доступов.
+    private static readonly HashSet<IntegrationProvider> AdapterImplemented = [IntegrationProvider.Email, IntegrationProvider.WhatsApp];
 
     private static readonly string[] SecretWords = ["secret", "key", "token", "password", "pass", "pin"];
 
@@ -211,6 +212,11 @@ internal sealed class IntegrationService(
             {
                 return HotelErrors.SecretsMissing;
             }
+
+            if (row.Provider == IntegrationProvider.WhatsApp && string.IsNullOrWhiteSpace(config.GetValueOrDefault("phoneNumberId")))
+            {
+                return HotelErrors.PhoneNumberIdRequired;
+            }
         }
 
         var before = ToDto(row);
@@ -236,6 +242,20 @@ internal sealed class IntegrationService(
         if (!SecretsConfigured(row.Provider))
         {
             return HotelErrors.SecretsMissing;
+        }
+
+        // WhatsApp: запрос сведений о номере в Cloud API — проверяет токен и Phone Number ID, сообщений не отправляет.
+        if (row.Provider == IntegrationProvider.WhatsApp)
+        {
+            if (row.PublicConfig.GetValueOrDefault("phoneNumberId") is not { Length: > 0 } phoneNumberId)
+            {
+                return HotelErrors.PhoneNumberIdRequired;
+            }
+
+            var problem = await whatsApp.CheckAsync(phoneNumberId, ct);
+            row.RecordCheck(problem is null ? "ok" : $"error: {problem}", time.GetUtcNow());
+            await db.SaveChangesAsync(ct);
+            return ToDto(row);
         }
 
         // Email: тестовое письмо текущему пользователю через outbox (результат — во входящих / Mailpit).
@@ -269,6 +289,7 @@ internal sealed class IntegrationService(
     private bool SecretsConfigured(IntegrationProvider provider) => provider switch
     {
         IntegrationProvider.Email => !string.IsNullOrWhiteSpace(configuration["Email:Host"]),
+        IntegrationProvider.WhatsApp => whatsApp.SecretsConfigured,
         _ => configuration.GetSection($"Integrations:{provider}").GetChildren().Any(c => !string.IsNullOrWhiteSpace(c.Value)),
     };
 

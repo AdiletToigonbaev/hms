@@ -137,6 +137,7 @@ public static class HotelErrors
     public static readonly Error AdapterNotAvailable = Error.BusinessRule("integration.not_available", "Интеграция ещё не подключена: нужны официальная документация и доступы провайдера.");
     public static readonly Error SecretsMissing = Error.BusinessRule("integration.secrets_missing", "Не заданы ключи доступа в переменных окружения сервера.");
     public static readonly Error OwnerEmailMissing = Error.BusinessRule("integration.no_recipient", "У вашей учётной записи не указан email для тестового письма.");
+    public static readonly Error PhoneNumberIdRequired = Error.Validation("integration.phone_number_id_required", "Укажите Phone Number ID из WhatsApp Manager.");
 
     public static Error PublicKeyNotAllowed(string key) =>
         Error.Validation("integration.key_not_allowed", $"Параметр «{key}» нельзя хранить в настройках. Секреты задаются только в переменных окружения.");

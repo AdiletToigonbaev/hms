@@ -9,9 +9,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "@/lib/api/server";
-import type { ConsentHistoryItem, Guest, GuestBooking } from "@/lib/api/types";
+import type { ConsentHistoryItem, Guest, GuestBooking, Message, Paged, SendOptions } from "@/lib/api/types";
 import { getCurrentUser } from "@/lib/auth/session";
 import { formatHotelDateTime, formatHotelLocal, formatHotelTime, formatMoney, formatStayDate } from "@/lib/format";
+import { SendMessageForm } from "@/app/admin/messages/message-forms";
+import { MessageTimeline } from "@/components/messages/message-timeline";
 import { AnonymizeForm, ConsentForm, GuestForm } from "../guest-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -25,12 +27,16 @@ export default async function GuestPage({ params }: PageProps<"/admin/guests/[id
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
 
-  const [t, user, guest, bookings, consents] = await Promise.all([
+  const [t, tm, user, guest, bookings, consents, messages, sendOptions] = await Promise.all([
     getTranslations("Guests"),
+    getTranslations("Messages"),
     getCurrentUser(),
     api<Guest>(`/guests/${id}`),
     api<GuestBooking[]>(`/guests/${id}/bookings`),
     api<ConsentHistoryItem[]>(`/guests/${id}/consents`),
+    // Без права «Сообщения» API ответит 403 — блок просто не показывается.
+    api<Paged<Message>>(`/messages?guestId=${id}&pageSize=20`),
+    api<SendOptions>(`/messages/send-options?guestId=${id}`),
   ]);
   if (!guest.ok) notFound();
   const g = guest.data;
@@ -145,6 +151,30 @@ export default async function GuestPage({ params }: PageProps<"/admin/guests/[id
               )}
             </CardContent>
           </Card>
+
+          {messages.ok && (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  <h2 className="text-xl">{tm("guestMessages")}</h2>
+                </CardTitle>
+                <CardDescription>{tm("guestMessagesHint")}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-6">
+                {messages.data.items.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{tm("noMessages")}</p>
+                ) : (
+                  <MessageTimeline messages={messages.data.items} canRetry />
+                )}
+                {sendOptions.ok && !g.isAnonymized && (
+                  <div className="grid gap-2 border-t pt-4">
+                    <h3 className="text-sm font-medium">{tm("write")}</h3>
+                    <SendMessageForm options={sendOptions.data} guestId={g.id} />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <div className="grid content-start gap-6">

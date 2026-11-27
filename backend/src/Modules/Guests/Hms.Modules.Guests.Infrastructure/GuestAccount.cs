@@ -3,13 +3,14 @@ using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Guests.Domain;
 using Hms.Modules.Hotel.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace Hms.Modules.Guests.Infrastructure;
 
 /// <summary>Аккаунт гостя на сайте: профиль → карточка, согласия, удаление аккаунта с обезличиванием (ТЗ §7, §11).</summary>
-internal sealed class GuestAccount(DbContext db, IHotelContext hotel, IGuestBookingQueries bookings, IAuditTrail audit, TimeProvider time) : IGuestAccount
+internal sealed class GuestAccount(DbContext db, IHotelContext hotel, IGuestBookingQueries bookings, IGuestMessagesCleanup messages, IAuditTrail audit, TimeProvider time) : IGuestAccount
 {
     private static readonly BookingStatus[] Active =
         [BookingStatus.Pending, BookingStatus.AwaitingPayment, BookingStatus.Confirmed, BookingStatus.CheckedIn];
@@ -69,6 +70,7 @@ internal sealed class GuestAccount(DbContext db, IHotelContext hotel, IGuestBook
         }
 
         await bookings.AnonymizeAsync(guest.Id, Guest.AnonymizedName, ct);
+        await messages.AnonymizeAsync(guest.Id, ct);
         audit.Record(new AuditEntry("guest.anonymized_by_guest", "Guest", guest.Id.ToString()));
         return Result.Success();
     }

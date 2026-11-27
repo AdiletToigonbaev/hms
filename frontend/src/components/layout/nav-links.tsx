@@ -12,6 +12,8 @@ import {
   History,
   Wrench,
   LayoutDashboard,
+  MessageSquareText,
+  MessagesSquare,
   Tags,
   UserRound,
   PlugZap,
@@ -49,6 +51,8 @@ const icons = {
   reports: FileBarChart,
   audit: ScrollText,
   maintenance: Wrench,
+  messages: MessagesSquare,
+  messaging: MessageSquareText,
 } satisfies Record<string, LucideIcon>;
 
 export type NavIcon = keyof typeof icons;

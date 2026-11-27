@@ -84,6 +84,19 @@ public static class IdentityEndpoints
                 (await service.ResetPasswordAsync(request, ct)).ToHttpResult())
             .WithValidation<ResetPasswordRequest>()
             .RequireRateLimiting(AuthStrictRateLimit);
+
+        // Подтверждение регистрации кодом из WhatsApp (альтернатива письму).
+        auth.MapGet("/confirmation-channels", async (IAuthService service, CancellationToken ct) => Results.Ok(await service.ConfirmationChannelsAsync(ct)));
+
+        auth.MapPost("/confirm-phone", async (ConfirmPhoneRequest request, IAuthService service, CancellationToken ct) =>
+                (await service.ConfirmPhoneAsync(request, ct)).ToHttpResult())
+            .WithValidation<ConfirmPhoneRequest>()
+            .RequireRateLimiting(AuthStrictRateLimit);
+
+        auth.MapPost("/resend-code", async (ResendCodeRequest request, IAuthService service, CancellationToken ct) =>
+                (await service.ResendCodeAsync(request, ct)).ToHttpResult())
+            .WithValidation<ResendCodeRequest>()
+            .RequireRateLimiting(AuthStrictRateLimit);
     }
 
     private static void MapMe(RouteGroupBuilder me)

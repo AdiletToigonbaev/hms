@@ -13,6 +13,10 @@ x-api-env: &api-env
   Email__Host: mailpit
   Email__Port: "1025"
   Email__Security: None
+  # WhatsApp Cloud API: пусто — WhatsApp недоступен (уведомления — письмами).
+  Integrations__WhatsApp__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
+  Integrations__WhatsApp__AppSecret: ${WHATSAPP_APP_SECRET:-}
+  Integrations__WhatsApp__VerifyToken: ${WHATSAPP_VERIFY_TOKEN:-}
   Bootstrap__Owner__FullName: ${OWNER_FULL_NAME:-Владелец (разработка)}
   Bootstrap__Owner__Email: ${OWNER_EMAIL:-owner@hms.local}
   Bootstrap__Owner__Password: ${OWNER_PASSWORD:-owner-dev-password}

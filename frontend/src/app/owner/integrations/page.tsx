@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { api } from "@/lib/api/server";
 import type { Integration, IntegrationAvailability } from "@/lib/api/types";
 import { formatHotelDateTime } from "@/lib/format";
+import { siteUrl } from "@/lib/site/url";
 import { cn } from "@/lib/utils";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -51,9 +52,13 @@ export default async function IntegrationsPage() {
                     <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", tone[i.availability])}>{t(i.availability)}</span>
                   </div>
                   {i.availability === "awaiting_access" && <CardDescription>{t("awaitingHint")}</CardDescription>}
+                  {i.provider === "WhatsApp" && i.availability !== "awaiting_access" && (
+                    <CardDescription>{t("webhookHint", { url: `${siteUrl().origin}/api/v1/webhooks/whatsapp` })}</CardDescription>
+                  )}
                   {i.lastCheckAt && (
                     <CardDescription>
                       {t("lastCheck")}: {formatHotelDateTime(i.lastCheckAt)}
+                      {i.provider === "WhatsApp" && i.lastCheckStatus ? ` — ${i.lastCheckStatus === "ok" ? t("checkOk") : i.lastCheckStatus.replace(/^error: /, "")}` : ""}
                     </CardDescription>
                   )}
                 </CardHeader>

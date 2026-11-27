@@ -31,6 +31,8 @@ function isoDate(daysFromNow: number): string {
 }
 
 test("сайт: категория в каталоге, бронь, регистрация с возвратом к брони через письмо, бронь гостя, отмена в кабинете", async ({ page, browser, request }) => {
+  // Самый длинный сценарий (каталог → регистрация → письмо → вход → бронь → отмена): при параллельных воркерах не укладывается в 30 с.
+  test.slow();
   const suffix = `${String(Date.now() % 1_000_000).padStart(6, "0")}${Math.floor(Math.random() * 90 + 10)}`;
   const typeName = `Сайт ${suffix}`;
   const date = isoDate(160 + (Math.floor(Date.now() / 1000) % 300));

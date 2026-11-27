@@ -23,6 +23,7 @@ public static class HotelModule
         services.AddScoped<IHotelContext>(sp => sp.GetRequiredService<HotelContext>());
         services.AddScoped<IHotelService, HotelService>();
         services.AddScoped<IIntegrationService, IntegrationService>();
+        services.AddScoped<IHotelProfile, HotelProfileReader>();
         services.AddValidatorsFromAssemblyContaining<UpdateHotelRequestValidator>(includeInternalTypes: true);
         return services;
     }

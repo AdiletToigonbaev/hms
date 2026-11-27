@@ -57,3 +57,33 @@ public sealed class RolePermissionGrant
     /// <summary>Лимит суммы для прав с лимитом (null — без лимита). Личный лимит сотрудника важнее.</summary>
     public decimal? LimitAmount { get; set; }
 }
+
+/// <summary>
+/// Код подтверждения телефона в WhatsApp (регистрация — альтернатива письму, решение 2026-11-24).
+/// Хранится только хэш; живёт 10 минут, не больше 5 попыток ввода.
+/// </summary>
+public sealed class PhoneVerificationCode
+{
+    public const int MaxAttempts = 5;
+    public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan ResendInterval = TimeSpan.FromSeconds(60);
+
+    public Guid Id { get; set; }
+
+    public Guid UserId { get; set; }
+
+    public string Phone { get; set; } = string.Empty;
+
+    public string CodeHash { get; set; } = string.Empty;
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset ExpiresAt { get; set; }
+
+    public int Attempts { get; set; }
+
+    public DateTimeOffset? ConsumedAt { get; set; }
+
+    public static string Hash(Guid userId, string code) =>
+        Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{userId:N}:{code}")));
+}

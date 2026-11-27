@@ -21,6 +21,14 @@ public interface IAuthService
     Task ForgotPasswordAsync(EmailRequest request, CancellationToken ct);
 
     Task<Result> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken ct);
+
+    /// <summary>Подтверждение регистрации кодом из WhatsApp.</summary>
+    Task<Result> ConfirmPhoneAsync(ConfirmPhoneRequest request, CancellationToken ct);
+
+    /// <summary>Новый код (не чаще раза в минуту). Неизвестный или уже подтверждённый аккаунт — тоже успех.</summary>
+    Task<Result> ResendCodeAsync(ResendCodeRequest request, CancellationToken ct);
+
+    Task<ConfirmationChannelsDto> ConfirmationChannelsAsync(CancellationToken ct);
 }
 
 public interface IAccountService

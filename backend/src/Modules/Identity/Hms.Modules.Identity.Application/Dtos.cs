@@ -11,9 +11,18 @@ public sealed record RegisterRequest(
     string Password,
     bool AcceptPersonalData,
     bool AcceptWhatsApp,
-    string? ReturnPath = null);
+    string? ReturnPath = null,
+    string? ConfirmBy = null);
 
-public sealed record RegisterResponse(Guid UserId, bool EmailConfirmationRequired);
+/// <param name="ConfirmationChannel">Email — ссылка в письме; WhatsApp — код в WhatsApp (<c>POST /auth/confirm-phone</c>).</param>
+public sealed record RegisterResponse(Guid UserId, bool EmailConfirmationRequired, string ConfirmationChannel = "Email");
+
+public sealed record ConfirmPhoneRequest(Guid UserId, string Code);
+
+public sealed record ResendCodeRequest(Guid UserId);
+
+/// <summary>Чем гость может подтвердить регистрацию сейчас (WhatsApp — когда подключён и одобрен шаблон кода).</summary>
+public sealed record ConfirmationChannelsDto(bool Email, bool WhatsApp);
 
 /// <param name="Login">Email или номер телефона.</param>
 public sealed record LoginRequest(string Login, string Password);

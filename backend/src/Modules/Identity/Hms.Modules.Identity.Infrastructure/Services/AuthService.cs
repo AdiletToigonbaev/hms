@@ -5,6 +5,7 @@ using Hms.Modules.Identity.Application;
 using Hms.Modules.Identity.Contracts;
 using Hms.Modules.Identity.Domain;
 using Hms.Modules.Identity.Infrastructure.Persistence;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Platform.Email;
 using Hms.Platform.Security;
 using Hms.SharedKernel;
@@ -23,6 +24,8 @@ internal sealed class AuthService(
     IAuditTrail audit,
     IHotelContext hotel,
     IGuestRegistration guestRegistration,
+    IVerificationCodeSender codes,
+    IGuestNotifications notifications,
     TimeProvider time,
     IOptions<IdentityModuleOptions> options) : IAuthService
 {
@@ -49,6 +52,13 @@ internal sealed class AuthService(
             return IdentityErrors.PhoneTaken;
         }
 
+        // Подтверждение кодом в WhatsApp — только когда WhatsApp подключён и шаблон кода одобрен в Meta.
+        var byWhatsApp = request.ConfirmBy == "WhatsApp";
+        if (byWhatsApp && (phone is null || !await codes.IsAvailableAsync(ct)))
+        {
+            return MessagingErrors.WhatsAppUnavailable;
+        }
+
         var now = time.GetUtcNow();
         var user = new HmsUser
         {
@@ -73,7 +83,7 @@ internal sealed class AuthService(
             await users.AddToRoleAsync(user, Roles.Guest);
 
             // Карточка гостя (или существующая, найденная по email/телефону) и согласия — в той же транзакции.
-            await guestRegistration.RegisterPortalGuestAsync(
+            var guestId = await guestRegistration.RegisterPortalGuestAsync(
                 user.Id,
                 new GuestContact(user.FullName, phone, email),
                 request.AcceptPersonalData,
@@ -86,7 +96,22 @@ internal sealed class AuthService(
                 After: new { consents = new { personalData = request.AcceptPersonalData, whatsApp = request.AcceptWhatsApp, source = "portal.registration", at = now } },
                 ActorUserId: user.Id));
 
-            await EnqueueConfirmationAsync(user, request.ReturnPath);
+            if (byWhatsApp)
+            {
+                var sent = await IssueCodeAsync(user, guestId, ct);
+                if (sent.IsFailure)
+                {
+                    return sent.Error;
+                }
+            }
+            else
+            {
+                await EnqueueConfirmationAsync(user, request.ReturnPath);
+
+                // «Регистрация на сайте» в WhatsApp — если гость согласился и WhatsApp подключён (письмо со ссылкой уходит отдельно).
+                notifications.Enqueue(new GuestNotification(NotificationEvent.RegistrationConfirmed, guestId));
+            }
+
             await db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
@@ -95,7 +120,7 @@ internal sealed class AuthService(
             return error;
         }
 
-        return new RegisterResponse(user.Id, (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation);
+        return new RegisterResponse(user.Id, byWhatsApp || (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation, byWhatsApp ? "WhatsApp" : "Email");
     }
 
     public async Task<Result<TokenResponse>> LoginAsync(LoginRequest request, CancellationToken ct)
@@ -136,9 +161,10 @@ internal sealed class AuthService(
         await users.ResetAccessFailedCountAsync(user);
 
         // Проверяется после пароля: иначе по ответу можно было бы узнать о существовании аккаунта.
-        if (user.UserType == UserType.Guest && !user.EmailConfirmed && (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation)
+        // Регистрация подтверждается письмом или кодом в WhatsApp — достаточно одного из двух.
+        if (user.UserType == UserType.Guest && !user.EmailConfirmed && !user.PhoneNumberConfirmed && (await hotel.GetSettingsAsync(ct)).RequireEmailConfirmation)
         {
-            return IdentityErrors.EmailNotConfirmed;
+            return await db.Set<PhoneVerificationCode>().AnyAsync(c => c.UserId == user.Id, ct) ? IdentityErrors.PhoneNotConfirmed : IdentityErrors.EmailNotConfirmed;
         }
 
         user.LastLoginAt = time.GetUtcNow();
@@ -293,6 +319,96 @@ internal sealed class AuthService(
         await IdentityHelpers.RevokeAllSessionsAsync(db, user.Id, now, RefreshTokenRevokeReason.PasswordChanged, ct);
         access.Invalidate(user.Id);
         await audit.RecordNowAsync(new AuditEntry("auth.password_reset.completed", "User", user.Id.ToString(), ActorUserId: user.Id), ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> ConfirmPhoneAsync(ConfirmPhoneRequest request, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(request.UserId.ToString());
+        if (user is not { IsActive: true, UserType: UserType.Guest })
+        {
+            return IdentityErrors.InvalidCode;
+        }
+
+        if (user.PhoneNumberConfirmed)
+        {
+            return Result.Success();
+        }
+
+        var now = time.GetUtcNow();
+        var code = await db.Set<PhoneVerificationCode>()
+            .Where(c => c.UserId == user.Id && c.ConsumedAt == null)
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        if (code is null || code.ExpiresAt <= now || code.Attempts >= PhoneVerificationCode.MaxAttempts || code.Phone != user.PhoneNumber)
+        {
+            return IdentityErrors.InvalidCode;
+        }
+
+        var expected = System.Text.Encoding.ASCII.GetBytes(code.CodeHash);
+        var actual = System.Text.Encoding.ASCII.GetBytes(PhoneVerificationCode.Hash(user.Id, request.Code));
+        if (!System.Security.Cryptography.CryptographicOperations.FixedTimeEquals(expected, actual))
+        {
+            code.Attempts++;
+            await db.SaveChangesAsync(ct);
+            return IdentityErrors.InvalidCode;
+        }
+
+        code.ConsumedAt = now;
+        user.PhoneNumberConfirmed = true;
+        await users.UpdateAsync(user);
+        await audit.RecordNowAsync(new AuditEntry("auth.phone_confirmed", "User", user.Id.ToString(), ActorUserId: user.Id), ct);
+        return Result.Success();
+    }
+
+    public async Task<Result> ResendCodeAsync(ResendCodeRequest request, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(request.UserId.ToString());
+        if (user is not { IsActive: true, UserType: UserType.Guest, PhoneNumberConfirmed: false } || user.PhoneNumber is null
+            || !await db.Set<PhoneVerificationCode>().AnyAsync(c => c.UserId == user.Id, ct))
+        {
+            return Result.Success();
+        }
+
+        var last = await db.Set<PhoneVerificationCode>().Where(c => c.UserId == user.Id).MaxAsync(c => (DateTimeOffset?)c.CreatedAt, ct);
+        if (last is { } at && time.GetUtcNow() - at < PhoneVerificationCode.ResendInterval)
+        {
+            return IdentityErrors.CodeTooSoon;
+        }
+
+        var sent = await IssueCodeAsync(user, guestId: null, ct);
+        if (sent.IsFailure)
+        {
+            return sent.Error;
+        }
+
+        await db.SaveChangesAsync(ct);
+        return Result.Success();
+    }
+
+    public async Task<ConfirmationChannelsDto> ConfirmationChannelsAsync(CancellationToken ct) =>
+        new(Email: true, WhatsApp: await codes.IsAvailableAsync(ct));
+
+    /// <summary>Новый 6-значный код: в БД — только хэш, сам код — в WhatsApp (outbox, та же транзакция).</summary>
+    private async Task<Result> IssueCodeAsync(HmsUser user, Guid? guestId, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6", System.Globalization.CultureInfo.InvariantCulture);
+        var sent = await codes.EnqueueAsync(user.PhoneNumber!, code, guestId, ct);
+        if (sent.IsFailure)
+        {
+            return sent;
+        }
+
+        db.Set<PhoneVerificationCode>().Add(new PhoneVerificationCode
+        {
+            Id = Guid.CreateVersion7(),
+            UserId = user.Id,
+            Phone = user.PhoneNumber!,
+            CodeHash = PhoneVerificationCode.Hash(user.Id, code),
+            CreatedAt = now,
+            ExpiresAt = now + PhoneVerificationCode.Lifetime,
+        });
         return Result.Success();
     }
 

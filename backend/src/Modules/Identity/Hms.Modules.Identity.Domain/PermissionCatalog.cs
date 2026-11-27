@@ -56,8 +56,8 @@ public static class PermissionCatalog
         new(P.MaintenanceCreate, "Уборка", "Сообщение о неисправности"),
         new(P.MaintenanceManage, "Уборка", "Обработка заявок о неисправностях"),
 
-        new(P.WhatsAppSend, "WhatsApp", "Переписка с гостями, ручная отправка"),
-        new(P.WhatsAppTemplatesManage, "WhatsApp", "Шаблоны и автоответы WhatsApp", OwnerOnly: true),
+        new(P.WhatsAppSend, "Сообщения", "Сообщения гостям: переписка WhatsApp, история, ручная отправка email и WhatsApp"),
+        new(P.WhatsAppTemplatesManage, "Сообщения", "Шаблоны уведомлений, время напоминаний и автоответчик", OwnerOnly: true),
 
         new(P.SettingsManage, "Система", "Настройки гостиницы и правил", OwnerOnly: true),
         new(P.IntegrationsManage, "Система", "Настройка интеграций (банки, WhatsApp, email)", OwnerOnly: true),

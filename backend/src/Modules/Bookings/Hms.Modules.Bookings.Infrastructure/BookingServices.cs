@@ -7,6 +7,7 @@ using Hms.Modules.Bookings.Domain;
 using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Modules.Pricing.Contracts;
 using Hms.Modules.Rooms.Contracts;
 using Hms.Platform.Security;
@@ -146,6 +147,7 @@ internal sealed class BookingService(
     IGuestDirectory guests,
     ICurrentUser currentUser,
     IAuditTrail audit,
+    IGuestNotifications notifications,
     IHotelClock clock,
     IUserAccessProvider access) : IBookingService
 {
@@ -294,6 +296,10 @@ internal sealed class BookingService(
         db.Set<Booking>().Add(booking);
         audit.Record(new AuditEntry("booking.created", "Booking", booking.Id.ToString(),
             After: new { booking.Number, Kind = stay.Kind.ToString(), Status = booking.Status.ToString(), room = room.Number, stay.StartsAt, stay.EndsAt, booking.TotalAmount }));
+        if (booking.Status == BookingStatus.Confirmed)
+        {
+            Notify(booking, NotificationEvent.BookingConfirmed);
+        }
 
         try
         {
@@ -363,6 +369,7 @@ internal sealed class BookingService(
         }
 
         audit.Record(new AuditEntry("booking.confirmed", "Booking", id.ToString()));
+        Notify(booking, NotificationEvent.BookingConfirmed);
         return await SaveAsync(booking, ct);
     }
 
@@ -391,6 +398,7 @@ internal sealed class BookingService(
 
         audit.Record(new AuditEntry("booking.cancelled", "Booking", id.ToString(),
             After: new { r.Reason, terms.Penalty, Waived = waive }));
+        Notify(booking, NotificationEvent.BookingCancelled);
         return await SaveAsync(booking, ct);
     }
 
@@ -804,6 +812,15 @@ internal sealed class BookingService(
         }
 
         return nights;
+    }
+
+    /// <summary>Уведомление гостю — в той же единице работы, что и изменение брони (уходит только если изменение сохранится).</summary>
+    private void Notify(Booking booking, NotificationEvent e)
+    {
+        if (booking.GuestId is { } guestId)
+        {
+            notifications.Enqueue(new GuestNotification(e, guestId, booking.Id));
+        }
     }
 
     private async Task<Result<BookingDto>> SaveAsync(Booking booking, CancellationToken ct)

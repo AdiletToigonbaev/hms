@@ -32,6 +32,7 @@ public static class PlatformServiceCollectionExtensions
         services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.Section));
         services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IOutboxProcessor, OutboxProcessor>();
+        services.AddScoped<Hms.Platform.Webhooks.IWebhookInbox, Hms.Platform.Webhooks.WebhookInbox>();
         services.AddHostedService<OutboxBackgroundService>();
 
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.Section));

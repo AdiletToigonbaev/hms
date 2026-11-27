@@ -1089,3 +1089,126 @@ export interface ReportTable {
   fromHour: number | null;
   toHour: number | null;
 }
+
+// ---- Сообщения (Sprint 10) ----
+
+export type MessageChannel = "Email" | "WhatsApp";
+export type MessageStatus = "Queued" | "Sent" | "Delivered" | "Read" | "Failed" | "Skipped" | "Received";
+export type MessageKind = "Notification" | "Manual" | "AutoReply" | "Incoming" | "VerificationCode";
+
+export interface Message {
+  id: string;
+  guestId: string | null;
+  guestName: string | null;
+  bookingId: string | null;
+  bookingNumber: string | null;
+  channel: MessageChannel;
+  direction: "Out" | "In";
+  kind: MessageKind;
+  templateCode: string | null;
+  templateTitle: string | null;
+  recipient: string | null;
+  subject: string | null;
+  body: string;
+  status: MessageStatus;
+  error: string | null;
+  createdAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+  sentByName: string | null;
+  fallbackFor: string | null;
+  canRetry: boolean;
+}
+
+export interface Conversation {
+  id: string;
+  phone: string;
+  guestId: string | null;
+  guestName: string | null;
+  profileName: string | null;
+  lastMessageAt: string;
+  lastInboundAt: string | null;
+  windowOpen: boolean;
+  windowClosesAt: string | null;
+  needsOperator: boolean;
+  unreadCount: number;
+  lastMessage: string | null;
+  whatsAppConsent: boolean;
+}
+
+export interface SendOptions {
+  emailAvailable: boolean;
+  whatsAppAvailable: boolean;
+  whatsAppConsent: boolean;
+  windowOpen: boolean;
+  windowClosesAt: string | null;
+  manualTemplateApproved: boolean;
+  whatsAppBlockReason: string | null;
+}
+
+export type WhatsAppTemplateStatus = "NotSubmitted" | "Submitted" | "Approved" | "Rejected" | "Paused" | "Disabled";
+
+export interface MessageTemplate {
+  code: string;
+  language: string;
+  title: string;
+  event: string | null;
+  emailAllowed: boolean;
+  isAuthentication: boolean;
+  variables: string[];
+  emailSubject: string;
+  emailBody: string;
+  whatsAppName: string | null;
+  whatsAppBody: string;
+  whatsAppParameters: string[];
+  whatsAppStatus: WhatsAppTemplateStatus;
+  isActive: boolean;
+  updatedAt: string;
+  version: number;
+}
+
+export interface TemplatePreview {
+  subject: string;
+  emailBody: string;
+  whatsAppBody: string;
+}
+
+export interface WhatsAppState {
+  available: boolean;
+  availability: "active" | "disabled" | "secrets_missing" | "not_configured";
+  webhookConfigured: boolean;
+  businessPhone: string | null;
+}
+
+export interface MessagingSettings {
+  hourlyStartReminderMinutes: number;
+  hourlyEndReminderMinutes: number;
+  nightlyStartReminderTime: string;
+  nightlyEndReminderMinutes: number;
+  autoRepliesEnabled: boolean;
+  greetingText: string;
+  fallbackText: string;
+  stopText: string;
+  whatsApp: WhatsAppState;
+  version: number;
+}
+
+export interface AutoReplyItem {
+  number: number;
+  title: string;
+  keywords: string[];
+  body: string;
+  action: "Text" | "Operator";
+  isActive: boolean;
+}
+
+export interface AutoReplies {
+  items: AutoReplyItem[];
+  variables: string[];
+}
+
+export interface ConfirmationChannels {
+  email: boolean;
+  whatsApp: boolean;
+}

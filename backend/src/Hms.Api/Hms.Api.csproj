@@ -26,6 +26,7 @@
     <ProjectReference Include="..\Modules\Finance\Hms.Modules.Finance.Infrastructure\Hms.Modules.Finance.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Housekeeping\Hms.Modules.Housekeeping.Infrastructure\Hms.Modules.Housekeeping.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Reporting\Hms.Modules.Reporting.Infrastructure\Hms.Modules.Reporting.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Messaging\Hms.Modules.Messaging.Infrastructure\Hms.Modules.Messaging.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Hms.IntegrationTests" />

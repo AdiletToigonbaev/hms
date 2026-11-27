@@ -35,6 +35,19 @@ internal sealed class PlatformModelConfigurator : IModelConfigurator
             e.HasIndex(x => x.Path).IsUnique();
         });
 
+        modelBuilder.Entity<Webhooks.WebhookEvent>(e =>
+        {
+            e.ToTable("webhook_events", Schema);
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Source).HasMaxLength(30).IsRequired();
+            e.Property(x => x.DedupKey).HasMaxLength(64).IsRequired();
+            e.Property(x => x.Payload).HasColumnType("jsonb").IsRequired();
+            e.Property(x => x.Error).HasMaxLength(1000);
+            e.HasIndex(x => new { x.Source, x.DedupKey }).IsUnique();
+            e.HasIndex(x => x.ReceivedAt);
+        });
+
         modelBuilder.Entity<Http.IdempotencyRecord>(e =>
         {
             e.ToTable("idempotency_keys", Schema);

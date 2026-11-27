@@ -62,7 +62,8 @@ public interface IGuestAccount
 /// <summary>Регистрация гостя на сайте (модуль Identity): карточка, связь с аккаунтом и согласия — в той же транзакции.</summary>
 public interface IGuestRegistration
 {
-    Task RegisterPortalGuestAsync(Guid userId, GuestContact contact, bool personalDataConsent, bool whatsAppConsent, CancellationToken ct);
+    /// <returns>Id карточки гостя.</returns>
+    Task<Guid> RegisterPortalGuestAsync(Guid userId, GuestContact contact, bool personalDataConsent, bool whatsAppConsent, CancellationToken ct);
 }
 
 public static class GuestErrors
@@ -70,4 +71,22 @@ public static class GuestErrors
     public static readonly Error NotFound = Error.NotFound("guest.not_found", "Гость не найден.");
     public static readonly Error Anonymized = Error.BusinessRule("guest.anonymized", "Данные гостя удалены — выберите другого гостя или создайте нового.");
     public static readonly Error ContactRequired = Error.Validation("guest.contact_required", "Укажите телефон или email гостя.");
+}
+
+/// <summary>Контакты и согласие гостя для сообщений (модуль Messaging).</summary>
+/// <param name="WhatsAppNumber">Номер WhatsApp (E.164): отдельный, если указан, иначе основной телефон.</param>
+public sealed record GuestMessagingProfile(Guid Id, string FullName, string? WhatsAppNumber, string? Email, bool WhatsAppConsent, bool IsAnonymized);
+
+/// <summary>Сведения о госте для модуля Messaging: куда писать и можно ли в WhatsApp; отписка словом «стоп».</summary>
+public interface IGuestMessaging
+{
+    Task<GuestMessagingProfile?> GetAsync(Guid guestId, CancellationToken ct);
+
+    Task<IReadOnlyDictionary<Guid, GuestMessagingProfile>> GetManyAsync(IReadOnlyCollection<Guid> guestIds, CancellationToken ct);
+
+    /// <summary>Гость по номеру WhatsApp (входящее сообщение). Обезличенные не находятся.</summary>
+    Task<GuestMessagingProfile?> FindByWhatsAppAsync(string phoneE164, CancellationToken ct);
+
+    /// <summary>Отзыв согласия на WhatsApp (гость написал «стоп»). Добавляется в текущую единицу работы. True — согласие было.</summary>
+    Task<bool> RevokeWhatsAppConsentAsync(Guid guestId, CancellationToken ct);
 }

@@ -14,7 +14,8 @@
 - **Sprint 7 (заселение, выселение, досрочный выезд, уборка, заявки о неисправностях) — завершён**, в `main`.
 - **Sprint 8 (публичный сайт, бронирование гостем, кабинет гостя, SEO) — завершён**, в `main`.
 - **Sprint 9 (дашборды владельца и администратора, 8 отчётов, выгрузка Excel/PDF) — завершён**, в `main`.
-- Следующий: Sprint 10 (сообщения: шаблоны, напоминания, email, WhatsApp-адаптер) — только после «подтверждаю».
+- **Sprint 10 (сообщения: уведомления email/WhatsApp, напоминания, история и статусы, автоответчик, вебхук, код подтверждения в WhatsApp) — завершён** (адаптер Cloud API готов, отправка в WhatsApp — после доступов Meta, Sprint 12).
+- Следующий: Sprint 11 (production: Nginx, HTTPS, бэкапы, VPS) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -93,7 +94,7 @@ dotnet Hms.Api.dll migrate                        # то же при релиз�
 npm ci
 npm run dev | npm run lint | npm run typecheck | npm test | npm run build
 npx playwright install chromium                   # один раз
-npm run test:e2e                                  # E2E против запущенного стека; API поднять с AUTH_RATE_LIMIT_PER_MINUTE=1000 (как в CI), иначе входы упрутся в лимит 10/мин
+npm run test:e2e                                  # E2E против запущенного стека; API поднять с AUTH_RATE_LIMIT_PER_MINUTE=1000 (как в CI), иначе входы упрутся в лимит 10/мин; локально 4 воркера (больше — таймауты)
 
 # окружение (из корня)
 docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web
@@ -135,6 +136,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Стойка: `IFrontDeskService` (Bookings) — заселение/выселение одной транзакцией: статус номера через `IRoomStatusChanger` (Rooms.Contracts), задача уборки через `IHousekeepingTasks` (Housekeeping.Contracts), получено по брони — `IPaymentQueries.ReceivedForBookingAsync`. Переселение (`MoveAsync`) делит бронь на отрезки `booking_rooms`; текущий номер — `Booking.CurrentRoom` (не `Rooms[0]`). Уборка — модуль Housekeeping (задачи с чек-листом, шаблон, заявки); уборщик видит только свои и свободные задачи, без ПД гостя; экран уборщика — `/hk` (мобильный).
 - Кабинет гостя: `/me/*` — только свои данные через `ICurrentGuest` (Guests.Contracts); чужое — 404. Брони гостя — `IGuestBookingService` (Bookings), оплаты/возвраты — `IMyFinanceService` (Finance), профиль/согласия/удаление аккаунта — `IGuestAccount` (Guests). Сайт: `components/site/*` (`SiteShell` — шапка/подвал в Suspense), параметры поиска — `lib/site/stay.ts` (`roomTypeId` — фильтр категории, `roomId` — выбранный гостем номер: гость выбирает конкретный номер, решение 2026-11-23); адрес сайта — `PUBLIC_WEB_URL` (`lib/site/url.ts`).
 - Отчёты: модуль Reporting читает факты через контракты (`IBookingFacts`, `IFinanceFacts`, `IHousekeepingFacts`); формулы — чистые функции `Reporting.Domain.Kpi` (database-design §17); отчёт — единая `ReportTable` (сайт, Excel, PDF). Графики — `components/charts/charts.tsx` (без библиотек; цвета `--chart-1/2` проверены валидатором палитры), фильтр периода — `components/dashboard/period-filter.tsx`. Меню получает права пользователя (`staffNav(roles, t, permissions)`).
+- Сообщения: модуль Messaging. Уведомление гостю — `IGuestNotifications.Enqueue(new GuestNotification(...))` (Messaging.Contracts) в той же единице работы, что и событие (рядом с `audit.Record`); канал выбирает Messaging (WhatsApp при согласии, подключении и одобренном шаблоне, иначе email; ошибка WhatsApp — письмо-замена). Напоминания — `IReminderScheduler` + фоновая задача (`MessagingJobs:Enabled`, в интеграционных тестах выключена). Тексты — `TemplateCatalog` (фиксированные коды, переменные `{{snake_case}}`, владелец правит в `/owner/messages`); WhatsApp — `IWhatsAppClient` (`CloudApiWhatsAppClient`, в тестах `FakeWhatsAppClient`), секреты `Integrations__WhatsApp__*`. Вебхуки — `IWebhookInbox` (Platform, `platform.webhook_events`) → outbox `webhook.{source}`. Переписка — `/admin/messages` (право `whatsapp.send`), в карточке гостя — блок «Сообщения». Обезличивание гостя стирает и переписку (`IGuestMessagesCleanup`).
 - Рабочие экраны с меняющимися данными (рабочий стол, «Уборка», список броней, `/hk`) — `<AutoRefresh seconds={…} />` (router.refresh, не мешает вводу). Значки в меню — `NavItem.badge` (считает `AreaShell`). Журнал действий — `/owner/audit`, подписи действий — `lib/audit/labels.ts` (новый код аудита — добавить подпись).
 - Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`, `BookingStatusBadge`, `PriceBreakdown`; меню персонала — `lib/nav.ts` (по роли).

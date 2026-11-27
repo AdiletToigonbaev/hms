@@ -127,5 +127,16 @@ internal sealed class IdentityModelConfigurator : IModelConfigurator
             e.HasIndex(x => new { x.UserId, x.RevokedAt });
             e.HasOne<HmsUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
+
+        b.Entity<PhoneVerificationCode>(e =>
+        {
+            e.ToTable("phone_verification_codes", Schema);
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Phone).HasMaxLength(32).IsRequired();
+            e.Property(x => x.CodeHash).HasMaxLength(64).IsRequired();
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasOne<HmsUser>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

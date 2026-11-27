@@ -161,3 +161,34 @@ internal sealed partial class HotelSeeder(DbContext db, TimeProvider time, IConf
     [LoggerMessage(Level = LogLevel.Information, Message = "Создана гостиница {HotelId} с настройками по умолчанию")]
     private static partial void LogCreated(ILogger logger, Guid hotelId);
 }
+
+/// <summary>Профиль гостиницы и настройка WhatsApp для модуля Messaging (без кэша: читаются при отправке, редко).</summary>
+internal sealed class HotelProfileReader(DbContext db, IHotelContext context) : IHotelProfile
+{
+    public async Task<HotelProfile> GetAsync(CancellationToken ct)
+    {
+        var hotelId = await context.GetHotelIdAsync(ct);
+        var row = await (
+            from h in db.Set<HotelInfo>().AsNoTracking()
+            join hs in db.Set<HotelSettings>().AsNoTracking() on h.Id equals hs.HotelId
+            where h.Id == hotelId
+            select new { h.Name, h.Address, h.Phone, h.Email, hs.Rules, hs.CheckInTime, hs.CheckOutTime, hs.HourlyMinHours })
+            .FirstAsync(ct);
+        return new HotelProfile(row.Name, row.Address, row.Phone, row.Email, row.Rules, row.CheckInTime, row.CheckOutTime, row.HourlyMinHours);
+    }
+
+    public async Task<WhatsAppIntegrationSettings> GetWhatsAppAsync(CancellationToken ct)
+    {
+        var hotelId = await context.GetHotelIdAsync(ct);
+        var row = await db.Set<IntegrationSetting>().AsNoTracking()
+            .FirstOrDefaultAsync(i => i.HotelId == hotelId && i.Provider == IntegrationProvider.WhatsApp, ct);
+        return row is null
+            ? new WhatsAppIntegrationSettings(false, nameof(IntegrationMode.Sandbox), null, null, null)
+            : new WhatsAppIntegrationSettings(
+                row.IsEnabled,
+                row.Mode.ToString(),
+                row.PublicConfig.GetValueOrDefault("phoneNumberId"),
+                row.PublicConfig.GetValueOrDefault("wabaId"),
+                row.PublicConfig.GetValueOrDefault("businessPhone"));
+    }
+}

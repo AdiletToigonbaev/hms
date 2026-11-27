@@ -50,3 +50,37 @@ public interface IHotelContext
 
     Task<HotelSettingsSnapshot> GetSettingsAsync(CancellationToken ct);
 }
+
+/// <summary>Контакты и правила гостиницы — для текстов сообщений и автоответчика.</summary>
+public sealed record HotelProfile(
+    string Name,
+    string? Address,
+    string? Phone,
+    string? Email,
+    string? Rules,
+    TimeOnly CheckInTime,
+    TimeOnly CheckOutTime,
+    int HourlyMinHours);
+
+/// <summary>Настройка интеграции WhatsApp, заданная владельцем (без секретов).</summary>
+public sealed record WhatsAppIntegrationSettings(bool IsEnabled, string Mode, string? PhoneNumberId, string? WabaId, string? BusinessPhone);
+
+/// <summary>Профиль гостиницы и интеграции для модуля Messaging.</summary>
+public interface IHotelProfile
+{
+    Task<HotelProfile> GetAsync(CancellationToken ct);
+
+    Task<WhatsAppIntegrationSettings> GetWhatsAppAsync(CancellationToken ct);
+}
+
+/// <summary>
+/// Проверка соединения с WhatsApp Cloud API (реализует модуль Messaging). Hotel вызывает её из «Проверить соединение».
+/// </summary>
+public interface IWhatsAppConnectionCheck
+{
+    /// <summary>Заданы ли ключи на сервере (значения не раскрываются).</summary>
+    bool SecretsConfigured { get; }
+
+    /// <summary>Null — соединение работает; иначе текст ошибки для владельца.</summary>
+    Task<string?> CheckAsync(string phoneNumberId, CancellationToken ct);
+}

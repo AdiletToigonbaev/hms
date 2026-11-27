@@ -1866,6 +1866,53 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("permissions", "identity");
                 });
 
+            modelBuilder.Entity("Hms.Modules.Identity.Infrastructure.Persistence.PhoneVerificationCode", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset?>("ConsumedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("consumed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("phone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_phone_verification_codes");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_phone_verification_codes_user_id_created_at");
+
+                    b.ToTable("phone_verification_codes", "identity");
+                });
+
             modelBuilder.Entity("Hms.Modules.Identity.Infrastructure.Persistence.RolePermissionGrant", b =>
                 {
                     b.Property<Guid>("RoleId")
@@ -1889,6 +1936,426 @@ namespace Hms.Persistence.Migrations
                         .HasDatabaseName("ix_role_permissions_permission_code");
 
                     b.ToTable("role_permissions", "identity");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Messaging.Domain.AutoReply", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(1500)
+                        .HasColumnType("character varying(1500)")
+                        .HasColumnName("body");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.PrimitiveCollection<string[]>("Keywords")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("keywords");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_auto_replies");
+
+                    b.HasIndex("HotelId", "Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_auto_replies_hotel_id_number");
+
+                    b.ToTable("auto_replies", "messaging");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Messaging.Domain.Conversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("GuestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_id");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<DateTimeOffset?>("LastInboundAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_inbound_at");
+
+                    b.Property<DateTimeOffset>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_message_at");
+
+                    b.Property<bool>("NeedsOperator")
+                        .HasColumnType("boolean")
+                        .HasColumnName("needs_operator");
+
+                    b.Property<string>("Phone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("ProfileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("profile_name");
+
+                    b.Property<int>("UnreadCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("unread_count");
+
+                    b.HasKey("Id")
+                        .HasName("pk_conversations");
+
+                    b.HasIndex("GuestId")
+                        .HasDatabaseName("ix_conversations_guest_id");
+
+                    b.HasIndex("HotelId", "LastMessageAt")
+                        .HasDatabaseName("ix_conversations_hotel_id_last_message_at");
+
+                    b.HasIndex("HotelId", "Phone")
+                        .IsUnique()
+                        .HasDatabaseName("ix_conversations_hotel_id_phone");
+
+                    b.ToTable("conversations", "messaging");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Messaging.Domain.Message", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body");
+
+                    b.Property<Guid?>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("channel");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DedupKey")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("dedup_key");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("delivered_at");
+
+                    b.Property<string>("Direction")
+                        .IsRequired()
+                        .HasMaxLength(5)
+                        .HasColumnType("character varying(5)")
+                        .HasColumnName("direction");
+
+                    b.Property<bool>("EmailFallback")
+                        .HasColumnType("boolean")
+                        .HasColumnName("email_fallback");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("ExternalId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("external_id");
+
+                    b.Property<DateTimeOffset?>("FailedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failed_at");
+
+                    b.Property<Guid?>("FallbackFor")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fallback_for");
+
+                    b.Property<Guid?>("GuestId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("guest_id");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsAuthentication")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_authentication");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("kind");
+
+                    b.PrimitiveCollection<string[]>("ParameterNames")
+                        .HasColumnType("text[]")
+                        .HasColumnName("parameter_names");
+
+                    b.Property<string>("Parameters")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("parameters");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
+
+                    b.Property<string>("Recipient")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("recipient");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<Guid?>("SentBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sent_by");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("TemplateCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("template_code");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("WhatsAppLanguage")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("whats_app_language");
+
+                    b.Property<string>("WhatsAppTemplate")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("whats_app_template");
+
+                    b.HasKey("Id")
+                        .HasName("pk_messages");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_messages_booking_id");
+
+                    b.HasIndex("ConversationId", "CreatedAt")
+                        .HasDatabaseName("ix_messages_conversation_id_created_at");
+
+                    b.HasIndex("GuestId", "CreatedAt")
+                        .HasDatabaseName("ix_messages_guest_id_created_at");
+
+                    b.HasIndex("HotelId", "CreatedAt")
+                        .HasDatabaseName("ix_messages_hotel_id_created_at");
+
+                    b.HasIndex("HotelId", "DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_messages_hotel_id_dedup_key")
+                        .HasFilter("dedup_key IS NOT NULL");
+
+                    b.HasIndex("HotelId", "ExternalId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_messages_hotel_id_external_id")
+                        .HasFilter("external_id IS NOT NULL");
+
+                    b.ToTable("messages", "messaging");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Messaging.Domain.MessageTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("EmailBody")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("email_body");
+
+                    b.Property<string>("EmailSubject")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("character varying(150)")
+                        .HasColumnName("email_subject");
+
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("language");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("WhatsAppBody")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("whats_app_body");
+
+                    b.Property<string>("WhatsAppName")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("whats_app_name");
+
+                    b.Property<string>("WhatsAppStatus")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("whats_app_status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_templates");
+
+                    b.HasIndex("HotelId", "Code", "Language")
+                        .IsUnique()
+                        .HasDatabaseName("ix_templates_hotel_id_code_language");
+
+                    b.ToTable("templates", "messaging");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Messaging.Domain.MessagingSettings", b =>
+                {
+                    b.Property<Guid>("HotelId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("hotel_id");
+
+                    b.Property<bool>("AutoRepliesEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("auto_replies_enabled");
+
+                    b.Property<string>("FallbackText")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("fallback_text");
+
+                    b.Property<string>("GreetingText")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("greeting_text");
+
+                    b.Property<int>("HourlyEndReminderMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("hourly_end_reminder_minutes");
+
+                    b.Property<int>("HourlyStartReminderMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("hourly_start_reminder_minutes");
+
+                    b.Property<int>("NightlyEndReminderMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("nightly_end_reminder_minutes");
+
+                    b.Property<TimeOnly>("NightlyStartReminderTime")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("nightly_start_reminder_time");
+
+                    b.Property<string>("StopText")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("stop_text");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("HotelId")
+                        .HasName("pk_settings");
+
+                    b.ToTable("settings", "messaging");
                 });
 
             modelBuilder.Entity("Hms.Modules.Pricing.Domain.Discount", b =>
@@ -2617,6 +3084,55 @@ namespace Hms.Persistence.Migrations
                     b.ToTable("outbox_messages", "platform");
                 });
 
+            modelBuilder.Entity("Hms.Platform.Webhooks.WebhookEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("DedupKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("dedup_key");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("error");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.Property<DateTimeOffset>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("source");
+
+                    b.HasKey("Id")
+                        .HasName("pk_webhook_events");
+
+                    b.HasIndex("ReceivedAt")
+                        .HasDatabaseName("ix_webhook_events_received_at");
+
+                    b.HasIndex("Source", "DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_webhook_events_source_dedup_key");
+
+                    b.ToTable("webhook_events", "platform");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.DataProtection.EntityFrameworkCore.DataProtectionKey", b =>
                 {
                     b.Property<int>("Id")
@@ -2969,6 +3485,16 @@ namespace Hms.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Hms.Modules.Identity.Infrastructure.Persistence.PhoneVerificationCode", b =>
+                {
+                    b.HasOne("Hms.Modules.Identity.Infrastructure.Persistence.HmsUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_phone_verification_codes_users_user_id");
                 });
 
             modelBuilder.Entity("Hms.Modules.Identity.Infrastructure.Persistence.RolePermissionGrant", b =>

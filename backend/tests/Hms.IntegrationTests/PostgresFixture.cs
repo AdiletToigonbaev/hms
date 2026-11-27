@@ -44,6 +44,12 @@ public sealed partial class PostgresFixture : IAsyncLifetime
 
     public CapturingEmailSender Emails { get; } = new();
 
+    public Messaging.FakeWhatsAppClient WhatsApp { get; } = new();
+
+    public static readonly string WhatsAppToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+    public static readonly string WhatsAppAppSecret = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+    public static readonly string WhatsAppVerifyToken = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+
     public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
@@ -69,6 +75,11 @@ public sealed partial class PostgresFixture : IAsyncLifetime
             builder.UseSetting("Jwt:SigningKey", JwtKey);
             builder.UseSetting("Outbox:Enabled", "false");
             builder.UseSetting("BookingJobs:Enabled", "false");
+            builder.UseSetting("MessagingJobs:Enabled", "false");
+            // Ключи WhatsApp генерируются на запуск тестов; запросы к Meta не уходят — клиент подменён.
+            builder.UseSetting("Integrations:WhatsApp:AccessToken", WhatsAppToken);
+            builder.UseSetting("Integrations:WhatsApp:AppSecret", WhatsAppAppSecret);
+            builder.UseSetting("Integrations:WhatsApp:VerifyToken", WhatsAppVerifyToken);
             builder.UseSetting("Identity:PublicWebUrl", "https://hotel.test");
             builder.UseSetting("Storage:RootPath", FilesRoot);
             builder.UseSetting("RateLimiting:AuthStrictPerMinute", "100000");
@@ -87,6 +98,8 @@ public sealed partial class PostgresFixture : IAsyncLifetime
             {
                 services.RemoveAll<IEmailSender>();
                 services.AddSingleton<IEmailSender>(Emails);
+                services.RemoveAll<Hms.Modules.Messaging.Infrastructure.IWhatsAppClient>();
+                services.AddSingleton<Hms.Modules.Messaging.Infrastructure.IWhatsAppClient>(WhatsApp);
             });
         });
 

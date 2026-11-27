@@ -5,6 +5,7 @@ using Hms.Modules.Bookings.Domain;
 using Hms.Modules.Finance.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Housekeeping.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Modules.Rooms.Contracts;
 using Hms.Platform.Security;
 using Hms.Platform.Time;
@@ -29,6 +30,7 @@ internal sealed class FrontDeskService(
     Stays stays,
     ICurrentUser currentUser,
     IAuditTrail audit,
+    IGuestNotifications notifications,
     IHotelClock clock) : IFrontDeskService
 {
     /// <summary>Почасовую бронь можно заселить за час до начала (гость пришёл раньше).</summary>
@@ -79,6 +81,11 @@ internal sealed class FrontDeskService(
         }
 
         audit.Record(new AuditEntry("booking.checked_in", "Booking", booking.Id.ToString(), After: new { booking.Number, room = room.Number, Early = now < booking.StartsAt }));
+        if (booking.GuestId is { } checkedInGuest)
+        {
+            notifications.Enqueue(new GuestNotification(NotificationEvent.CheckInDone, checkedInGuest, booking.Id));
+        }
+
         return await SaveAsync(booking.Id, ct);
     }
 
@@ -140,6 +147,11 @@ internal sealed class FrontDeskService(
         await housekeeping.CreateAfterCheckOutAsync(roomId, booking.Id, plan.CleaningDueAt, ct);
         audit.Record(new AuditEntry("booking.checked_out", "Booking", booking.Id.ToString(),
             After: new { booking.Number, plan.Early, plan.Credit, Debt = Math.Max(0, debt) }));
+        if (booking.GuestId is { } checkedOutGuest)
+        {
+            notifications.Enqueue(new GuestNotification(NotificationEvent.CheckOutDone, checkedOutGuest, booking.Id));
+        }
+
         return await SaveAsync(booking.Id, ct);
     }
 

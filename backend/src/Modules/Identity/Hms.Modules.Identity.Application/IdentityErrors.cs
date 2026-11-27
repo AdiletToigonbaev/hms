@@ -9,6 +9,9 @@ public static class IdentityErrors
     public static readonly Error InvalidCredentials = Error.Unauthorized("auth.invalid_credentials", "Неверный логин или пароль.");
     public static readonly Error LockedOut = new("auth.locked_out", "Слишком много неудачных попыток. Повторите вход через 15 минут.", ErrorType.Forbidden);
     public static readonly Error EmailNotConfirmed = Error.Forbidden("auth.email_not_confirmed", "Подтвердите email по ссылке из письма.");
+    public static readonly Error InvalidCode = Error.Validation("auth.invalid_code", "Неверный или устаревший код. Запросите новый.");
+    public static readonly Error PhoneNotConfirmed = Error.Forbidden("auth.phone_not_confirmed", "Подтвердите регистрацию кодом из WhatsApp.");
+    public static readonly Error CodeTooSoon = Error.BusinessRule("auth.code_too_soon", "Новый код можно запросить через минуту.");
     public static readonly Error RefreshTokenInvalid = Error.Unauthorized("auth.refresh_token_invalid", "Сессия истекла. Войдите снова.");
     public static readonly Error RefreshTokenRotated = Error.Unauthorized("auth.refresh_token_rotated", "Сессия уже обновлена другим запросом.");
     public static readonly Error InvalidToken = Error.Validation("auth.invalid_token", "Ссылка недействительна или устарела.");

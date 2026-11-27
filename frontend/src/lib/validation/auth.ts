@@ -26,6 +26,15 @@ export const registerSchema = z.object({
   password,
   acceptPersonalData: z.literal(true, { error: "Необходимо согласие на обработку персональных данных." }),
   acceptWhatsApp: z.boolean(),
+  // Подтверждение регистрации: письмо или код в WhatsApp (если WhatsApp подключён) — решение 2026-11-24.
+  confirmBy: z.enum(["Email", "WhatsApp"]).default("Email"),
+})
+  .refine((v) => v.confirmBy !== "WhatsApp" || v.phone !== undefined, { message: "Для подтверждения в WhatsApp укажите телефон.", path: ["phone"] })
+  .refine((v) => v.confirmBy !== "WhatsApp" || v.acceptWhatsApp, { message: "Для подтверждения в WhatsApp нужно согласие на сообщения в WhatsApp.", path: ["acceptWhatsApp"] });
+
+export const confirmPhoneSchema = z.object({
+  userId: z.string().uuid(),
+  code: z.string().trim().regex(/^d{6}$/, "Код — 6 цифр."),
 });
 
 export const emailSchema = z.object({ email });

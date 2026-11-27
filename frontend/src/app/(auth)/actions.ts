@@ -10,6 +10,7 @@ import { homeFor, safeNextPath } from "@/lib/auth/routes";
 import {
   changePasswordSchema,
   checkbox,
+  confirmPhoneSchema,
   emailSchema,
   fieldErrors,
   loginSchema,
@@ -19,7 +20,7 @@ import {
 
 // Поля, которые возвращаются в форму при ошибке (пароли — никогда).
 const LOGIN_FIELDS = ["login"] as const;
-const REGISTER_FIELDS = ["fullName", "email", "phone", "acceptPersonalData", "acceptWhatsApp"] as const;
+const REGISTER_FIELDS = ["fullName", "email", "phone", "acceptPersonalData", "acceptWhatsApp", "confirmBy"] as const;
 const EMAIL_FIELDS = ["email"] as const;
 
 async function writeSession(tokens: TokenResponse) {
@@ -47,13 +48,34 @@ export async function registerAction(_: FormState, form: FormData): Promise<Form
     password: form.get("password"),
     acceptPersonalData: checkbox(form, "acceptPersonalData"),
     acceptWhatsApp: checkbox(form, "acceptWhatsApp"),
+    confirmBy: form.get("confirmBy") === "WhatsApp" ? "WhatsApp" : "Email",
   });
   if (!parsed.success) return withValues({ ok: false, fieldErrors: fieldErrors(parsed.error) }, form, REGISTER_FIELDS);
 
   const returnPath = safeNextPath(form.get("next") as string | null);
-  const result = await api("/auth/register", { method: "POST", body: { ...parsed.data, returnPath }, anonymous: true });
+  const result = await api<{ userId: string; confirmationChannel: "Email" | "WhatsApp" }>("/auth/register", {
+    method: "POST",
+    body: { ...parsed.data, returnPath },
+    anonymous: true,
+  });
   if (!result.ok) return withValues(toFormState(result.problem), form, REGISTER_FIELDS);
-  return { ok: true };
+  // Код в WhatsApp — форма ввода кода сразу после регистрации (refId — аккаунт, message — канал).
+  return { ok: true, refId: result.data.userId, message: result.data.confirmationChannel };
+}
+
+/** Код подтверждения из WhatsApp. */
+export async function confirmPhoneAction(_: FormState, form: FormData): Promise<FormState> {
+  const parsed = confirmPhoneSchema.safeParse({ userId: form.get("userId"), code: form.get("code") });
+  if (!parsed.success) return { ok: false, fieldErrors: fieldErrors(parsed.error) };
+  const result = await api("/auth/confirm-phone", { method: "POST", body: parsed.data, anonymous: true });
+  return result.ok ? { ok: true } : toFormState(result.problem);
+}
+
+export async function resendCodeAction(_: FormState, form: FormData): Promise<FormState> {
+  const userId = String(form.get("userId") ?? "");
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) return { ok: false, error: "auth.invalid_code" };
+  const result = await api("/auth/resend-code", { method: "POST", body: { userId }, anonymous: true });
+  return result.ok ? { ok: true, message: "resent" } : toFormState(result.problem);
 }
 
 export async function confirmEmailAction(_: FormState, form: FormData): Promise<FormState> {

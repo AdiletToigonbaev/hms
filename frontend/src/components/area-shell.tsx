@@ -37,11 +37,12 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
   // Значки в меню — то, что ждёт администратора: брони без подтверждения и уборки на проверке.
   const has = (href: string) => baseItems.some((i) => i.href === href);
   const can = (p: string) => user.permissions.includes(p);
-  const [pending, inspection] = await Promise.all([
+  const [pending, inspection, operator] = await Promise.all([
     can("booking.view") && has("/admin/bookings") ? api<{ pending: number }>("/bookings/pending-count") : null,
     (can("housekeeping.inspect") || can("housekeeping.manage")) && has("/admin/housekeeping")
       ? api<{ count: number }>("/housekeeping/awaiting-inspection-count")
       : null,
+    can("whatsapp.send") && has("/admin/messages") ? api<{ count: number }>("/whatsapp/conversations/needs-operator-count") : null,
   ]);
   const items = baseItems.map((i) => {
     if (i.href === "/admin/bookings" && pending?.ok && pending.data.pending > 0) {
@@ -49,6 +50,9 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
     }
     if (i.href === "/admin/housekeeping" && inspection?.ok && inspection.data.count > 0) {
       return { ...i, badge: inspection.data.count, badgeLabel: `Ждут проверки: ${inspection.data.count}` };
+    }
+    if (i.href === "/admin/messages" && operator?.ok && operator.data.count > 0) {
+      return { ...i, badge: operator.data.count, badgeLabel: `Ждут ответа администратора: ${operator.data.count}` };
     }
     return i;
   });

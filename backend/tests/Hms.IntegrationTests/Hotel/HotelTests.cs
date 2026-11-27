@@ -129,7 +129,7 @@ public class HotelTests(PostgresFixture db)
     }
 
     [Fact]
-    public async Task Integrations_BanksAndWhatsApp_CannotBeEnabledWithoutAccess()
+    public async Task Integrations_Banks_CannotBeEnabledWithoutAccess_WhatsAppNeedsPhoneNumberId()
     {
         var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
 
@@ -137,7 +137,7 @@ public class HotelTests(PostgresFixture db)
         list!.Select(i => i.Provider).Should().BeEquivalentTo(["MBank", "Optima", "WhatsApp", "Email"]);
         list!.Single(i => i.Provider == "MBank").Availability.Should().Be("awaiting_access");
 
-        foreach (var provider in new[] { "MBank", "Optima", "WhatsApp" })
+        foreach (var provider in new[] { "MBank", "Optima" })
         {
             var enable = await owner.PutAsJsonAsync($"/api/v1/settings/integrations/{provider}",
                 new UpdateIntegrationRequest(true, "Sandbox", null), Ct);
@@ -146,6 +146,13 @@ public class HotelTests(PostgresFixture db)
             (await owner.PostAsync(new Uri($"/api/v1/settings/integrations/{provider}/test", UriKind.Relative), null, Ct))
                 .StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         }
+
+        // WhatsApp: адаптер есть (Sprint 10), ключи в тестах заданы — без Phone Number ID включить нельзя.
+        // Тесты сообщений включают WhatsApp (общая коллекция «whatsapp» — не параллельно), поэтому сначала выключаем.
+        (await owner.PutAsJsonAsync("/api/v1/settings/integrations/WhatsApp", new UpdateIntegrationRequest(false, "Sandbox", null), Ct)).EnsureSuccessStatusCode();
+        var whatsApp = await owner.PutAsJsonAsync("/api/v1/settings/integrations/WhatsApp", new UpdateIntegrationRequest(true, "Sandbox", null), Ct);
+        whatsApp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await ProblemCodeAsync(whatsApp)).Should().Be("integration.phone_number_id_required");
     }
 
     [Fact]

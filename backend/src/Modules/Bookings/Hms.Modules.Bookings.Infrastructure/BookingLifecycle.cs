@@ -3,6 +3,7 @@ using Hms.Modules.Bookings.Application;
 using Hms.Modules.Bookings.Contracts;
 using Hms.Modules.Bookings.Domain;
 using Hms.Modules.Hotel.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Platform.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -22,6 +23,7 @@ internal sealed partial class BookingLifecycle(
     IHotelContext hotel,
     IHotelClock clock,
     IAuditTrail audit,
+    IGuestNotifications notifications,
     ILogger<BookingLifecycle> logger) : IBookingLifecycle
 {
     private const int BatchSize = 100;
@@ -43,7 +45,7 @@ internal sealed partial class BookingLifecycle(
         var expired = 0;
         foreach (var id in expiredIds)
         {
-            if (await ProcessAsync(id, b => b.Expire(now).IsSuccess, b => new AuditEntry("booking.expired", "Booking", b.Id.ToString(), After: new { b.Number }), ct))
+            if (await ProcessAsync(id, b => b.Expire(now).IsSuccess, b => new AuditEntry("booking.expired", "Booking", b.Id.ToString(), After: new { b.Number }), ct, NotificationEvent.BookingCancelled))
             {
                 expired++;
             }
@@ -82,7 +84,7 @@ internal sealed partial class BookingLifecycle(
         return new LifecycleRun(expired, noShows);
     }
 
-    private async Task<bool> ProcessAsync(Guid id, Func<Booking, bool> change, Func<Booking, AuditEntry> entry, CancellationToken ct)
+    private async Task<bool> ProcessAsync(Guid id, Func<Booking, bool> change, Func<Booking, AuditEntry> entry, CancellationToken ct, NotificationEvent? notify = null)
     {
         var booking = await db.Set<Booking>().Include(b => b.Rooms).Include(b => b.Extensions).FirstOrDefaultAsync(b => b.Id == id, ct);
         if (booking is null || !change(booking))
@@ -92,6 +94,12 @@ internal sealed partial class BookingLifecycle(
         }
 
         audit.Record(entry(booking));
+        // Истёкшая неподтверждённая бронь: гостю сообщаем, что бронь снята (текст — шаблон «Бронь отменена»).
+        if (notify is { } e && booking.GuestId is { } guestId)
+        {
+            notifications.Enqueue(new GuestNotification(e, guestId, booking.Id));
+        }
+
         try
         {
             await db.SaveChangesAsync(ct);

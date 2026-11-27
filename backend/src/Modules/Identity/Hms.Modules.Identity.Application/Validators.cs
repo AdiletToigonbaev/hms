@@ -39,6 +39,9 @@ public sealed class RegisterRequestValidator : AbstractValidator<RegisterRequest
         // Куда вернуть гостя после подтверждения email: только путь этого сайта (без открытого перенаправления).
         RuleFor(x => x.ReturnPath).Must(p => p is null || (p.Length <= 500 && p.StartsWith('/') && !p.StartsWith("//", StringComparison.Ordinal) && !p.StartsWith("/\\", StringComparison.Ordinal)))
             .WithMessage("Некорректный адрес возврата.");
+        RuleFor(x => x.ConfirmBy).Must(c => c is null or "Email" or "WhatsApp").WithMessage("Подтверждение — по Email или WhatsApp.");
+        RuleFor(x => x.Phone).NotEmpty().When(x => x.ConfirmBy == "WhatsApp").WithMessage("Для подтверждения в WhatsApp укажите телефон.");
+        RuleFor(x => x.AcceptWhatsApp).Equal(true).When(x => x.ConfirmBy == "WhatsApp").WithMessage("Для подтверждения в WhatsApp нужно согласие на сообщения в WhatsApp.");
     }
 }
 
@@ -171,5 +174,22 @@ public sealed class SetPermissionsRequestValidator : AbstractValidator<SetPermis
             o.RuleFor(x => x.LimitAmount).GreaterThan(0).When(x => x.LimitAmount is not null)
                 .WithMessage("Лимит должен быть больше нуля.");
         });
+    }
+}
+
+public sealed class ConfirmPhoneRequestValidator : AbstractValidator<ConfirmPhoneRequest>
+{
+    public ConfirmPhoneRequestValidator()
+    {
+        RuleFor(x => x.UserId).NotEmpty();
+        RuleFor(x => x.Code).NotEmpty().WithMessage("Введите код.").Matches("^[0-9]{6}$").WithMessage("Код — 6 цифр.");
+    }
+}
+
+public sealed class ResendCodeRequestValidator : AbstractValidator<ResendCodeRequest>
+{
+    public ResendCodeRequestValidator()
+    {
+        RuleFor(x => x.UserId).NotEmpty();
     }
 }

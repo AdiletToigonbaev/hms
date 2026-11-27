@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { api } from "@/lib/api/server";
+import type { ConfirmationChannels } from "@/lib/api/types";
 import { RegisterForm } from "./register-form";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -20,9 +22,15 @@ export default async function RegisterPage() {
       </CardHeader>
       <CardContent>
         <Suspense>
-          <RegisterForm />
+          <RegisterFormWithChannels />
         </Suspense>
       </CardContent>
     </Card>
   );
+}
+
+/** Код в WhatsApp предлагается, только когда WhatsApp подключён и шаблон кода одобрен (иначе — письмо). */
+async function RegisterFormWithChannels() {
+  const channels = await api<ConfirmationChannels>("/auth/confirmation-channels", { anonymous: true });
+  return <RegisterForm whatsAppAvailable={channels.ok && channels.data.whatsApp} />;
 }

@@ -51,31 +51,72 @@ internal sealed partial class OutboxProcessor(
                 """)
             .ToListAsync(cancellationToken);
 
+        // Каждое сообщение — со своей точкой сохранения: если изменения обработчика не сохраняются (например, нарушено
+        // ограничение БД), откатывается только это сообщение, а не вся пачка — одно «ядовитое» сообщение не блокирует очередь.
+        // Блокировки строк пачки (FOR UPDATE) сохраняются до конца транзакции.
         foreach (var message in batch)
         {
+            // После отката предыдущего сообщения контекст очищен — оставшиеся сообщения пачки снова отслеживаем.
+            if (db.Entry(message).State == EntityState.Detached)
+            {
+                db.Attach(message);
+            }
+
             if (!_handlers.TryGetValue(message.Type, out var handler))
             {
                 message.MarkFailedAttempt(now, $"Нет обработчика для типа {message.Type}", permanent: true, options.Value.MaxAttempts);
                 LogNoHandler(logger, message.Type, message.Id);
+                await db.SaveChangesAsync(cancellationToken);
                 continue;
             }
 
+            var savepoint = $"outbox_{message.Id:N}";
+            await transaction.CreateSavepointAsync(savepoint, cancellationToken);
             try
             {
                 await handler.HandleAsync(message.Payload, cancellationToken);
                 message.MarkDone(time.GetUtcNow(), handler.IsSensitive);
+                await db.SaveChangesAsync(cancellationToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException and not DbUpdateException)
             {
+                // Ошибка обработчика (сеть, SMTP): его изменения (например, счётчик попыток сообщения) сохраняются вместе с отметкой.
                 var permanent = ex is PermanentOutboxException;
                 message.MarkFailedAttempt(time.GetUtcNow(), ex.Message, permanent, options.Value.MaxAttempts);
                 LogFailed(logger, ex, message.Type, message.Id, message.Attempts, permanent);
+                await SaveOrRollbackAsync(transaction, savepoint, message, ex, cancellationToken);
+            }
+            catch (DbUpdateException ex)
+            {
+                await RollbackAndMarkAsync(transaction, savepoint, message.Id, ex, cancellationToken);
             }
         }
 
-        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return batch.Count;
+    }
+
+    private async Task SaveOrRollbackAsync(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, string savepoint, OutboxMessage message, Exception cause, CancellationToken ct)
+    {
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            await RollbackAndMarkAsync(transaction, savepoint, message.Id, new AggregateException(cause, ex), ct);
+        }
+    }
+
+    /// <summary>Изменения обработчика не сохранились: откат к точке сохранения и отметка неудачной попытки отдельно.</summary>
+    private async Task RollbackAndMarkAsync(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction, string savepoint, Guid messageId, Exception ex, CancellationToken ct)
+    {
+        await transaction.RollbackToSavepointAsync(savepoint, ct);
+        db.ChangeTracker.Clear();
+        var message = await db.Set<OutboxMessage>().FirstAsync(m => m.Id == messageId, ct);
+        message.MarkFailedAttempt(time.GetUtcNow(), $"Не удалось сохранить результат: {ex.GetBaseException().Message}", permanent: false, options.Value.MaxAttempts);
+        await db.SaveChangesAsync(ct);
+        LogFailed(logger, ex, message.Type, message.Id, message.Attempts, false);
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Outbox: нет обработчика для {Type} (сообщение {MessageId})")]

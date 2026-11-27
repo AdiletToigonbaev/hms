@@ -6,6 +6,7 @@ using Hms.Modules.Finance.Contracts;
 using Hms.Modules.Finance.Domain;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Platform.Security;
 using Hms.Platform.Time;
 using Hms.SharedKernel;
@@ -75,6 +76,7 @@ internal sealed class PaymentService(
     ICurrentUser currentUser,
     IUserAccessProvider access,
     IAuditTrail audit,
+    IGuestNotifications notifications,
     IHotelClock clock) : IPaymentService
 {
     public async Task<PaymentPageDto> ListAsync(PaymentQuery q, CancellationToken ct)
@@ -173,6 +175,11 @@ internal sealed class PaymentService(
         db.Set<Payment>().Add(payment);
         audit.Record(new AuditEntry("payment.registered", "Payment", payment.Id.ToString(),
             After: new { Type = type.ToString(), Method = method.ToString(), payment.Amount, payment.BookingId, Booking = charge?.Number }));
+        if (payment.BookingId is { } paidBooking && payment.GuestId is { } payer && type != PaymentType.Other)
+        {
+            notifications.Enqueue(new GuestNotification(NotificationEvent.PaymentReceived, payer, paidBooking, payment.Id, payment.Amount));
+        }
+
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return await ToDtoAsync(payment, ct);

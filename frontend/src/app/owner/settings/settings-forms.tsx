@@ -859,14 +859,14 @@ export function IntegrationForm({
           </SubmitButton>
         </div>
       </form>
-      {i.provider === "Email" && canEnable && (
+      {(i.provider === "Email" || i.provider === "WhatsApp") && canEnable && (
         <form action={test} className="grid gap-2">
           <input type="hidden" name="provider" value={i.provider} />
-          <FormAlert state={testState} success={t("testDone")} />
+          <FormAlert state={testState} success={i.provider === "WhatsApp" ? t("testWhatsAppDone") : t("testDone")} />
           <div>
             <SubmitButton pending={testing} variant="ghost">
               <Send aria-hidden />
-              {t("test")}
+              {i.provider === "WhatsApp" ? t("testWhatsApp") : t("test")}
             </SubmitButton>
           </div>
         </form>

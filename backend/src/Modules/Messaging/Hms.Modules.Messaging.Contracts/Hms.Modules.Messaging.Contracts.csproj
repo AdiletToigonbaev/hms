@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Публичный контракт: уведомления гостю, коды подтверждения, очистка переписки при обезличивании. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Hms.SharedKernel\Hms.SharedKernel.csproj" />
+  </ItemGroup>
+</Project>

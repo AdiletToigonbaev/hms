@@ -5,6 +5,7 @@ using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Guests.Domain;
 using Hms.Modules.Hotel.Contracts;
 using Hms.Modules.Identity.Contracts;
+using Hms.Modules.Messaging.Contracts;
 using Hms.Platform.Security;
 using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ internal sealed class GuestService(
     IHotelContext hotel,
     IGuestBookingQueries bookings,
     Hms.Modules.Finance.Contracts.IPaymentQueries payments,
+    IGuestMessagesCleanup messages,
     IUserDirectory users,
     ICurrentUser currentUser,
     IAuditTrail audit,
@@ -213,6 +215,7 @@ internal sealed class GuestService(
         // Одна транзакция: карточка и брони (контакт-снимок и история изменений) обезличиваются вместе или никак.
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         await bookings.AnonymizeAsync(id, Guest.AnonymizedName, ct);
+        await messages.AnonymizeAsync(id, ct);
         audit.Record(new AuditEntry("guest.anonymized", "Guest", id.ToString()));
         var saved = await SaveAsync(guest, ct);
         if (saved.IsSuccess)
