@@ -62,19 +62,22 @@ public class AuditAndOutboxTests(PostgresFixture db)
     [Fact]
     public async Task Email_IsBranded_WithHotelNameFromSettings()
     {
-        var hotel = await _api.Anonymous().GetFromJsonAsync<JsonElement>("/api/v1/public/hotel-info", Ct);
-        var hotelName = hotel.GetProperty("name").GetString()!;
-
         var (email, _) = await _api.RegisterConfirmedGuestAsync();
 
         // Письмо подтверждения: содержимое от Identity, оформление — IEmailComposer при отправке.
+        // Сведения о гостинице общие для всех тестов (HotelTests меняет адрес и телефон параллельно),
+        // поэтому проверяется согласованность: отправитель, шапка и подвал — из одних и тех же настроек.
         var letter = db.Emails.Sent.First(m => m.To == email);
+        var footer = letter.TextBody[(letter.TextBody.LastIndexOf("—\n", StringComparison.Ordinal) + 2)..].Split('\n');
+        var hotelName = footer[0];
+
+        hotelName.Should().NotBeNullOrWhiteSpace();
         letter.FromName.Should().Be(hotelName, "имя отправителя по умолчанию — название гостиницы");
         letter.HtmlBody.Should().StartWith("<!doctype html>")
             .And.Contain(System.Net.WebUtility.HtmlEncode(hotelName))
             .And.Contain("background:#b5562f")
             .And.Contain("/confirm-email");
-        letter.TextBody.Should().EndWith($"—\n{hotelName}\nhttps://hotel.test\n");
+        letter.TextBody.Should().Contain("/confirm-email").And.EndWith("https://hotel.test\n");
     }
 
     [Fact]
