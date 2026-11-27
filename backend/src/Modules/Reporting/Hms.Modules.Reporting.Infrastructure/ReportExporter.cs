@@ -76,10 +76,29 @@ internal sealed class ReportExporter : IReportExporter
         }
 
         sheet.SheetView.FreezeRows(header);
-        sheet.Columns(1, Math.Max(2, report.Columns.Count)).AdjustToContents(1, row, 8, 60);
+        FitColumns(sheet, Math.Max(2, report.Columns.Count), 1, row);
         using var stream = new MemoryStream();
         book.SaveAs(stream);
         return stream.ToArray();
+    }
+
+    /// <summary>
+    /// Ширина колонок по длине текста (8–60 символов). Не используем <c>AdjustToContents</c>:
+    /// ClosedXML для него обходит системные шрифты и падает, если папка шрифтов недоступна (или их нет в контейнере).
+    /// </summary>
+    private static void FitColumns(IXLWorksheet sheet, int columns, int fromRow, int toRow)
+    {
+        for (var c = 1; c <= columns; c++)
+        {
+            var longest = 0;
+            for (var r = fromRow; r <= toRow; r++)
+            {
+                var text = sheet.Cell(r, c).GetFormattedString();
+                longest = Math.Max(longest, text.Length);
+            }
+
+            sheet.Column(c).Width = Math.Clamp(longest + 2, 8, 60);
+        }
     }
 
     /// <summary>Значение ячейки с форматом: деньги — с копейками, проценты — Excel-процент, даты — датой.</summary>
