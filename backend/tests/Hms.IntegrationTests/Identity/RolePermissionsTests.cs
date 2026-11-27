@@ -82,7 +82,7 @@ public class RolePermissionsTests(PostgresFixture db)
             (await owner.PutAsJsonAsync("/api/v1/roles/Administrator/permissions", new SetRolePermissionsRequest(grants), Ct)).StatusCode.Should().Be(HttpStatusCode.OK);
 
             // Релиз: миграции и сидеры запускаются снова.
-            await DatabaseInitializer.MigrateAndSeedAsync(db.Factory.Services, Ct);
+            await db.MigrateAsync(Ct);
 
             var after = (await owner.GetFromJsonAsync<RolePermissionsDto>("/api/v1/roles/Administrator/settings", Ct))!;
             after.Grants.Should().Contain(g => g.Code == Permissions.PaymentReverse);

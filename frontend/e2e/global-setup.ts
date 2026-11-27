@@ -10,9 +10,9 @@ const ownerPassword = process.env.E2E_OWNER_PASSWORD ?? "owner-new-password-1";
  * Без этого тесты из разных файлов, идущие параллельно, входили бы раньше, чем пароль сменён.
  */
 export default async function globalSetup(config: FullConfig) {
-  const baseURL = config.projects[0].use.baseURL ?? "http://localhost:3000";
+  const { baseURL = "http://localhost:3000", ignoreHTTPSErrors } = config.projects[0].use;
   const browser = await chromium.launch();
-  const page = await browser.newPage({ baseURL, locale: "ru-RU" });
+  const page = await browser.newPage({ baseURL, locale: "ru-RU", ignoreHTTPSErrors });
   try {
     const login = async (password: string) => {
       await page.goto("/login");

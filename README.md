@@ -14,7 +14,7 @@
 | Backend | .NET 10 LTS, ASP.NET Core, EF Core + Npgsql, Serilog, модульный монолит |
 | Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, shadcn/ui, Lucide, next-intl, TanStack Query |
 | БД | PostgreSQL 18 |
-| Инфраструктура | Docker, Docker Compose, Nginx (Sprint 11), GitHub Actions |
+| Инфраструктура | Docker, Docker Compose, Nginx, Let's Encrypt (certbot), age + rclone (бэкапы), k6, GitHub Actions |
 
 ## Требования для разработки
 - .NET SDK 10.0.404+ (версия зафиксирована в `backend/global.json`)
@@ -91,9 +91,24 @@ dotnet ef database update      --project src/Hms.Persistence --startup-project s
 ```
 backend/   .NET solution: src/ (Api, SharedKernel, Platform, Persistence, Modules/ — с Sprint 1), tests/
 frontend/  Next.js: src/app, components, lib, i18n; messages/ — тексты интерфейса
-deploy/    docker-compose.yml (разработка), env.example; production-конфигурация — Sprint 11
+deploy/    docker-compose.yml (разработка), env.example;
+           docker-compose.prod.yml + prod.sh (сервер), nginx/, backup/, loadtest/, production.env.example
 docs/      требования, архитектура, БД, API, интеграции, план
 ```
 
 ## Развёртывание на сервере
-Будет описано в Sprint 11 (Nginx, HTTPS, домен, бэкапы, production-переменные окружения).
+Полная инструкция — [`docs/development/deployment.md`](docs/development/deployment.md): подготовка VPS (Ubuntu, Docker, ufw, SSH), домен и HTTPS, секреты, релиз, бэкапы и ежемесячная проверка восстановления.
+
+Коротко (на сервере, из корня репозитория):
+```bash
+cp deploy/production.env.example deploy/.env.production && chmod 600 deploy/.env.production
+# заполнить: DOMAIN, пароли БД, JWT_SIGNING_KEY (openssl rand -base64 48), SMTP_*, OWNER_*, BACKUP_AGE_RECIPIENT
+./deploy/prod.sh check        # проверка переменных и конфигурации
+./deploy/prod.sh release      # сборка, миграции, запуск
+./deploy/prod.sh cert-init    # сертификат Let's Encrypt (DNS уже указывает на сервер)
+./deploy/prod.sh status       # контейнеры и готовность API
+```
+Релиз новой версии: `./deploy/prod.sh backup && git pull && ./deploy/prod.sh release`.
+Бэкапы: ежедневно, зашифрованы ключом age (приватный ключ — у владельца, не на сервере); проверка — `./deploy/prod.sh restore-check <файл>`.
+
+Проверить production-сборку без сервера (https://localhost, как в CI): `./deploy/prod-local-check.sh up` — см. deployment.md §10.

@@ -38,7 +38,19 @@ public sealed partial class PostgresFixture : IAsyncLifetime
         .WithDatabase("hms_test")
         .Build();
 
+    /// <summary>Подключение владельца схемы (миграции, служебные проверки в тестах).</summary>
     public string ConnectionString => _container.GetConnectionString();
+
+    /// <summary>Роль приложения с ограниченными правами — под ней работает API, как в production.</summary>
+    public const string AppRoleName = "hms_app_test";
+
+    public static readonly string AppRolePassword = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
+
+    public string AppConnectionString => new Npgsql.NpgsqlConnectionStringBuilder(ConnectionString)
+    {
+        Username = AppRoleName,
+        Password = AppRolePassword,
+    }.ConnectionString;
 
     public WebApplicationFactory<Program> Factory { get; private set; } = null!;
 
@@ -53,8 +65,9 @@ public sealed partial class PostgresFixture : IAsyncLifetime
     public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
+        // Как при релизе: migrate под владельцем схемы создаёт роль приложения, API работает под ней.
+        await MigrateAsync(CancellationToken.None);
         Factory = CreateFactory();
-        await DatabaseInitializer.MigrateAndSeedAsync(Factory.Services);
 
         // Первый вход владельца: временный пароль из Bootstrap → обязательная смена.
         using var client = Factory.CreateClient();
@@ -66,12 +79,24 @@ public sealed partial class PostgresFixture : IAsyncLifetime
         change.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Команда <c>migrate</c> как при релизе: под владельцем схемы, с выдачей прав роли приложения.</summary>
+    public async Task MigrateAsync(CancellationToken ct)
+    {
+        await using var migrator = CreateFactory(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Hms"] = ConnectionString,
+            ["Database:AppRole:Name"] = AppRoleName,
+            ["Database:AppRole:Password"] = AppRolePassword,
+        });
+        await DatabaseInitializer.MigrateAndSeedAsync(migrator.Services, ct);
+    }
+
     /// <summary>Хост API, подключённый к тестовой БД. Доп. настройки — для отдельных сценариев (например, лимиты).</summary>
     public WebApplicationFactory<Program> CreateFactory(IDictionary<string, string?>? overrides = null) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
-            builder.UseSetting("ConnectionStrings:Hms", ConnectionString);
+            builder.UseSetting("ConnectionStrings:Hms", AppConnectionString);
             builder.UseSetting("Jwt:SigningKey", JwtKey);
             builder.UseSetting("Outbox:Enabled", "false");
             builder.UseSetting("BookingJobs:Enabled", "false");

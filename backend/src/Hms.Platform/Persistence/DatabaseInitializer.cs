@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -14,8 +15,16 @@ public static partial class DatabaseInitializer
         var provider = scope.ServiceProvider;
         var logger = provider.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(DatabaseInitializer));
 
-        await provider.GetRequiredService<DbContext>().Database.MigrateAsync(cancellationToken);
+        var db = provider.GetRequiredService<DbContext>();
+        await db.Database.MigrateAsync(cancellationToken);
         LogMigrated(logger);
+
+        var appRole = provider.GetRequiredService<IConfiguration>().GetSection(DatabaseAppRoleOptions.Section).Get<DatabaseAppRoleOptions>();
+        if (appRole?.IsConfigured == true)
+        {
+            await DatabaseAppRole.ApplyAsync(db, appRole, cancellationToken);
+            LogAppRole(logger, appRole.Name!);
+        }
 
         foreach (var seeder in provider.GetServices<IDataSeeder>().OrderBy(s => s.Order))
         {
@@ -26,6 +35,9 @@ public static partial class DatabaseInitializer
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Миграции БД применены")]
     private static partial void LogMigrated(ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Права роли приложения {Role} выданы")]
+    private static partial void LogAppRole(ILogger logger, string role);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Сидер {Seeder} выполнен")]
     private static partial void LogSeeded(ILogger logger, string seeder);

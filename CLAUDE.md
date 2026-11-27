@@ -14,8 +14,9 @@
 - **Sprint 7 (заселение, выселение, досрочный выезд, уборка, заявки о неисправностях) — завершён**, в `main`.
 - **Sprint 8 (публичный сайт, бронирование гостем, кабинет гостя, SEO) — завершён**, в `main`.
 - **Sprint 9 (дашборды владельца и администратора, 8 отчётов, выгрузка Excel/PDF) — завершён**, в `main`.
-- **Sprint 10 (сообщения: уведомления email/WhatsApp, напоминания, история и статусы, автоответчик, вебхук, код подтверждения в WhatsApp) — завершён** (адаптер Cloud API готов, отправка в WhatsApp — после доступов Meta, Sprint 12).
-- Следующий: Sprint 11 (production: Nginx, HTTPS, бэкапы, VPS) — только после «подтверждаю».
+- **Sprint 10 (сообщения: уведомления email/WhatsApp, напоминания, история и статусы, автоответчик, вебхук, код подтверждения в WhatsApp) — завершён**, в `main` (адаптер Cloud API готов, отправка в WhatsApp — после доступов Meta, Sprint 12).
+- **Sprint 11 (production: Nginx, HTTPS, бэкапы, роль БД приложения, нагрузочный smoke) — подготовлен** и проверен на https://localhost и в CI; запуск на VPS — когда будут сервер и домен (`docs/development/deployment.md`).
+- Следующий: Sprint 12 (WhatsApp и онлайн-оплата — после доступов Meta и банков) — только после «подтверждаю».
 - Журнал спринтов и отклонения от плана: `docs/development/development-roadmap.md` §8.
 
 ## Приоритет источников
@@ -97,9 +98,14 @@ npx playwright install chromium                   # один раз
 npm run test:e2e                                  # E2E против запущенного стека; API поднять с AUTH_RATE_LIMIT_PER_MINUTE=1000 (как в CI), иначе входы упрутся в лимит 10/мин; локально 4 воркера (больше — таймауты)
 
 # окружение (из корня)
-docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web
+docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web (РАЗРАБОТКА)
 docker compose -f deploy/docker-compose.yml up -d db mailpit   # только инфраструктура
 node deploy/dev-data/seed.mjs                                  # ЛОКАЛЬНО: сброс тестовых данных и правдоподобный набор (неделя назад, 2 недели вперёд)
+
+# production (на сервере; deploy/.env.production из production.env.example) — docs/development/deployment.md
+./deploy/prod.sh check | release | cert-init | status | backup | backups | restore-check <файл> | restore-apply <файл>
+# проверка production-сборки без сервера (https://localhost, как CI; dev-стек остановить — порт 8025)
+./deploy/prod-local-check.sh up | backup-check | down
 ```
 Проверка перед завершением этапа: backend build + format + все тесты; frontend lint + typecheck + test + build; `docker compose up`, `/health/ready` = Healthy и `npm run test:e2e`.
 Dev-владелец (только локально): `owner@hms.local` / `owner-dev-password` → при первом входе смена пароля. Письма — http://localhost:8025.
@@ -142,6 +148,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`, `BookingStatusBadge`, `PriceBreakdown`; меню персонала — `lib/nav.ts` (по роли).
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.
 - Модули читают номерной фонд через `IRoomDirectory` (Rooms.Contracts), цену — через `IPriceCalculator` (Pricing.Contracts); Rooms узнаёт о бронях через `IRoomBookingQueries` (Bookings.Contracts).
+- Production: API работает под ролью БД без DDL и без изменения аудита (`DatabaseAppRole`, создаёт `migrate` по `Database:AppRole:*`); интеграционные тесты — под такой же ролью (`PostgresFixture.AppConnectionString`; служебный SQL в тестах — `ConnectionString` владельца, релиз в тесте — `db.MigrateAsync`). Новые требования к правам БД (новая схема — автоматически) проверять тестами под этой ролью. В production не допускаются значения разработки (`ProductionConfigurationCheck`). Nginx — `deploy/nginx/` (`add_header` только на уровне server; лимиты — от флуда, точные — в API).
 - Сырой SQL в миграциях (exclusion constraint, generated columns) — с комментарием и симметричным `Down`. Дочерние сущности с Id из домена — `ValueGeneratedNever()`, иначе EF сделает UPDATE вместо INSERT.
 
 ## Открытые вопросы

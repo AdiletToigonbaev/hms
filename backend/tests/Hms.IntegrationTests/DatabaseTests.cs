@@ -69,6 +69,51 @@ public class DatabaseTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task AppRole_IsNotSuperuser_AndOwnsNothing()
+    {
+        await using var connection = new NpgsqlConnection(db.AppConnectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand(
+            "SELECT rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls FROM pg_roles WHERE rolname = current_user", connection);
+
+        var privileged = (bool)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!;
+
+        privileged.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("CREATE TABLE bookings.probe (id int)")]
+    [InlineData("ALTER TABLE finance.payments DISABLE TRIGGER payments_immutable")]
+    [InlineData("ALTER TABLE audit.audit_logs DISABLE TRIGGER audit_logs_append_only")]
+    [InlineData("DROP TABLE audit.audit_logs")]
+    [InlineData("UPDATE audit.audit_logs SET action = 'x'")]
+    [InlineData("DELETE FROM audit.audit_logs")]
+    [InlineData("TRUNCATE audit.audit_logs")]
+    [InlineData("DELETE FROM platform.__ef_migrations_history")]
+    [InlineData("CREATE SCHEMA probe")]
+    public async Task AppRole_CannotChangeSchema_OrRewriteAudit(string sql)
+    {
+        await using var connection = new NpgsqlConnection(db.AppConnectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+
+        var act = () => ExecAsync(connection, sql);
+
+        // Отказ по правам (нет права или «нужно быть владельцем») — до триггеров дело не доходит.
+        (await act.Should().ThrowAsync<PostgresException>()).Which.SqlState.Should().Be(PostgresErrorCodes.InsufficientPrivilege);
+    }
+
+    [Fact]
+    public async Task AppRole_RepeatedMigrate_IsIdempotent()
+    {
+        await db.MigrateAsync(TestContext.Current.CancellationToken);
+
+        await using var connection = new NpgsqlConnection(db.AppConnectionString);
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var command = new NpgsqlCommand("SELECT count(*) FROM identity.roles", connection);
+        ((long)(await command.ExecuteScalarAsync(TestContext.Current.CancellationToken))!).Should().BePositive();
+    }
+
+    [Fact]
     public async Task HealthReady_WithDatabase_ReturnsHealthy()
     {
         using var client = db.Factory.CreateClient();

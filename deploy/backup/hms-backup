@@ -1,0 +1,23 @@
+#!/bin/sh
+# Точка входа контейнера backup. Команды:
+#   schedule                 ежедневный бэкап в BACKUP_TIME (по умолчанию в контейнере)
+#   backup                   бэкап сейчас
+#   health                   есть ли успешный бэкап за последние 26 часов (healthcheck)
+#   list                     бэкапы на сервере
+#   restore-check <файл>     восстановить во временную БД, сверить с манифестом, удалить временную БД
+#   restore-apply <файл> --yes   ЗАМЕНИТЬ рабочую БД и файлы содержимым бэкапа (API должен быть остановлен)
+# Подробно: docs/development/deployment.md, раздел «Резервные копии».
+set -eu
+lib=/usr/local/lib/hms-backup
+cmd=${1:-schedule}
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+    schedule) exec "$lib/schedule.sh" ;;
+    backup) exec "$lib/backup.sh" ;;
+    health) exec "$lib/backup.sh" --health ;;
+    list) ls -lh "${BACKUP_DIR:-/backups}"/hms-*.tar.age 2>/dev/null || echo "Бэкапов нет" ;;
+    restore-check) exec "$lib/restore.sh" check "$@" ;;
+    restore-apply) exec "$lib/restore.sh" apply "$@" ;;
+    *) echo "Неизвестная команда: $cmd (schedule | backup | health | list | restore-check | restore-apply)" >&2; exit 2 ;;
+esac

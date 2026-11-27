@@ -18,6 +18,8 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3000",
     locale: "ru-RU",
     trace: "retain-on-failure",
+    // Проверка production-сборки локально и в CI: nginx с временным самоподписанным сертификатом.
+    ignoreHTTPSErrors: process.env.E2E_IGNORE_HTTPS_ERRORS === "1",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 });

@@ -59,6 +59,16 @@ try
     builder.Services.AddMessagingModule(builder.Configuration);
     builder.Services.AddIdentityModule(builder.Configuration);
 
+    // Fail fast: в production не допускаются ключи и пароли из окружения разработки.
+    if (builder.Environment.IsProduction())
+    {
+        var configErrors = ProductionConfigurationCheck.Validate(builder.Configuration);
+        if (configErrors.Count > 0)
+        {
+            throw new InvalidOperationException("Конфигурация production небезопасна: " + string.Join(" ", configErrors));
+        }
+    }
+
     var app = builder.Build();
 
     // Fail fast: часовой пояс отеля должен разрешаться (в образе нужен tzdata).

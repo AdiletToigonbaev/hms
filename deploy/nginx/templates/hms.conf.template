@@ -1,0 +1,102 @@
+# Сайт HMS. ${DOMAIN} подставляется при старте контейнера (envsubst образа nginx);
+# переменные nginx ($host и т.п.) не трогаются — envsubst заменяет только заданные переменные окружения.
+
+upstream hms_web {
+    server web:3000;
+    keepalive 16;
+}
+
+upstream hms_api {
+    server api:8080;
+    keepalive 8;
+}
+
+# Запросы с чужим Host (сканеры, прямой заход по IP) — закрыть соединение без ответа.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 444; }
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
+
+# Дополнительные имена (DOMAIN_ALIASES, обычно www.) → 301 на ${DOMAIN}: файл hms-aliases.conf пишет hms-cert.
+
+# HTTP → HTTPS; проверка Let's Encrypt (HTTP-01) — по HTTP.
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN};
+    location /.well-known/acme-challenge/ { root /var/www/certbot; }
+    location / { return 301 https://${DOMAIN}$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    # Путь к сертификату выбирает hms-cert: Let's Encrypt, а до первого выпуска — временный самоподписанный.
+    # Протоколы и шифры — в nginx.conf (общие с редиректом www).
+    include /etc/nginx/hms-cert.conf;
+
+    # Заголовки безопасности (security-architecture §4). add_header — только на уровне server:
+    # add_header внутри location отменил бы эти строки.
+    # CSP без script-src: Next.js вставляет inline-скрипты, а nonce несовместим со статической
+    # оболочкой страниц (Cache Components) — решение в docs/development/deployment.md.
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
+    add_header Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'" always;
+
+    # Фото номеров до 10 МБ идут через Server Actions (лимит Next.js 11 МБ).
+    client_max_body_size 12m;
+    limit_conn perip 300;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    # Заменяем, а не дописываем: клиент не может подставить чужой IP (по нему лимиты входа в API).
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_hide_header X-Powered-By;
+    proxy_connect_timeout 5s;
+    # Выгрузка отчётов в Excel/PDF может занимать десятки секунд.
+    proxy_read_timeout 120s;
+
+    # Вебхуки Meta (WhatsApp), позже — банков. Подпись проверяет API. Тело до 3 МБ (лимит API).
+    location /api/v1/webhooks/ {
+        limit_req zone=webhooks burst=50 nodelay;
+        client_max_body_size 3m;
+        proxy_pass http://hms_api;
+    }
+
+    # Остальной API снаружи закрыт: браузер ходит в API только через Next.js.
+    location /api/v1/ {
+        return 404;
+    }
+
+    # Статика сборки Next.js (immutable, с хэшем в имени) — без лимита запросов.
+    location /_next/static/ {
+        proxy_pass http://hms_web;
+    }
+
+    location / {
+        limit_req zone=site burst=1000 nodelay;
+        # Стриминг ответов Next.js (Suspense, Partial Prerendering) — без буферизации.
+        proxy_buffering off;
+        proxy_pass http://hms_web;
+    }
+}

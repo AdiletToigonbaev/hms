@@ -97,5 +97,7 @@ flowchart LR
 ## 7. Окружения и деплой
 `docker compose`: `nginx`, `web` (Next.js standalone), `api`, `migrate` (одноразовое применение миграций), `db` (PostgreSQL 18), `backup` (pg_dump по расписанию + выгрузка вне сервера); в разработке дополнительно `mailpit`. TLS — Let's Encrypt (certbot). Конфигурация и секреты — переменные окружения / файлы секретов, не в git. Миграции применяются отдельной командой при релизе (не автоматически на старте в production).
 
+**Реализовано в Sprint 11** (`development/deployment.md`): разработка — `deploy/docker-compose.yml` (+ `mailpit`, порты на localhost); production — `deploy/docker-compose.prod.yml` + `deploy/prod.sh`: `nginx` (свой образ, HTTPS, наружу только 80/443), `web`, `api` (роль БД `hms_app`), `db`, `certbot` (продление), `backup` (ежедневно, age + rclone); вручную — `migrate` и `restore` (профиль `tools`). Образы собираются на сервере (`build --pull`). Та же конфигурация проверяется в CI на https://localhost (`prod-local-check.sh`): E2E через nginx, бэкап → восстановление, нагрузочный smoke k6.
+
 ## 8. Масштабирование
 Начало — один VPS (2 vCPU / 4 ГБ достаточно для 30 номеров). Узкие места не ожидаются; при росте — вынос БД, S3, отдельный воркер, Redis для кэша/limits.

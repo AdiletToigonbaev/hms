@@ -1,0 +1,14 @@
+# НЕ ДЛЯ СЕРВЕРА. Дополнение к docker-compose.prod.yml для проверки production-сборки на своём
+# компьютере и в CI: Mailpit вместо SMTP (письма — http://localhost:8025), повышенный лимит входа для E2E.
+# Запуск: HMS_ENV_FILE=deploy/prod-local.env HMS_COMPOSE_EXTRA=deploy/docker-compose.prod-local.yml ./deploy/prod.sh release
+services:
+  mailpit:
+    image: axllent/mailpit:v1.34
+    ports:
+      - "127.0.0.1:8025:8025"
+
+  api:
+    environment:
+      RateLimiting__AuthStrictPerMinute: ${AUTH_RATE_LIMIT_PER_MINUTE:-10}
+    depends_on:
+      - mailpit

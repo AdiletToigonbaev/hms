@@ -1,0 +1,186 @@
+# Окружение PRODUCTION (VPS). Запуск — через deploy/prod.sh (он подставляет --env-file deploy/.env.production).
+# Снаружи открыты только 80/443 (nginx). БД, API и Next.js доступны лишь внутри docker-сети.
+# Подробно: docs/development/deployment.md.
+name: hms-prod
+
+x-logging: &logging
+  # Ротация логов контейнеров: диск VPS не должен заполниться журналами.
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+x-db-owner: &db-owner
+  # Владелец схемы: миграции, бэкап и восстановление. API под ним не работает.
+  PGHOST: db
+  PGDATABASE: ${POSTGRES_DB:-hms}
+  PGUSER: ${POSTGRES_USER:?Задайте POSTGRES_USER}
+  PGPASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD}
+
+x-api-env: &api-env
+  ASPNETCORE_ENVIRONMENT: Production
+  Jwt__SigningKey: ${JWT_SIGNING_KEY:?Задайте JWT_SIGNING_KEY}
+  Identity__PublicWebUrl: https://${DOMAIN:?Задайте DOMAIN}
+  Email__Host: ${SMTP_HOST:?Задайте SMTP_HOST}
+  Email__Port: ${SMTP_PORT:-587}
+  Email__Security: ${SMTP_SECURITY:-StartTls}
+  Email__Username: ${SMTP_USERNAME:-}
+  Email__Password: ${SMTP_PASSWORD:-}
+  Email__FromAddress: ${SMTP_FROM_ADDRESS:?Задайте SMTP_FROM_ADDRESS}
+  Email__FromName: ${SMTP_FROM_NAME:-Гостиница}
+  Integrations__WhatsApp__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
+  Integrations__WhatsApp__AppSecret: ${WHATSAPP_APP_SECRET:-}
+  Integrations__WhatsApp__VerifyToken: ${WHATSAPP_VERIFY_TOKEN:-}
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hms}
+      POSTGRES_USER: ${POSTGRES_USER:?Задайте POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Задайте POSTGRES_PASSWORD}
+      TZ: UTC
+    volumes:
+      - db-data:/var/lib/postgresql
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    # Только вручную при релизе: ./deploy/prod.sh migrate (миграции + сидеры + права роли приложения).
+    build: ../backend
+    profiles: ["tools"]
+    command: ["migrate"]
+    logging: *logging
+    environment:
+      <<: *api-env
+      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD};GSS Encryption Mode=Disable
+      Database__AppRole__Name: ${APP_DB_USER:-hms_app}
+      Database__AppRole__Password: ${APP_DB_PASSWORD:?Задайте APP_DB_PASSWORD}
+      Bootstrap__Owner__FullName: ${OWNER_FULL_NAME:-Владелец}
+      Bootstrap__Owner__Email: ${OWNER_EMAIL:-}
+      Bootstrap__Owner__Phone: ${OWNER_PHONE:-}
+      Bootstrap__Owner__Password: ${OWNER_PASSWORD:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build: ../backend
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      <<: *api-env
+      # Роль с правами только на данные (без DDL и без изменения журнала аудита) — её создаёт migrate.
+      ConnectionStrings__Hms: Host=db;Port=5432;Database=${POSTGRES_DB:-hms};Username=${APP_DB_USER:-hms_app};Password=${APP_DB_PASSWORD};GSS Encryption Mode=Disable
+      # API не виден из интернета: запросы приходят от web (BFF) и nginx (вебхуки), оба ставят X-Forwarded-For.
+      ForwardedHeaders__TrustAllProxies: "true"
+    volumes:
+      - api-files:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../frontend
+      args:
+        PUBLIC_WEB_URL: https://${DOMAIN}
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      API_INTERNAL_URL: http://api:8080
+      PUBLIC_WEB_URL: https://${DOMAIN}
+    depends_on:
+      - api
+
+  nginx:
+    build: ./nginx
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      DOMAIN: ${DOMAIN}
+      # Дополнительные имена (через пробел) → 301 на DOMAIN, например www.
+      DOMAIN_ALIASES: ${DOMAIN_ALIASES:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - web
+      - api
+
+  certbot:
+    # Продление сертификата Let's Encrypt (проверка дважды в сутки; certbot продлевает за 30 дней до конца).
+    # Первый выпуск: ./deploy/prod.sh cert-init. Nginx перечитывает сертификат раз в 6 часов.
+    image: certbot/certbot:v5.10.0
+    restart: unless-stopped
+    logging: *logging
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"]
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+
+  backup:
+    build: ./backup
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      <<: *db-owner
+      BACKUP_TIME: ${BACKUP_TIME:-03:30}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      BACKUP_REMOTE_RETENTION_DAYS: ${BACKUP_REMOTE_RETENTION_DAYS:-30}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?Задайте BACKUP_AGE_RECIPIENT (публичный ключ age)}
+      RCLONE_REMOTE: ${RCLONE_REMOTE:-}
+      RCLONE_CONFIG: /config/rclone/rclone.conf
+    volumes:
+      - ${BACKUP_HOST_DIR:-/var/backups/hms}:/backups
+      - api-files:/files:ro
+      - ./rclone:/config/rclone:ro
+    healthcheck:
+      test: ["CMD", "hms-backup", "health"]
+      interval: 1h
+      timeout: 10s
+      start_period: 1m
+    depends_on:
+      db:
+        condition: service_healthy
+
+  restore:
+    # Только вручную: ./deploy/prod.sh restore-check | restore-apply. Каталог файлов — на запись.
+    build: ./backup
+    profiles: ["tools"]
+    logging: *logging
+    environment:
+      <<: *db-owner
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT}
+      RCLONE_REMOTE: ""
+      AGE_IDENTITY_FILE: /run/age-identity.txt
+    volumes:
+      - ${BACKUP_HOST_DIR:-/var/backups/hms}:/backups
+      - api-files:/files
+      # Приватный ключ age — только на время восстановления; без файла запуск откажет (каталог не создаётся).
+      - type: bind
+        source: ${AGE_IDENTITY_HOST_FILE:-/home/hms/hms-age-identity.txt}
+        target: /run/age-identity.txt
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  db-data:
+  api-files:
+  certbot-www:
+  letsencrypt:

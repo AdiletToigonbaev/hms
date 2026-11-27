@@ -26,3 +26,7 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Production: бэкапы и конфиг rclone (ключи хранилища) — только на сервере
+deploy/backups/
+deploy/rclone/

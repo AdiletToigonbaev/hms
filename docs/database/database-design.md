@@ -242,3 +242,11 @@ Guests, Rooms (архив), Expenses (void), Users (деактивация), Hou
 - **identity.phone_verification_codes** (UserId → users, Phone, CodeHash SHA-256, CreatedAt, ExpiresAt, Attempts, ConsumedAt). Индекс (UserId, CreatedAt).
 - Обезличивание гостя: в его сообщениях и сообщениях его диалогов стираются адрес, тема, текст и параметры; номер диалога заменяется на `deleted:<id>`.
 - Outbox: каждое сообщение пачки обрабатывается со своей точкой сохранения (savepoint) — ошибка сохранения одного не откатывает остальные и не блокирует очередь.
+
+## 20. Sprint 11: роли PostgreSQL в production (без новой миграции)
+- **Владелец схемы** (`POSTGRES_USER`, суперпользователь образа postgres) — только команда `migrate`, бэкап и восстановление.
+- **Роль приложения** (`APP_DB_USER`, по умолчанию `hms_app`) — под ней работает API. Создаёт и обновляет её `migrate` (`DatabaseAppRole`, настройка `Database:AppRole:Name/Password`) после миграций, при каждом запуске:
+  `NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`; `CONNECT` на БД; во всех схемах модулей — `USAGE`, `SELECT/INSERT/UPDATE/DELETE` на таблицы, `USAGE/SELECT/UPDATE` на последовательности; **отозваны** `UPDATE/DELETE/TRUNCATE` на `audit.audit_logs` и запись в `platform.__ef_migrations_history`. Права перевыдаются каждым `migrate`, поэтому таблицы новых миграций получают их без `ALTER DEFAULT PRIVILEGES`.
+- Зачем: триггеры неизменяемости (платежи, аудит) владелец таблицы может отключить; роль без DDL — нет. Имя и пароль роли передаются в БД параметрами (`set_config`), DDL собирается внутри БД через `format('%I'/'%L')`.
+- Не задана (разработка, dev-compose) — API работает под пользователем миграций, как раньше. Интеграционные тесты работают под ограниченной ролью (`PostgresFixture`), проверки прав — `DatabaseTests.AppRole_*`.
+- Бэкап — `pg_dump --no-owner --no-privileges`: восстановленные объекты принадлежат владельцу схемы, права роли приложения выдаёт `migrate` после восстановления.
