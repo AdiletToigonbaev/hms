@@ -73,6 +73,37 @@ test("владелец создаёт категорию с удобствами
   await expect(card).toContainText("5 200,50");
 });
 
+test("владелец указывает WhatsApp и 2ГИС — на сайте появляются кнопки; чужая ссылка не принимается", async ({ page }) => {
+  await loginOwner(page, "/owner/settings");
+  const hotel = page.locator("section#section-hotel");
+  const whatsApp = hotel.getByLabel("WhatsApp для гостей", { exact: true });
+  const twoGis = hotel.getByLabel("Ссылка на 2ГИС", { exact: true });
+
+  // Ссылка не на 2ГИС отклоняется API — ошибка у поля
+  await twoGis.fill("https://example.com/map");
+  await hotel.getByRole("button", { name: "Сохранить" }).click();
+  await expect(hotel.getByText("Нужна ссылка на карточку в 2ГИС", { exact: false })).toBeVisible();
+
+  await whatsApp.fill("0700 12-34-56");
+  await twoGis.fill("https://2gis.kg/bishkek/firm/70000001234567");
+  await hotel.getByRole("button", { name: "Сохранить" }).click();
+  await expect(hotel.getByText("Раздел сохранён.")).toBeVisible();
+
+  await page.goto("/#contacts");
+  const contacts = page.locator("footer#contacts");
+  await expect(contacts.getByRole("link", { name: "Написать в WhatsApp" })).toHaveAttribute("href", /^https:\/\/wa\.me\/996700123456\?text=/);
+  await expect(contacts.getByRole("link", { name: "Открыть в 2ГИС" })).toHaveAttribute("href", "https://2gis.kg/bishkek/firm/70000001234567");
+
+  // Вернуть как было: без WhatsApp и 2ГИС кнопок на сайте нет
+  await page.goto("/owner/settings");
+  await whatsApp.fill("");
+  await twoGis.fill("");
+  await hotel.getByRole("button", { name: "Сохранить" }).click();
+  await expect(hotel.getByText("Раздел сохранён.")).toBeVisible();
+  await page.goto("/#contacts");
+  await expect(page.locator("footer#contacts").getByRole("link", { name: "Написать в WhatsApp" })).toHaveCount(0);
+});
+
 test("владелец сохраняет настройки гостиницы; интеграции банков недоступны до получения доступов", async ({ page }) => {
   await loginOwner(page, "/owner/settings");
   // Меню разделов: клик подсвечивает пункт и на мгновение выделяет раздел

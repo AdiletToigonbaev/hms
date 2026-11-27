@@ -1149,6 +1149,11 @@ namespace Hms.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("time_zone");
 
+                    b.Property<string>("TwoGisUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("two_gis_url");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1158,6 +1163,11 @@ namespace Hms.Persistence.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
+
+                    b.Property<string>("WhatsAppPhone")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("whats_app_phone");
 
                     b.HasKey("Id")
                         .HasName("pk_hotels");

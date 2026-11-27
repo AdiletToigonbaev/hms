@@ -23,6 +23,8 @@ internal sealed class HotelModelConfigurator : IModelConfigurator
             e.Property(x => x.Phone).HasMaxLength(32);
             e.Property(x => x.Email).HasMaxLength(256);
             e.Property(x => x.Description).HasMaxLength(2000);
+            e.Property(x => x.WhatsAppPhone).HasMaxLength(32);
+            e.Property(x => x.TwoGisUrl).HasMaxLength(500);
             e.Property(x => x.TimeZone).HasMaxLength(64).IsRequired();
             e.Property(x => x.Currency).HasMaxLength(3).IsFixedLength().IsRequired();
             e.Property(x => x.Version).IsRowVersion();

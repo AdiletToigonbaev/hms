@@ -10,7 +10,7 @@ import type { HotelSettings, Integration } from "@/lib/api/types";
 import { settingsUpdateBody } from "@/lib/settings/rules";
 import { checkbox, fieldErrors } from "@/lib/validation/auth";
 
-const HOTEL_FIELDS = ["name", "address", "phone", "email", "description", "rules"] as const;
+const HOTEL_FIELDS = ["name", "address", "phone", "email", "whatsAppPhone", "twoGisUrl", "description", "rules"] as const;
 /** Поля разделов настроек — для повторного показа введённых значений при ошибке. */
 const SECTION_FIELDS = {
   rules: [
@@ -45,6 +45,9 @@ const hotelSchema = z.object({
     .trim()
     .transform((v) => (v === "" ? null : v))
     .pipe(z.string().email("Некорректный email.").nullable()),
+  // Номер и ссылку проверяет API (E.164; только https-адреса 2ГИС) — ошибки приходят по полям.
+  whatsAppPhone: text(32),
+  twoGisUrl: text(500),
   description: text(2000),
   rules: text(5000),
   version: z.coerce.number().int(),

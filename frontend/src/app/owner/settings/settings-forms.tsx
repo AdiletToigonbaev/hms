@@ -141,6 +141,22 @@ export function HotelForm({
           defaultValue={v.email ?? hotel.email ?? ""}
           error={e.email}
         />
+        <Field
+          name="whatsAppPhone"
+          type="tel"
+          label={t("whatsApp")}
+          help={help("whatsApp", t("whatsApp"))}
+          defaultValue={v.whatsAppPhone ?? hotel.whatsAppPhone ?? ""}
+          error={e.whatsAppPhone}
+        />
+        <Field
+          name="twoGisUrl"
+          type="url"
+          label={t("twoGis")}
+          help={help("twoGis", t("twoGis"))}
+          defaultValue={v.twoGisUrl ?? hotel.twoGisUrl ?? ""}
+          error={e.twoGisUrl}
+        />
       </div>
       <div className="grid gap-1.5">
         <div className="flex items-center gap-1">

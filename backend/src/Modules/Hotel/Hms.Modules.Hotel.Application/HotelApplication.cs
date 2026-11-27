@@ -12,9 +12,15 @@ public sealed record HotelDto(
     string? Description,
     string TimeZone,
     string Currency,
-    uint Version);
+    uint Version,
+    string? WhatsAppPhone = null,
+    string? TwoGisUrl = null);
 
-public sealed record UpdateHotelRequest(string Name, string? Address, string? Phone, string? Email, string? Description, uint Version);
+/// <param name="WhatsAppPhone">WhatsApp для гостей (кнопка на сайте); пусто — кнопки нет.</param>
+/// <param name="TwoGisUrl">Карточка гостиницы в 2ГИС (кнопка на сайте); пусто — кнопки нет.</param>
+public sealed record UpdateHotelRequest(
+    string Name, string? Address, string? Phone, string? Email, string? Description, uint Version,
+    string? WhatsAppPhone = null, string? TwoGisUrl = null);
 
 public sealed record CancellationPolicyDto(
     int FreeCancelHoursBeforeCheckIn,
@@ -88,7 +94,9 @@ public sealed record PublicHotelInfoDto(
     int HourlyMaxHours = 12,
     int HourlyFreeCancelMinutes = 120,
     bool AutoConfirmWebBookings = false,
-    bool HasLatePenalties = false);
+    bool HasLatePenalties = false,
+    string? WhatsAppPhone = null,
+    string? TwoGisUrl = null);
 
 public sealed record IntegrationDto(
     string Provider,
@@ -159,6 +167,11 @@ public sealed class UpdateHotelRequestValidator : AbstractValidator<UpdateHotelR
             .WithMessage("Некорректный номер телефона. Пример: +996 555 123 456.");
         RuleFor(x => x.Email).EmailAddress().WithMessage("Некорректный email.").MaximumLength(256).When(x => !string.IsNullOrWhiteSpace(x.Email));
         RuleFor(x => x.Description).MaximumLength(2000);
+        RuleFor(x => x.WhatsAppPhone).Must(v => PhoneNumber.Parse(v).IsSuccess).When(x => !string.IsNullOrWhiteSpace(x.WhatsAppPhone))
+            .WithMessage("Некорректный номер WhatsApp. Пример: +996 555 123 456.");
+        RuleFor(x => x.TwoGisUrl).Must(Hms.Modules.Hotel.Domain.HotelLinks.IsTwoGisUrl).When(x => !string.IsNullOrWhiteSpace(x.TwoGisUrl))
+            .WithMessage("Нужна ссылка на карточку в 2ГИС, начинается с https://2gis.kg/ или https://go.2gis.com/.")
+            .MaximumLength(500);
     }
 }
 

@@ -22,7 +22,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
         db.Entry(hotel).Property(h => h.Version).OriginalValue = request.Version;
 
         var phone = string.IsNullOrWhiteSpace(request.Phone) ? null : PhoneNumber.Parse(request.Phone).Value.Value;
-        hotel.Update(request.Name, request.Address, phone, request.Email, request.Description, time.GetUtcNow());
+        var whatsApp = string.IsNullOrWhiteSpace(request.WhatsAppPhone) ? null : PhoneNumber.Parse(request.WhatsAppPhone).Value.Value;
+        hotel.Update(request.Name, request.Address, phone, request.Email, request.Description, whatsApp, request.TwoGisUrl, time.GetUtcNow());
         audit.Record(new AuditEntry("hotel.updated", "Hotel", hotel.Id.ToString(), before, ToDto(hotel)));
 
         if (!await TrySaveAsync(ct))
@@ -87,7 +88,8 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
             hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description,
             FormatTime(s.CheckInTime), FormatTime(s.CheckOutTime), s.Rules, s.CancellationPolicy.FreeCancelHoursBeforeCheckIn,
             s.HourlyMinHours, s.HourlyMaxHours, s.HourlyPolicy.FreeCancelMinutesBeforeStart, s.AutoConfirmWebBookings,
-            s.CancellationPolicy.LateCancelPenaltyNights > 0 || s.HourlyPolicy.LateCancelPenaltyHours > 0);
+            s.CancellationPolicy.LateCancelPenaltyNights > 0 || s.HourlyPolicy.LateCancelPenaltyHours > 0,
+            hotel.WhatsAppPhone, hotel.TwoGisUrl);
     }
 
     private async Task<HotelInfo> LoadHotelAsync(CancellationToken ct)
@@ -121,7 +123,7 @@ internal sealed class HotelService(DbContext db, HotelContext context, IAuditTra
     internal static string FormatTime(TimeOnly value) => value.ToString("HH:mm", CultureInfo.InvariantCulture);
 
     private static HotelDto ToDto(HotelInfo h) =>
-        new(h.Id, h.Name, h.Address, h.Phone, h.Email, h.Description, h.TimeZone, h.Currency, h.Version);
+        new(h.Id, h.Name, h.Address, h.Phone, h.Email, h.Description, h.TimeZone, h.Currency, h.Version, h.WhatsAppPhone, h.TwoGisUrl);
 
     private static HotelSettingsDto ToDto(HotelSettings s) => new(
         FormatTime(s.CheckInTime),

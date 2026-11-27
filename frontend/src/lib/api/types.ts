@@ -113,6 +113,10 @@ export interface PublicHotelInfo {
   autoConfirmWebBookings: boolean;
   /** Включены ли штрафы за позднюю отмену (по умолчанию — нет). */
   hasLatePenalties: boolean;
+  /** WhatsApp для гостей (E.164): кнопка «Написать в WhatsApp». */
+  whatsAppPhone: string | null;
+  /** Карточка в 2ГИС: кнопка «Открыть в 2ГИС». */
+  twoGisUrl: string | null;
 }
 
 export interface Hotel {
@@ -125,6 +129,10 @@ export interface Hotel {
   timeZone: string;
   currency: string;
   version: number;
+  /** WhatsApp для гостей (E.164) — кнопка на сайте. */
+  whatsAppPhone: string | null;
+  /** Карточка гостиницы в 2ГИС — кнопка на сайте. */
+  twoGisUrl: string | null;
 }
 
 export interface CancellationPolicy {

@@ -51,5 +51,7 @@ export async function getHotelInfo(): Promise<PublicHotelInfo> {
         hourlyFreeCancelMinutes: 120,
         autoConfirmWebBookings: false,
         hasLatePenalties: false,
+        whatsAppPhone: null,
+        twoGisUrl: null,
       };
 }

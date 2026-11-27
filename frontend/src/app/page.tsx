@@ -12,6 +12,7 @@ import type { PublicHotelInfo, PublicRoomType } from "@/lib/api/types";
 import { hotelToday } from "@/lib/bookings/status";
 import { OG_IMAGE } from "@/lib/brand-image";
 import { getHotelInfo } from "@/lib/hotel";
+import { twoGisLink } from "@/lib/site/contacts";
 import { hotelHour, readStay, stayQuery } from "@/lib/site/stay";
 import { requestNow } from "@/lib/time/request-now";
 
@@ -46,6 +47,8 @@ function HotelJsonLd({ hotel }: { hotel: PublicHotelInfo }) {
     checkinTime: hotel.checkInTime,
     checkoutTime: hotel.checkOutTime,
     priceRange: "KGS",
+    // Та же гостиница в 2ГИС — поисковики связывают карточки.
+    sameAs: twoGisLink(hotel.twoGisUrl) ?? undefined,
   };
   // JSON.stringify экранирует кавычки; «<» заменяем, чтобы текст из настроек не закрыл тег script.
   return <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(data).replace(/</g, "\\u003c") }} />;

@@ -1,4 +1,4 @@
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin, MessageCircle, Phone } from "lucide-react";
 import { cookies } from "next/headers";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
@@ -9,6 +9,7 @@ import { ACCESS_COOKIE, REFRESH_COOKIE } from "@/lib/auth/cookies";
 import { readAccessToken } from "@/lib/auth/jwt";
 import { homeFor } from "@/lib/auth/routes";
 import { getHotelInfo } from "@/lib/hotel";
+import { twoGisLink, whatsAppLink } from "@/lib/site/contacts";
 import { cn } from "@/lib/utils";
 
 /** Вход или кабинет — по cookie сессии (поэтому внутри Suspense). */
@@ -83,6 +84,10 @@ async function SiteHeader({ container }: { container: string }) {
 
 async function SiteFooter({ container }: { container: string }) {
   const [t, hotel] = await Promise.all([getTranslations("Site"), getHotelInfo()]);
+  // Кнопки — только если владелец указал WhatsApp и ссылку на 2ГИС в настройках.
+  const whatsApp = whatsAppLink(hotel.whatsAppPhone, t("whatsAppGreeting", { name: hotel.name }));
+  const twoGis = twoGisLink(hotel.twoGisUrl);
+  const external = { target: "_blank", rel: "noopener noreferrer" } as const;
   return (
     <footer id="contacts" className="border-t bg-secondary/40">
       <div className={cn(container, "grid gap-6 py-10 sm:grid-cols-[minmax(0,1fr)_auto]")}>
@@ -92,7 +97,13 @@ async function SiteFooter({ container }: { container: string }) {
             {hotel.address && (
               <li className="flex items-start gap-2">
                 <MapPin className="mt-0.5 size-4 shrink-0" aria-hidden />
-                {hotel.address}
+                {twoGis ? (
+                  <a href={twoGis} {...external} className="hover:text-foreground">
+                    {hotel.address}
+                  </a>
+                ) : (
+                  hotel.address
+                )}
               </li>
             )}
             {hotel.phone && (
@@ -112,6 +123,22 @@ async function SiteFooter({ container }: { container: string }) {
               </li>
             )}
           </ul>
+          {(whatsApp || twoGis) && (
+            <div className="flex flex-wrap gap-2 pt-1">
+              {whatsApp && (
+                <a href={whatsApp} {...external} className={cn(buttonVariants({ variant: "outline" }), "h-10 px-4")}>
+                  <MessageCircle aria-hidden />
+                  {t("writeWhatsApp")}
+                </a>
+              )}
+              {twoGis && (
+                <a href={twoGis} {...external} className={cn(buttonVariants({ variant: "outline" }), "h-10 px-4")}>
+                  <MapPin aria-hidden />
+                  {t("open2Gis")}
+                </a>
+              )}
+            </div>
+          )}
         </div>
         <dl className="grid content-start gap-1 text-sm text-muted-foreground sm:text-right">
           <div>

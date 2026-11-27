@@ -34,6 +34,12 @@ public sealed class HotelInfo
 
     public string? Description { get; private set; }
 
+    /// <summary>WhatsApp для гостей (E.164): кнопка «Написать в WhatsApp» на сайте (ссылка wa.me). Может отличаться от телефона стойки.</summary>
+    public string? WhatsAppPhone { get; private set; }
+
+    /// <summary>Ссылка на карточку гостиницы в 2ГИС: кнопка «Открыть в 2ГИС» на сайте. Только https-адреса 2ГИС (<see cref="HotelLinks"/>).</summary>
+    public string? TwoGisUrl { get; private set; }
+
     /// <summary>Часовой пояс — Asia/Bishkek (ТЗ §2); изменение не предусмотрено.</summary>
     public string TimeZone { get; private set; }
 
@@ -45,17 +51,38 @@ public sealed class HotelInfo
 
     public uint Version { get; private set; }
 
-    public void Update(string name, string? address, string? phone, string? email, string? description, DateTimeOffset now)
+    public void Update(
+        string name, string? address, string? phone, string? email, string? description,
+        string? whatsAppPhone, string? twoGisUrl, DateTimeOffset now)
     {
         Name = name.Trim();
         Address = Normalize(address);
         Phone = Normalize(phone);
         Email = Normalize(email)?.ToLowerInvariant();
         Description = Normalize(description);
+        WhatsAppPhone = Normalize(whatsAppPhone);
+        TwoGisUrl = Normalize(twoGisUrl);
         UpdatedAt = now;
     }
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
+
+/// <summary>Ссылки гостиницы для сайта.</summary>
+public static class HotelLinks
+{
+    // Домены 2ГИС: карточка (2gis.kg, 2gis.ru, 2gis.kz, 2gis.com) и короткие ссылки «Поделиться» (go.2gis.com).
+    private static readonly string[] TwoGisHosts = ["2gis.kg", "2gis.ru", "2gis.kz", "2gis.com"];
+
+    /// <summary>
+    /// Ссылка на 2ГИС: только https и только домены 2ГИС (с поддоменами). Ссылка попадает на публичный сайт —
+    /// произвольный адрес (в т.ч. javascript:) не принимается.
+    /// </summary>
+    public static bool IsTwoGisUrl(string? value) =>
+        Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps
+        && string.IsNullOrEmpty(uri.UserInfo)
+        && TwoGisHosts.Any(h => uri.Host.Equals(h, StringComparison.OrdinalIgnoreCase) || uri.Host.EndsWith("." + h, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>Правила отмены. Значения по умолчанию — docs/development/development-roadmap.md §6.1.</summary>

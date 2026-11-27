@@ -57,6 +57,72 @@ public class HotelTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task GuestLinks_WhatsAppAnd2Gis_SavedAndShownOnPublicSite()
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var hotel = (await owner.GetFromJsonAsync<HotelDto>("/api/v1/hotel", Ct))!;
+
+        var response = await owner.PutAsJsonAsync("/api/v1/hotel",
+            new UpdateHotelRequest(hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description, hotel.Version,
+                WhatsAppPhone: "0700 12-34-56", TwoGisUrl: " https://2gis.kg/bishkek/firm/70000001234567 "), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        var saved = (await response.Content.ReadFromJsonAsync<HotelDto>(Ct))!;
+        saved.WhatsAppPhone.Should().Be("+996700123456", "номер хранится в E.164 — из него собирается ссылка wa.me");
+        saved.TwoGisUrl.Should().Be("https://2gis.kg/bishkek/firm/70000001234567");
+
+        var site = (await _api.Anonymous().GetFromJsonAsync<PublicHotelInfoDto>("/api/v1/public/hotel-info", Ct))!;
+        site.WhatsAppPhone.Should().Be("+996700123456");
+        site.TwoGisUrl.Should().Be("https://2gis.kg/bishkek/firm/70000001234567");
+    }
+
+    [Theory]
+    [InlineData("https://go.2gis.com/abcd1")]
+    [InlineData("https://2gis.ru/bishkek/firm/70000001234567")]
+    public async Task GuestLinks_2GisShareAndCardLinks_Accepted(string url)
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var hotel = (await owner.GetFromJsonAsync<HotelDto>("/api/v1/hotel", Ct))!;
+
+        var response = await owner.PutAsJsonAsync("/api/v1/hotel",
+            new UpdateHotelRequest(hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description, hotel.Version, TwoGisUrl: url), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Theory]
+    [InlineData("http://2gis.kg/bishkek/firm/1")]            // только https
+    [InlineData("https://2gis.kg.evil.example/firm/1")]      // чужой домен с «2gis.kg» внутри
+    [InlineData("https://evil.example/?u=https://2gis.kg")]  // 2ГИС только в параметрах
+    [InlineData("javascript:alert(1)")]
+    [InlineData("https://user@2gis.kg/firm/1")]               // userinfo в ссылке
+    [InlineData("2gis.kg/bishkek")]                           // не абсолютная ссылка
+    public async Task GuestLinks_ForeignOrUnsafe2GisUrl_Rejected(string url)
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var hotel = (await owner.GetFromJsonAsync<HotelDto>("/api/v1/hotel", Ct))!;
+
+        var response = await owner.PutAsJsonAsync("/api/v1/hotel",
+            new UpdateHotelRequest(hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description, hotel.Version, TwoGisUrl: url), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("twoGisUrl");
+    }
+
+    [Fact]
+    public async Task GuestLinks_InvalidWhatsApp_Rejected()
+    {
+        var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
+        var hotel = (await owner.GetFromJsonAsync<HotelDto>("/api/v1/hotel", Ct))!;
+
+        var response = await owner.PutAsJsonAsync("/api/v1/hotel",
+            new UpdateHotelRequest(hotel.Name, hotel.Address, hotel.Phone, hotel.Email, hotel.Description, hotel.Version, WhatsAppPhone: "12"), Ct);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync(Ct)).Should().Contain("whatsAppPhone");
+    }
+
+    [Fact]
     public async Task UpdateSettings_Invalid_Returns400WithFieldErrors()
     {
         var owner = _api.Authorized((await _api.LoginOwnerAsync()).AccessToken);
