@@ -73,6 +73,8 @@ public sealed partial class PostgresFixture : IAsyncLifetime
             builder.UseSetting("Storage:RootPath", FilesRoot);
             builder.UseSetting("RateLimiting:AuthStrictPerMinute", "100000");
             builder.UseSetting("RateLimiting:AuthRefreshPerMinute", "100000");
+            builder.UseSetting("RateLimiting:GuestBookingPerMinute", "100000");
+            builder.UseSetting("GuestBookings:MaxActiveWebBookingsPerGuest", "1000");
             builder.UseSetting("Bootstrap:Owner:FullName", "Тестовый владелец");
             builder.UseSetting("Bootstrap:Owner:Email", OwnerEmail);
             builder.UseSetting("Bootstrap:Owner:Password", OwnerInitialPassword);

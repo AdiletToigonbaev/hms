@@ -80,8 +80,9 @@ try
             diagnostics.Set("CorrelationId", CorrelationIdMiddleware.Get(http)));
     app.UseExceptionHandler();
     app.UseStatusCodePages();
-    app.UseRateLimiter();
+    // Лимитер — после аутентификации: политики «на аккаунт» читают пользователя из токена.
     app.UseAuthentication();
+    app.UseRateLimiter();
     app.UseAuthorization();
     app.UsePasswordChangeEnforcement();
 

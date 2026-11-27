@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using Hms.Modules.Identity.Infrastructure;
 using Hms.Platform.Http;
+using Hms.Platform.Security;
 using Microsoft.AspNetCore.HttpOverrides;
 
 namespace Hms.Api.Infrastructure;
@@ -17,6 +18,9 @@ public sealed class RateLimitingOptions
 
     /// <summary>Публичный подбор номеров и расчёт цены: запросов в минуту с одного IP.</summary>
     public int PublicSearchPerMinute { get; set; } = 60;
+
+    /// <summary>Создание и продление броней гостем на сайте: запросов в минуту с одного аккаунта.</summary>
+    public int GuestBookingPerMinute { get; set; } = 10;
 }
 
 internal static class RateLimitingSetup
@@ -31,6 +35,7 @@ internal static class RateLimitingSetup
             limiter.AddPolicy(IdentityEndpoints.AuthStrictRateLimit, http => PerIp(http, options.AuthStrictPerMinute));
             limiter.AddPolicy(IdentityEndpoints.AuthRefreshRateLimit, http => PerIp(http, options.AuthRefreshPerMinute));
             limiter.AddPolicy(Hms.Modules.Bookings.Infrastructure.BookingsModule.PublicSearchRateLimit, http => PerIp(http, options.PublicSearchPerMinute));
+            limiter.AddPolicy(Hms.Modules.Bookings.Infrastructure.BookingsModule.GuestBookingRateLimit, http => PerUser(http, options.GuestBookingPerMinute));
             limiter.OnRejected = async (context, ct) =>
             {
                 if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
@@ -68,8 +73,17 @@ internal static class RateLimitingSetup
     }
 
     private static RateLimitPartition<string> PerIp(HttpContext http, int permitLimit) =>
+        Fixed("ip:" + (http.Connection.RemoteIpAddress?.ToString() ?? "unknown"), permitLimit);
+
+    /// <summary>По аккаунту: смена IP не обходит лимит. Без входа (эндпоинт всё равно ответит 401) — по IP.</summary>
+    private static RateLimitPartition<string> PerUser(HttpContext http, int permitLimit) =>
+        http.User.FindFirst(HmsClaimTypes.Subject)?.Value is { } userId
+            ? Fixed("user:" + userId, permitLimit)
+            : PerIp(http, permitLimit);
+
+    private static RateLimitPartition<string> Fixed(string key, int permitLimit) =>
         RateLimitPartition.GetFixedWindowLimiter(
-            http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            key,
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = permitLimit,

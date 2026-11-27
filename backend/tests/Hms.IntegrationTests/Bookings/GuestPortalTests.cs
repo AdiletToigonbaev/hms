@@ -261,4 +261,53 @@ public class GuestPortalTests(PostgresFixture db)
         using var delete = new HttpRequestMessage(HttpMethod.Delete, "/api/v1/me") { Content = JsonContent.Create(new DeleteAccountRequest(StaffPassword)) };
         (await ProblemCodeAsync(await admin.SendAsync(delete, Ct))).Should().Be("account.staff_cannot_delete");
     }
+
+    [Fact]
+    public async Task WebBookings_PerGuestLimit_CountsOnlyNotStarted_AndCancelFreesSlot()
+    {
+        var owner = await OwnerAsync();
+        var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
+        var (email, _) = await _api.RegisterConfirmedGuestAsync();
+        var token = (await _api.LoginAsync(email, GuestPassword)).AccessToken;
+        await using var factory = db.CreateFactory(new Dictionary<string, string?> { ["GuestBookings:MaxActiveWebBookingsPerGuest"] = "2" });
+        using var guest = factory.CreateClient();
+        guest.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var first = await CreateAsync(guest, Hourly(room.Id, 40));
+        await CreateAsync(guest, Hourly(room.Id, 41));
+
+        // Третья — сверх лимита: номер не занимается, бронь не создаётся.
+        var third = await PostIdempotentAsync(guest, "/api/v1/me/bookings", Hourly(room.Id, 42));
+        third.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, await third.Content.ReadAsStringAsync(Ct));
+        (await ProblemCodeAsync(third)).Should().Be("booking.too_many_web_bookings");
+        (await guest.GetFromJsonAsync<List<MyBookingDto>>("/api/v1/me/bookings", Ct))!.Should().HaveCount(2);
+
+        // Отменённая бронь номер не держит — место в лимите освобождается.
+        (await guest.PostAsJsonAsync($"/api/v1/me/bookings/{first.Id}/cancel", new GuestCancelRequest(null), Ct)).EnsureSuccessStatusCode();
+        await CreateAsync(guest, Hourly(room.Id, 42));
+    }
+
+    [Fact]
+    public async Task WebBookings_RateLimitedPerAccount()
+    {
+        var owner = await OwnerAsync();
+        var room = await BookingTestKit.CreateRoomAsync(owner, 500m);
+        var (email, _) = await _api.RegisterConfirmedGuestAsync();
+        var token = (await _api.LoginAsync(email, GuestPassword)).AccessToken;
+        await using var factory = db.CreateFactory(new Dictionary<string, string?> { ["RateLimiting:GuestBookingPerMinute"] = "2" });
+        using var guest = factory.CreateClient();
+        guest.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        await CreateAsync(guest, Hourly(room.Id, 50));
+        await CreateAsync(guest, Hourly(room.Id, 51));
+        var limited = await PostIdempotentAsync(guest, "/api/v1/me/bookings", Hourly(room.Id, 52));
+        limited.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await ProblemCodeAsync(limited)).Should().Be("rate_limited");
+
+        // Лимит — на аккаунт: другой гость с того же адреса бронирует.
+        var (otherEmail, _) = await _api.RegisterConfirmedGuestAsync();
+        using var other = factory.CreateClient();
+        other.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", (await _api.LoginAsync(otherEmail, GuestPassword)).AccessToken);
+        await CreateAsync(other, Hourly(room.Id, 52));
+    }
 }

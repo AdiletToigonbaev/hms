@@ -5,6 +5,7 @@ using Hms.Modules.Guests.Contracts;
 using Hms.Modules.Hotel.Contracts;
 using Hms.SharedKernel;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Hms.Modules.Bookings.Infrastructure;
 
@@ -17,10 +18,15 @@ internal sealed class GuestBookingService(
     IHotelContext hotel,
     ICurrentGuest currentGuest,
     BookingService bookings,
-    Stays stays) : IGuestBookingService
+    Stays stays,
+    IOptions<GuestBookingOptions> options) : IGuestBookingService
 {
     private static readonly BookingStatus[] Current =
         [BookingStatus.Pending, BookingStatus.AwaitingPayment, BookingStatus.Confirmed, BookingStatus.CheckedIn];
+
+    /// <summary>Брони, которые держат номер, но гость ещё не заселён, — их считает лимит.</summary>
+    private static readonly BookingStatus[] NotStarted =
+        [BookingStatus.Pending, BookingStatus.AwaitingPayment, BookingStatus.Confirmed];
 
     private static readonly Error NoGuestCard = Error.Forbidden("guest.profile_required", "Бронировать на сайте может гость с подтверждённым профилем.");
 
@@ -29,6 +35,18 @@ internal sealed class GuestBookingService(
         if (await currentGuest.GetAsync(ct) is not { } guest)
         {
             return NoGuestCard;
+        }
+
+        // Защита номерного фонда: каждая бронь с сайта держит номер (неподтверждённая — до решения администратора),
+        // поэтому один аккаунт не может набрать больше N незаселённых броней. Больше — через гостиницу.
+        // Лимит проверяется до вставки; гонку параллельных запросов сдерживает ограничение частоты на эндпоинте.
+        var limit = options.Value.MaxActiveWebBookingsPerGuest;
+        var hotelId = await hotel.GetHotelIdAsync(ct);
+        var active = await db.Set<Booking>().CountAsync(
+            b => b.HotelId == hotelId && b.GuestId == guest.Id && b.Source == BookingSource.Web && NotStarted.Contains(b.Status), ct);
+        if (active >= limit)
+        {
+            return BookingErrors.TooManyWebBookings(limit);
         }
 
         // Номер выбирает гость (решение 2026-11-23). Занят — 409 booking.room_unavailable: другой номер без спроса не подставляем.
@@ -130,4 +148,13 @@ internal sealed class GuestBookingService(
             b.TotalAmount, b.PenaltyAmount, b.PenaltyKind, b.EarlyDepartureCredit, b.HoldUntil, b.CancelReason, b.CreatedAt,
             actions, b.Version);
     }
+}
+
+/// <summary>Ограничения броней гостя на сайте (appsettings, секция <c>GuestBookings</c>).</summary>
+public sealed class GuestBookingOptions
+{
+    public const string Section = "GuestBookings";
+
+    /// <summary>Сколько незаселённых броней с сайта (ждёт подтверждения / оплаты / подтверждена) может держать один аккаунт.</summary>
+    public int MaxActiveWebBookingsPerGuest { get; set; } = 3;
 }

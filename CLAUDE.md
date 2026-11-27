@@ -93,7 +93,7 @@ dotnet Hms.Api.dll migrate                        # то же при релиз�
 npm ci
 npm run dev | npm run lint | npm run typecheck | npm test | npm run build
 npx playwright install chromium                   # один раз
-npm run test:e2e                                  # E2E против запущенного стека (docker compose up)
+npm run test:e2e                                  # E2E против запущенного стека; API поднять с AUTH_RATE_LIMIT_PER_MINUTE=1000 (как в CI), иначе входы упрутся в лимит 10/мин
 
 # окружение (из корня)
 docker compose -f deploy/docker-compose.yml up -d --build      # db, mailpit, migrate, api, web
@@ -137,7 +137,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 - Отчёты: модуль Reporting читает факты через контракты (`IBookingFacts`, `IFinanceFacts`, `IHousekeepingFacts`); формулы — чистые функции `Reporting.Domain.Kpi` (database-design §17); отчёт — единая `ReportTable` (сайт, Excel, PDF). Графики — `components/charts/charts.tsx` (без библиотек; цвета `--chart-1/2` проверены валидатором палитры), фильтр периода — `components/dashboard/period-filter.tsx`. Меню получает права пользователя (`staffNav(roles, t, permissions)`).
 - Рабочие экраны с меняющимися данными (рабочий стол, «Уборка», список броней, `/hk`) — `<AutoRefresh seconds={…} />` (router.refresh, не мешает вводу). Значки в меню — `NavItem.badge` (считает `AreaShell`). Журнал действий — `/owner/audit`, подписи действий — `lib/audit/labels.ts` (новый код аудита — добавить подпись).
 - Гости: карточка в модуле Guests (`IGuestDirectory`, `IGuestRegistration` в Guests.Contracts); бронь хранит `GuestId` + снимок контакта. ПД гостя в аудит не пишутся — только названия изменённых полей.
-- UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`; меню персонала — `lib/nav.ts` (по роли)., `BookingStatusBadge`, `PriceBreakdown`.
+- UI-компоненты: `PageHeader`, `EmptyState`/`ErrorState`/`LoadingState`, `RoomStatusBadge`, `SelectField`, `BookingStatusBadge`, `PriceBreakdown`; меню персонала — `lib/nav.ts` (по роли).
 - Операции, которые нельзя выполнить дважды (бронь, позже платежи, заселение), — `.WithIdempotency("scope")` (Hms.Platform.Http): обязательный `Idempotency-Key`; frontend передаёт ключ через `api(..., { headers })` и обновляет его после отказа API.
 - Модули читают номерной фонд через `IRoomDirectory` (Rooms.Contracts), цену — через `IPriceCalculator` (Pricing.Contracts); Rooms узнаёт о бронях через `IRoomBookingQueries` (Bookings.Contracts).
 - Сырой SQL в миграциях (exclusion constraint, generated columns) — с комментарием и симметричным `Down`. Дочерние сущности с Id из домена — `ValueGeneratedNever()`, иначе EF сделает UPDATE вместо INSERT.

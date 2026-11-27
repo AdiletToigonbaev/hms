@@ -144,7 +144,7 @@
 | POST | /bookings/{id}/no-show | A (`booking.edit`) | ✔ |
 | GET | /bookings/{id}/history | A (`booking.view`) | ✔ |
 | GET | /bookings/{id}/balance | A (`booking.view`) | ✔ |
-| POST | /me/bookings | G, **IK**; 409 при конфликте | ✔ |
+| POST | /me/bookings | G, **IK**; 409 при конфликте; 422 `booking.too_many_web_bookings` — у аккаунта уже `GuestBookings:MaxActiveWebBookingsPerGuest` (по умолчанию 3) броней с сайта до заселения (Pending/AwaitingPayment/Confirmed); 429 — больше `RateLimiting:GuestBookingPerMinute` (10) создания/продления в минуту на аккаунт | ✔ |
 | GET | /me/bookings | G | ✔ |
 | GET | /me/bookings/{id} | G | ✔ |
 | GET | /me/bookings/{id}/balance | G | ✔ |

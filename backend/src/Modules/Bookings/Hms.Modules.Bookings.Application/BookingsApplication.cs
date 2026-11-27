@@ -366,6 +366,9 @@ public static class BookingErrors
     public static Error CapacityExceeded(int capacity) =>
         Error.BusinessRule("booking.capacity_exceeded", $"Номер рассчитан не более чем на {capacity} гост.");
 
+    public static Error TooManyWebBookings(int limit) =>
+        Error.BusinessRule("booking.too_many_web_bookings", $"На сайте можно держать не больше {limit} броней до заселения. Для большего числа свяжитесь с гостиницей.");
+
     public static Error HoursOutOfRange(int min, int max) =>
         Error.BusinessRule("booking.hours_out_of_range", $"Почасовая бронь — от {min} до {max} ч. Дольше — оформите посуточно.");
 
