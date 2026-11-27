@@ -121,6 +121,8 @@ public class DatabaseTests(PostgresFixture db)
         var response = await client.GetAsync(new Uri("/health/ready", UriKind.Relative), TestContext.Current.CancellationToken);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Версия выпуска (App__Version задаёт deploy/prod.sh); в тестах не задана — «dev».
+        (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Should().Contain("\"version\":\"dev\"");
     }
 
     private async Task<T> ScalarAsync<T>(string sql)

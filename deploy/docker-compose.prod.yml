@@ -19,6 +19,8 @@ x-db-owner: &db-owner
 
 x-api-env: &api-env
   ASPNETCORE_ENVIRONMENT: Production
+  # Версия выпуска (git-метка) — задаёт prod.sh; видна в /health/ready, логах и кабинете персонала.
+  App__Version: ${APP_VERSION:-dev}
   Jwt__SigningKey: ${JWT_SIGNING_KEY:?Задайте JWT_SIGNING_KEY}
   Identity__PublicWebUrl: https://${DOMAIN:?Задайте DOMAIN}
   Email__Host: ${SMTP_HOST:?Задайте SMTP_HOST}
@@ -98,6 +100,7 @@ services:
     environment:
       API_INTERNAL_URL: http://api:8080
       PUBLIC_WEB_URL: https://${DOMAIN}
+      APP_VERSION: ${APP_VERSION:-dev}
     depends_on:
       - api
 

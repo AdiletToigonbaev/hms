@@ -41,6 +41,8 @@ internal static class HealthEndpoints
         var payload = new
         {
             status = report.Status.ToString(),
+            // Какая версия работает — для ./deploy/prod.sh status (эндпоинт снаружи недоступен).
+            version = AppVersion.From(context.RequestServices.GetRequiredService<IConfiguration>()),
             durationMs = (int)report.TotalDuration.TotalMilliseconds,
             checks = report.Entries.Select(e => new { name = e.Key, status = e.Value.Status.ToString() }),
         };

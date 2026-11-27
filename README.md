@@ -104,11 +104,11 @@ docs/      требования, архитектура, БД, API, интегр
 cp deploy/production.env.example deploy/.env.production && chmod 600 deploy/.env.production
 # заполнить: DOMAIN, пароли БД, JWT_SIGNING_KEY (openssl rand -base64 48), SMTP_*, OWNER_*, BACKUP_AGE_RECIPIENT
 ./deploy/prod.sh check        # проверка переменных и конфигурации
-./deploy/prod.sh release      # сборка, миграции, запуск
+./deploy/prod.sh release v1.0.0   # выпуск версии: сборка, миграции, запуск
 ./deploy/prod.sh cert-init    # сертификат Let's Encrypt (DNS уже указывает на сервер)
 ./deploy/prod.sh status       # контейнеры и готовность API
 ```
-Релиз новой версии: `./deploy/prod.sh backup && git pull && ./deploy/prod.sh release`.
+Версии — git-метки `v1.2.0`, что в них вошло — [`CHANGELOG.md`](CHANGELOG.md). Выпуск: `./deploy/prod.sh backup && ./deploy/prod.sh release v1.2.0`; какая версия работает — `./deploy/prod.sh version` и внизу меню кабинета.
 Бэкапы: ежедневно, зашифрованы ключом age (приватный ключ — у владельца, не на сервере); проверка — `./deploy/prod.sh restore-check <файл>`.
 
 Проверить production-сборку без сервера (https://localhost, как в CI): `./deploy/prod-local-check.sh up` — см. deployment.md §10.

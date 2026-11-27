@@ -74,6 +74,7 @@ try
     // Fail fast: часовой пояс отеля должен разрешаться (в образе нужен tzdata).
     var clock = app.Services.GetRequiredService<IHotelClock>();
     Log.Information("Часовой пояс отеля {TimeZone}, локальное время {HotelTime:yyyy-MM-dd HH:mm}", clock.TimeZone.Id, clock.LocalNow);
+    Log.Information("HMS {Version}, окружение {Environment}", AppVersion.From(builder.Configuration), builder.Environment.EnvironmentName);
 
     // Миграции и сидеры применяются отдельной командой при релизе: `dotnet Hms.Api.dll migrate`.
     if (isMigrateCommand)

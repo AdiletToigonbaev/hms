@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # Метка версии (v1.2.0) — полная проверка именно того кода, который выпускается на сервер.
+    tags: ["v*"]
   pull_request:
 
 permissions:

@@ -12,11 +12,20 @@ if [ -n "${HMS_COMPOSE_EXTRA:-}" ]; then
 fi
 compose+=(--env-file "$env_file")
 
+# Версия выпуска: git-метка (v1.2.0); без метки — метка+коммиты или хеш; «-dirty» — на сервере правки не из git.
+# Передаётся в API и сайт (App__Version, APP_VERSION) — видна в status, логах и кабинете персонала.
+current_version() {
+    git -C "$root" describe --tags --always --dirty 2>/dev/null || echo "dev"
+}
+APP_VERSION=${APP_VERSION:-$(current_version)}
+export APP_VERSION
+
 usage() {
     cat <<'EOF'
 Команды:
   check           проверить .env.production и конфигурацию compose
-  release         собрать образы, применить миграции, перезапустить сервисы (обычный релиз)
+  release <версия>  выпуск версии: переключить код на метку (v1.2.0), собрать, миграции, перезапуск
+  version         какая версия в коде на сервере и какая работает
   migrate         только миграции + сидеры + права роли приложения
   up | down       запустить | остановить все сервисы (данные сохраняются)
   status          состояние контейнеров и /health/ready API
@@ -65,6 +74,9 @@ api_ready() {
         "fetch('http://api:8080/health/ready').then(async r=>{console.log(r.status, await r.text());process.exit(r.ok?0:1)}).catch(e=>{console.error(e.message);process.exit(1)})"
 }
 
+# Всё ниже — в функции: release переключает код (и этот файл) на другую версию, а bash читает скрипт
+# по ходу выполнения. Функция читается целиком до запуска, exit не даёт дочитать изменившийся файл.
+main() {
 cmd=${1:-help}
 [ $# -gt 0 ] && shift
 
@@ -75,6 +87,20 @@ case "$cmd" in
         ;;
     release)
         require_env
+        if [ $# -ge 1 ]; then
+            local tag=$1
+            [[ "$tag" =~ ^v[0-9]+.[0-9]+.[0-9]+$ ]] || { echo "Версия — в формате v1.2.0" >&2; exit 2; }
+            [ -z "$(git -C "$root" status --porcelain --untracked-files=no)" ] || {
+                echo "На сервере изменены файлы проекта (git status) — выпуск остановлен. Код меняется только через git." >&2; exit 1; }
+            git -C "$root" fetch --tags --quiet origin
+            git -C "$root" rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "Версии $tag нет в репозитории (git tag)" >&2; exit 1; }
+            git -C "$root" -c advice.detachedHead=false checkout --quiet "$tag"
+            APP_VERSION=$(current_version)
+            export APP_VERSION
+        else
+            echo "Внимание: выпуск без версии ($APP_VERSION). Обычно: ./deploy/prod.sh release v1.2.0" >&2
+        fi
+        echo "Выпуск версии $APP_VERSION"
         "${compose[@]}" build --pull
         "${compose[@]}" up -d db
         "${compose[@]}" run --rm migrate
@@ -82,6 +108,12 @@ case "$cmd" in
         echo "Ожидание готовности API..."
         for _ in $(seq 1 30); do api_ready >/dev/null 2>&1 && break; sleep 2; done
         api_ready
+        echo "Работает версия $APP_VERSION"
+        ;;
+    version)
+        echo "Код на сервере: $(current_version)"
+        printf "Работает (API): "
+        api_ready 2>/dev/null | grep -oE '"version":"[^"]*"' | cut -d'"' -f4 || echo "не отвечает"
         ;;
     migrate)
         require_env
@@ -96,6 +128,7 @@ case "$cmd" in
         "${compose[@]}" down
         ;;
     status)
+        echo "Версия в коде: $(current_version)"
         "${compose[@]}" ps
         api_ready || true
         ;;
@@ -148,3 +181,5 @@ case "$cmd" in
         exit 2
         ;;
 esac
+}
+main "$@"; exit $?

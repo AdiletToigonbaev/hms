@@ -8,6 +8,7 @@ import type { Role } from "@/lib/api/types";
 import { api } from "@/lib/api/server";
 import { requireUser } from "@/lib/auth/session";
 import { getHotelInfo } from "@/lib/hotel";
+import { appVersion } from "@/lib/version";
 
 export type { NavItem };
 
@@ -66,6 +67,12 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
       <LogoutButton />
     </div>
   );
+  // Версия выпуска — персоналу (какая версия сейчас работает); гостям в кабинете не показывается.
+  const version = role === "Guest" ? null : (
+    <p className="px-3 text-xs text-muted-foreground tabular" title="Версия системы">
+      {appVersion()}
+    </p>
+  );
 
   return (
     <div className="min-h-dvh lg:grid lg:grid-cols-[17rem_1fr]">
@@ -78,7 +85,10 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
           <p className="px-3 text-xs font-semibold tracking-wider text-muted-foreground uppercase">{roleLabel[role]}</p>
           <NavLinks items={items} />
         </nav>
-        <div className="mt-auto">{userBlock}</div>
+        <div className="mt-auto grid gap-2">
+          {userBlock}
+          {version}
+        </div>
       </aside>
 
       {/* Телефон и планшет: верхняя панель */}
@@ -93,6 +103,7 @@ export async function AreaShell({ roles, title, nav, children }: AreaShellProps)
           <nav aria-label={title} className="grid gap-3 border-t border-sidebar-border px-4 pt-3 pb-4">
             <NavLinks items={items} />
             {userBlock}
+            {version}
           </nav>
         </details>
       </header>

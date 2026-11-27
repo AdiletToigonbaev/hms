@@ -103,7 +103,7 @@ docker compose -f deploy/docker-compose.yml up -d db mailpit   # только и
 node deploy/dev-data/seed.mjs                                  # ЛОКАЛЬНО: сброс тестовых данных и правдоподобный набор (неделя назад, 2 недели вперёд)
 
 # production (на сервере; deploy/.env.production из production.env.example) — docs/development/deployment.md
-./deploy/prod.sh check | release | cert-init | status | backup | backups | restore-check <файл> | restore-apply <файл>
+./deploy/prod.sh check | release v1.2.0 | version | cert-init | status | backup | backups | restore-check <файл> | restore-apply <файл>
 # проверка production-сборки без сервера (https://localhost, как CI; dev-стек остановить — порт 8025)
 ./deploy/prod-local-check.sh up | backup-check | down
 ```
@@ -115,6 +115,7 @@ E2E меняют пароль dev-владельца на `owner-new-password-1`
 Тёплый «гостиничный» стиль — `docs/design/design-direction.md` (палитра, шрифты Lora + Manrope, статусные цвета). Название гостиницы не зашивать в интерфейс — брать из настроек отеля; логотип — один компонент `Brand`.
 
 ## Соглашения
+- Версии: git-метки `vМАЖОР.МИНОР.ИСПРАВЛЕНИЕ` (первый запуск — v1.0.0), что вошло — `CHANGELOG.md` (раздел «Не выпущено» пополнять вместе с заметными изменениями). Версия передаётся при выпуске (`prod.sh` → `App__Version`/`APP_VERSION`): `/health/ready`, лог старта API, низ меню кабинета персонала. Выпуск — только `release vX.Y.Z`. После запуска — работа в ветках, в `main` — готовое к выпуску.
 - Код и идентификаторы — на английском; UI-строки — через i18n (ru по умолчанию); комментарии и документы допустимы на русском.
 - Ошибки API — ProblemDetails с кодом домена; DTO отдельно от сущностей.
 - Один `HmsDbContext`, схема PostgreSQL на модуль; модули обращаются друг к другу только через `*.Contracts` (проверяют архитектурные тесты).
