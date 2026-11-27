@@ -149,6 +149,19 @@ internal sealed class HousekeepingService(
             return result.Error;
         }
 
+        // Удалили последнюю открытую уборку номера — номер не должен навсегда остаться «на уборке»:
+        // освободить его могла только проверка этой задачи. Есть другая открытая задача (в работе, на проверке) — не трогаем.
+        var otherOpen = await db.Set<HousekeepingTask>().AnyAsync(
+            t => t.RoomId == task.RoomId && t.Id != task.Id && !t.IsDeleted && t.Status != HousekeepingTaskStatus.Inspected, ct);
+        if (!otherOpen)
+        {
+            var released = await ReleaseRoomAsync(task, ct);
+            if (released.IsFailure)
+            {
+                return released.Error;
+            }
+        }
+
         audit.Record(new AuditEntry("housekeeping.task_deleted", "HousekeepingTask", id.ToString()));
         await db.SaveChangesAsync(ct);
         return Result.Success();

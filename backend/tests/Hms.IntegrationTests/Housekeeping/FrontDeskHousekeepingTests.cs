@@ -215,6 +215,45 @@ public class FrontDeskHousekeepingTests(PostgresFixture db)
     }
 
     [Fact]
+    public async Task DeleteCheckoutTask_LastOpenCleaning_ReleasesRoom()
+    {
+        // Ошибка 2026-11-28: задачу уборки после выезда удалили — номер навсегда остался «на уборке», заселить нельзя.
+        var owner = await OwnerAsync();
+        await SetAutoReleaseAsync(owner, false);
+        var (booking, roomId) = await SoonBookingAsync(owner);
+        (await CheckInAsync(owner, booking.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await CheckOutAsync(owner, booking.Id, allowDebt: true)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await RoomStatusAsync(owner, roomId)).Should().Be("Cleaning");
+        var task = await TaskForRoomAsync(owner, roomId);
+
+        var deleted = await owner.DeleteAsync(new Uri($"/api/v1/housekeeping/tasks/{task.Id}", UriKind.Relative), Ct);
+
+        deleted.StatusCode.Should().Be(HttpStatusCode.NoContent, await deleted.Content.ReadAsStringAsync(Ct));
+        (await RoomStatusAsync(owner, roomId)).Should().Be("Available", "уборка отменена — номер можно заселять");
+    }
+
+    [Fact]
+    public async Task DeleteTask_OtherCleaningStillOpen_RoomStaysCleaning()
+    {
+        var owner = await OwnerAsync();
+        await SetAutoReleaseAsync(owner, false);
+        var (booking, roomId) = await SoonBookingAsync(owner);
+        (await CheckInAsync(owner, booking.Id)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await CheckOutAsync(owner, booking.Id, allowDebt: true)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var checkoutTask = await TaskForRoomAsync(owner, roomId);
+        var created = await owner.PostAsJsonAsync("/api/v1/housekeeping/tasks", new CreateTaskRequest(roomId, "Normal", "Доп. уборка", null), Ct);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+        var extra = (await created.Content.ReadFromJsonAsync<HousekeepingTaskDto>(Ct))!;
+
+        // Удаляем лишнюю задачу — уборка после выезда ещё не сделана, номер остаётся на уборке.
+        (await owner.DeleteAsync(new Uri($"/api/v1/housekeeping/tasks/{extra.Id}", UriKind.Relative), Ct)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await RoomStatusAsync(owner, roomId)).Should().Be("Cleaning");
+
+        (await owner.DeleteAsync(new Uri($"/api/v1/housekeeping/tasks/{checkoutTask.Id}", UriKind.Relative), Ct)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await RoomStatusAsync(owner, roomId)).Should().Be("Available");
+    }
+
+    [Fact]
     public async Task AutoRelease_RoomAvailableRightAfterCleaning()
     {
         var owner = await OwnerAsync();
